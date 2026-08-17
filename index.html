@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>우디 어학원 타이쿤 — 프로토타입</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{--ink:#2b2233;--cream:#fff4d6;--panel:#3a2f47;--gold:#ffcf3f;--coin:#ffcf3f;--green:#63c76a;--red:#e35d5d;--blue:#5aa9e6}
+html,body{height:100%}
+body{background:#241d2e;color:#fff4d6;font-family:'DungGeunMo','Galmuri',ui-monospace,Menlo,Consolas,monospace;display:flex;flex-direction:column;align-items:center;min-height:100%;overflow:hidden;position:fixed;inset:0}
+#wrap{width:100%;max-width:520px;height:100%;display:flex;flex-direction:column}
+.hud{display:flex;gap:6px;padding:8px;align-items:center;flex-wrap:wrap;background:#1c1626;border-bottom:3px solid #000}
+.tag{background:#3a2f47;border:2px solid #000;border-radius:4px;padding:4px 8px;font-size:13px;display:flex;gap:5px;align-items:center;line-height:1}
+.tag b{color:#ffcf3f}
+.name{flex:1;font-size:15px;color:#ffcf3f;text-shadow:2px 2px 0 #000;min-width:110px}
+.expwrap{width:100%;height:12px;background:#0d0a12;border:2px solid #000;border-radius:3px;overflow:hidden;margin-top:2px}
+.expbar{height:100%;background:linear-gradient(#8be08f,#3fa74a);width:0;transition:width .25s}
+#scene{flex:1;position:relative;background:#8ec7ff;image-rendering:pixelated}
+#cv{width:100%;height:100%;display:block;image-rendering:pixelated}
+.goal{position:absolute;top:6px;left:6px;right:6px;background:rgba(28,22,38,.82);border:2px solid #000;border-radius:5px;padding:6px 8px;font-size:12px;color:#ffe9a8}
+.goal b{color:#ffcf3f}
+.dock{padding:8px;display:flex;gap:8px;background:#1c1626;border-top:3px solid #000}
+.btn{flex:1;background:#ffcf3f;color:#2b2233;border:2px solid #000;border-radius:6px;padding:12px;font-family:inherit;font-size:16px;font-weight:bold;box-shadow:0 4px 0 #a8791b;cursor:pointer}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 #a8791b}
+.btn.blue{background:#5aa9e6;box-shadow:0 4px 0 #2c6fa8;color:#08243b}
+.btn.blue:active{box-shadow:0 1px 0 #2c6fa8}
+.overlay{position:absolute;inset:0;background:rgba(10,7,15,.72);display:flex;align-items:center;justify-content:center;padding:14px;z-index:20}
+.card{width:100%;max-width:440px;background:#fff4d6;color:#2b2233;border:3px solid #000;border-radius:10px;box-shadow:0 8px 0 rgba(0,0,0,.4);padding:16px}
+.card h3{font-size:15px;color:#7a5a2a;margin-bottom:4px}
+.qword{font-size:30px;font-weight:bold;text-align:center;margin:10px 0 4px}
+.qsub{text-align:center;font-size:12px;color:#8a7a55;margin-bottom:14px}
+.opt{display:block;width:100%;background:#fffdf5;border:2px solid #000;border-radius:7px;padding:13px;font-family:inherit;font-size:17px;margin-bottom:9px;cursor:pointer;box-shadow:0 3px 0 rgba(0,0,0,.25);text-align:center}
+.opt:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.25)}
+.opt.ok{background:#bff0c4;border-color:#2f8f3a}
+.opt.bad{background:#ffc9c9;border-color:#c23b3b}
+.combo{text-align:center;font-size:13px;color:#c0563a;min-height:18px;margin-bottom:6px;font-weight:bold}
+.fb{text-align:center;font-size:15px;font-weight:bold;min-height:22px;margin-top:4px}
+.shopitem{display:flex;align-items:center;gap:10px;background:#fffdf5;border:2px solid #000;border-radius:7px;padding:10px;margin-bottom:8px}
+.shopitem .ic{font-size:24px;width:30px;text-align:center}
+.shopitem .info{flex:1}
+.shopitem .t{font-size:15px;font-weight:bold}
+.shopitem .d{font-size:11px;color:#8a7a55;line-height:1.4}
+.buy{background:#ffcf3f;border:2px solid #000;border-radius:6px;padding:8px 10px;font-family:inherit;font-weight:bold;font-size:13px;box-shadow:0 3px 0 #a8791b;cursor:pointer;white-space:nowrap}
+.buy:active{transform:translateY(2px);box-shadow:0 1px 0 #a8791b}
+.buy:disabled{background:#d9cfb5;box-shadow:0 3px 0 #9c927a;color:#7c745f;cursor:default}
+.x{float:right;background:#e35d5d;color:#fff;border:2px solid #000;border-radius:6px;width:30px;height:30px;font-family:inherit;font-weight:bold;cursor:pointer}
+.toast{position:absolute;bottom:78px;left:50%;transform:translateX(-50%);background:#2b2233;color:#ffcf3f;border:2px solid #000;border-radius:20px;padding:8px 16px;font-size:13px;z-index:30;opacity:0;transition:.25s;white-space:nowrap;pointer-events:none}
+.toast.show{opacity:1}
+.small{font-size:11px;color:#8a7a55;text-align:center;margin-top:6px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="hud">
+    <div class="name" id="acadName">우디 어학원 · Lv.<span id="lv">1</span></div>
+    <div class="tag">🪙 <b id="coins">0</b></div>
+    <div class="tag">🎓 <b id="grad">0</b></div>
+    <div class="tag">👩‍🏫 <b id="tut">0</b></div>
+    <div class="tag">🔥 <b id="streak">0</b></div>
+    <div class="expwrap"><div class="expbar" id="expbar"></div></div>
+  </div>
+  <div id="scene">
+    <canvas id="cv" width="256" height="176"></canvas>
+    <div class="goal" id="goal">첫 수업을 열어 코인을 모아보세요!</div>
+  </div>
+  <div class="dock">
+    <button class="btn" onclick="openStudy()">📖 수업 시작</button>
+    <button class="btn blue" onclick="openShop()">🔨 건설·고용</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const WORDS=[{"w":"access","k":"접근","lv":"academic"},{"w":"addition","k":"추가","lv":"core"},{"w":"rigid","k":"엄격한","lv":"academic"},{"w":"notion","k":"개념","lv":"academic"},{"w":"implement","k":"시행하다","lv":"academic"},{"w":"grant","k":"부여하다, 수여하다","lv":"academic"},{"w":"communicate","k":"의사소통하다","lv":"academic"},{"w":"promise","k":"약속","lv":"plus"},{"w":"indicate","k":"나타내다","lv":"academic"},{"w":"fund","k":"자금","lv":"academic"},{"w":"team","k":"팀","lv":"academic"},{"w":"population","k":"인구","lv":"core"},{"w":"equip","k":"갖추다","lv":"academic"},{"w":"organize","k":"조직하다","lv":"plus"},{"w":"principle","k":"원칙","lv":"academic"},{"w":"commission","k":"위원회","lv":"academic"},{"w":"isolate","k":"고립시키다","lv":"academic"},{"w":"design","k":"설계","lv":"academic"},{"w":"available","k":"이용 가능한","lv":"academic"},{"w":"maintain","k":"유지하다","lv":"academic"},{"w":"percent","k":"퍼센트","lv":"academic"},{"w":"create","k":"창조하다","lv":"academic"},{"w":"blood","k":"피","lv":"plus"},{"w":"federal","k":"연방의","lv":"academic"},{"w":"abstract","k":"추상적인","lv":"academic"},{"w":"decline","k":"감소하다","lv":"academic"},{"w":"pause","k":"멈춤, 중지","lv":"core"},{"w":"adjust","k":"조정하다","lv":"academic"},{"w":"assign","k":"할당하다","lv":"academic"},{"w":"insert","k":"삽입하다","lv":"academic"},{"w":"executive","k":"임원","lv":"plus"},{"w":"quote","k":"인용하다","lv":"academic"},{"w":"responsible","k":"책임이 있는","lv":"plus"},{"w":"statement","k":"진술","lv":"plus"},{"w":"ultimate","k":"궁극적인","lv":"academic"},{"w":"finite","k":"유한한","lv":"academic"},{"w":"exploit","k":"이용하다","lv":"academic"},{"w":"argument","k":"논쟁","lv":"plus"},{"w":"trend","k":"경향","lv":"academic"},{"w":"welfare","k":"복지","lv":"academic"},{"w":"imply","k":"암시하다","lv":"academic"},{"w":"orient","k":"지향하게 하다","lv":"academic"},{"w":"weight","k":"무게","lv":"plus"},{"w":"credit","k":"공로","lv":"academic"},{"w":"secure","k":"안전한","lv":"academic"},{"w":"substitute","k":"대체하다","lv":"academic"},{"w":"adult","k":"성인","lv":"academic"},{"w":"input","k":"투입, 입력","lv":"academic"},{"w":"extract","k":"추출하다","lv":"academic"},{"w":"presume","k":"추정하다, 가정하다","lv":"academic"},{"w":"logic","k":"논리","lv":"academic"},{"w":"notwithstanding","k":"~에도 불구하고","lv":"academic"},{"w":"attain","k":"달성하다","lv":"academic"},{"w":"distinct","k":"뚜렷한","lv":"academic"},{"w":"factor","k":"요인","lv":"academic"},{"w":"integrate","k":"통합하다","lv":"academic"},{"w":"component","k":"구성 요소","lv":"academic"},{"w":"abandon","k":"버리다","lv":"academic"},{"w":"overall","k":"전반적인","lv":"academic"},{"w":"express","k":"표현하다","lv":"plus"},{"w":"volume","k":"양","lv":"academic"},{"w":"initiate","k":"시작하다, 착수하다","lv":"academic"},{"w":"energy","k":"에너지","lv":"academic"},{"w":"strike","k":"치다","lv":"plus"},{"w":"albeit","k":"비록 ~일지라도","lv":"academic"},{"w":"phenomenon","k":"현상","lv":"academic"},{"w":"assess","k":"평가하다","lv":"academic"},{"w":"discriminate","k":"차별하다","lv":"academic"},{"w":"relevant","k":"관련 있는","lv":"academic"},{"w":"controversy","k":"논란","lv":"academic"},{"w":"incentive","k":"유인, 동기","lv":"academic"},{"w":"visible","k":"보이는","lv":"academic"},{"w":"complement","k":"보완물","lv":"academic"},{"w":"theme","k":"주제","lv":"academic"},{"w":"aspect","k":"측면","lv":"academic"},{"w":"illustrate","k":"설명하다","lv":"academic"},{"w":"prior","k":"이전의","lv":"academic"},{"w":"involve","k":"포함하다","lv":"academic"},{"w":"diverse","k":"다양한","lv":"academic"},{"w":"director","k":"이사","lv":"core"},{"w":"relation","k":"관계","lv":"plus"},{"w":"exercise","k":"운동","lv":"plus"},{"w":"injure","k":"부상을 입히다","lv":"academic"},{"w":"status","k":"지위","lv":"academic"},{"w":"particularly","k":"특히","lv":"core"},{"w":"negative","k":"부정적인","lv":"plus"},{"w":"estate","k":"재산","lv":"academic"},{"w":"virtual","k":"가상의","lv":"academic"},{"w":"confer","k":"상의하다","lv":"academic"},{"w":"recognize","k":"인식하다","lv":"core"},{"w":"debate","k":"토론","lv":"academic"},{"w":"dollar","k":"달러 (화폐 단위)","lv":"plus"},{"w":"anticipate","k":"예상하다","lv":"academic"},{"w":"nevertheless","k":"그럼에도 불구하고","lv":"academic"},{"w":"message","k":"메시지","lv":"plus"},{"w":"cycle","k":"주기","lv":"academic"},{"w":"acknowledge","k":"인정하다","lv":"academic"},{"w":"foundation","k":"기초","lv":"academic"},{"w":"define","k":"정의하다","lv":"academic"},{"w":"perceive","k":"인지하다","lv":"academic"},{"w":"undergo","k":"겪다","lv":"academic"},{"w":"officer","k":"장교","lv":"plus"},{"w":"correct","k":"정확한","lv":"plus"},{"w":"induce","k":"유도하다","lv":"academic"},{"w":"imagine","k":"상상하다","lv":"plus"},{"w":"institute","k":"기관","lv":"academic"},{"w":"displace","k":"대체하다","lv":"academic"},{"w":"ability","k":"능력","lv":"plus"},{"w":"somebody","k":"누군가","lv":"plus"},{"w":"perspective","k":"관점","lv":"academic"},{"w":"hierarchy","k":"위계","lv":"academic"},{"w":"recommend","k":"추천하다","lv":"plus"},{"w":"route","k":"경로","lv":"academic"},{"w":"notice","k":"알아차리다","lv":"core"},{"w":"refine","k":"정제하다","lv":"academic"},{"w":"bias","k":"편견","lv":"academic"},{"w":"manipulate","k":"조작하다","lv":"academic"},{"w":"job","k":"직업","lv":"academic"},{"w":"prefer","k":"선호하다","lv":"plus"},{"w":"trouble","k":"문제","lv":"plus"},{"w":"promote","k":"촉진하다","lv":"academic"},{"w":"replace","k":"교체하다","lv":"plus"},{"w":"plus","k":"더하기","lv":"academic"},{"w":"pattern","k":"양식","lv":"plus"},{"w":"commit","k":"저지르다","lv":"academic"},{"w":"financial","k":"재정의","lv":"core"},{"w":"expert","k":"전문가","lv":"academic"},{"w":"coherent","k":"일관된","lv":"academic"},{"w":"speech","k":"연설","lv":"plus"},{"w":"directly","k":"직접","lv":"plus"},{"w":"quickly","k":"빨리","lv":"plus"},{"w":"myself","k":"나 자신","lv":"core"},{"w":"heart","k":"심장","lv":"core"},{"w":"accompany","k":"동반하다","lv":"academic"},{"w":"monitor","k":"감시하다","lv":"academic"},{"w":"immediately","k":"즉시","lv":"plus"},{"w":"alter","k":"바꾸다","lv":"academic"},{"w":"exactly","k":"정확히","lv":"core"},{"w":"sector","k":"부문","lv":"academic"},{"w":"investment","k":"투자","lv":"plus"}];
+const LS='vocagame_proto_v1';
+let G={lv:1,coins:0,exp:0,cap:2,desks:0,tutors:0,deco:0,tier:1,streak:0,lastDay:null,mastered:{},studied:0};
+function save(){localStorage.setItem(LS,JSON.stringify(G));}
+function load(){try{const s=JSON.parse(localStorage.getItem(LS));if(s)Object.assign(G,s);}catch(e){}}
+function unlockedCount(){return Math.min(WORDS.length, 30+ (G.tier-1)*30);}
+function gradCount(){return Object.values(G.mastered).filter(v=>v>=3).length;}
+function expNeed(){return 30+(G.lv-1)*25;}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1700);}
+function touchDay(){const d=new Date().toDateString();if(G.lastDay===d)return;const y=new Date(Date.now()-864e5).toDateString();G.streak=(G.lastDay===y)?G.streak+1:1;G.lastDay=d;}
+function hud(){
+  document.getElementById('lv').textContent=G.lv;
+  document.getElementById('coins').textContent=G.coins;
+  document.getElementById('grad').textContent=gradCount();
+  document.getElementById('tut').textContent=G.tutors;
+  document.getElementById('streak').textContent=G.streak;
+  document.getElementById('expbar').style.width=Math.min(100,G.exp/expNeed()*100)+'%';
+  document.getElementById('goal').innerHTML=goalText();
+  save();
+}
+function goalText(){
+  if(G.studied===0)return '📖 <b>수업 시작</b>을 눌러 첫 문제를 풀어보세요!';
+  const deskCost=15+G.desks*12;
+  if(G.coins<deskCost && G.tutors===0)return `🪙 <b>${deskCost}</b> 코인을 모아 <b>책상</b>을 늘려 학생을 받으세요 (지금 ${G.coins})`;
+  if(G.tutors===0)return `👩‍🏫 코인이 모였어요! <b>건설·고용</b>에서 강사를 뽑으면 코인이 더 빨리 쌓여요`;
+  return `⭐ EXP를 채워 <b>Lv.${G.lv+1}</b> 달성 → 학원이 한 층 더 커집니다 (${G.exp}/${expNeed()})`;
+}
+
+/* ---------- pixel scene ---------- */
+const cv=document.getElementById('cv'),cx=cv.getContext('2d');cx.imageSmoothingEnabled=false;
+const R=(x,y,w,h,c)=>{cx.fillStyle=c;cx.fillRect(x|0,y|0,w|0,h|0);};
+let parts=[],t0=performance.now();
+function student(x,y,f,col){ // tiny pixel student
+  const b=Math.round(Math.sin((f/22)+x)*1);
+  R(x-3,y-8+b,6,5,'#f2c69a'); // head
+  R(x-2,y-9+b,4,1,'#3a2b22'); // hair
+  R(x-3,y-3+b,6,5,col);       // body
+  R(x-3,y+2+b,2,2,'#3a2b22'); R(x+1,y+2+b,2,2,'#3a2b22'); // legs
+}
+function draw(now){
+  const f=(now-t0)/16;
+  // sky
+  R(0,0,256,120,'#8ec7ff'); R(0,90,256,30,'#bfe3ff');
+  // clouds
+  const cxp=(f*0.2)%300-40; R(cxp,20,26,6,'#ffffff'); R(cxp+6,15,16,6,'#ffffff');
+  const cxp2=(f*0.13)%320-60; R(cxp2+150,34,22,6,'#eaf6ff'); R(cxp2+156,29,12,6,'#eaf6ff');
+  // ground
+  R(0,120,256,56,'#79c25a'); R(0,120,256,4,'#5aa544'); R(0,150,256,26,'#6ab04e');
+  // building — floors = level (cap 4 visual)
+  const floors=Math.min(4,G.lv), bw=96, bx=80, fh=26, baseY=120;
+  const topY=baseY-floors*fh;
+  R(bx-3,topY-3,bw+6,floors*fh+3,'#000'); // outline
+  R(bx,topY,bw,floors*fh,'#f0e2c2'); // body
+  for(let i=0;i<floors;i++){const fy=baseY-(i+1)*fh;
+    // windows
+    for(let wx=0;wx<3;wx++){R(bx+10+wx*30,fy+7,18,12,'#000');R(bx+11+wx*30,fy+8,16,10,'#7fc0ec');R(bx+11+wx*30,fy+8,16,4,'#a8d6f5');}
+  }
+  // door
+  R(bx+bw/2-9,baseY-16,18,16,'#000');R(bx+bw/2-7,baseY-14,14,14,'#9c5a2c');R(bx+bw/2+2,baseY-8,2,2,'#ffcf3f');
+  // roof + signboard
+  R(bx-6,topY-10,bw+12,8,'#000');R(bx-4,topY-9,bw+8,6,'#c0563a');
+  R(bx+8,topY-22,bw-16,13,'#000');R(bx+10,topY-20,bw-20,9,'#ffcf3f'); // sign plaque (name drawn in HTML? keep plaque)
+  cx.fillStyle='#5a3a12';cx.font='8px monospace';cx.textAlign='center';cx.fillText('WOODY',bx+bw/2,topY-13);
+  // desks + students in front (up to capacity, visual cap 8)
+  const n=Math.min(8,G.cap);
+  for(let i=0;i<n;i++){const sx=26+i*28+((i>=4)?0:0), row=i<4?0:1; const px=24+ (i%4)*30, py=150+ (i<4?0:14);
+    R(px-6,py+4,14,4,'#000');R(px-5,py+5,12,2,'#8a5a2c'); // desk
+    student(px, py, f+i*7, ['#e2607a','#5aa9e6','#63c76a','#c78bff','#ff9a52','#4fd0c0','#e6b84f','#8b78ff'][i%8]);
+  }
+  // tutors near door
+  for(let i=0;i<Math.min(3,G.tutors);i++){ student(bx+bw/2-18+i*18, baseY-2, f+i*13, '#3a2f47'); R(bx+bw/2-21+i*18,baseY-11,6,1,'#ffcf3f'); }
+  // deco plants
+  for(let i=0;i<Math.min(4,G.deco);i++){R(6+i*8,138,5,4,'#7a4a22');R(5+i*8,132,7,6,'#3fa74a');}
+  // coin particles
+  parts=parts.filter(p=>p.life>0);
+  for(const p of parts){p.y-=0.8;p.life-=0.02;cx.globalAlpha=Math.max(0,p.life);R(p.x,p.y,4,4,'#000');R(p.x,p.y,3,3,'#ffcf3f');R(p.x+1,p.y+1,1,1,'#fff3b0');}
+  cx.globalAlpha=1;
+  requestAnimationFrame(draw);
+}
+function coinPop(nx){for(let i=0;i<6;i++)parts.push({x:100+Math.random()*56,y:60+Math.random()*40,life:1});}
+
+/* ---------- study ---------- */
+function pick(n,exclude){const pool=WORDS.slice(0,unlockedCount());const out=[];const seen=new Set(exclude?[exclude]:[]);let guard=0;while(out.length<n&&guard++<400){const w=pool[Math.random()*pool.length|0];if(!seen.has(w.k)){seen.add(w.k);out.push(w);}}return out;}
+let combo=0;
+function openStudy(){combo=0;nextQ();}
+function nextQ(){
+  const pool=WORDS.slice(0,unlockedCount());
+  const w=pool[Math.random()*pool.length|0];
+  const opts=[w.k,...pick(3,w.k).map(x=>x.k)].sort(()=>Math.random()-.5);
+  const ov=document.createElement('div');ov.className='overlay';ov.id='studyOv';
+  ov.innerHTML=`<div class="card">
+    <button class="x" onclick="closeStudy()">✕</button>
+    <h3>📖 수업 중 · 콤보 <span id="cb">${combo}</span></h3>
+    <div class="qword">${esc(w.w)}</div>
+    <div class="qsub">이 단어의 뜻은? (맞히면 🪙 획득)</div>
+    <div id="opts">${opts.map(o=>`<button class="opt" onclick="answer(this,'${esc(o).replace(/'/g,"\\'")}','${esc(w.k).replace(/'/g,"\\'")}','${esc(w.w).replace(/'/g,"\\'")}')">${esc(o)}</button>`).join('')}</div>
+    <div class="combo" id="comboMsg"></div>
+    <div class="fb" id="fb"></div>
+  </div>`;
+  clearOv();document.getElementById('scene').appendChild(ov);
+}
+function answer(el,val,correct,word){
+  const good=val===correct;
+  document.querySelectorAll('.opt').forEach(b=>{b.onclick=null;if(b.textContent===correct)b.classList.add('ok');else if(b===el)b.classList.add('bad');});
+  const fb=document.getElementById('fb');
+  if(good){
+    combo++;
+    const base=4+G.deco, mult=(1+Math.min(combo,12)*0.15)*(1+G.tutors*0.4);
+    const gain=Math.round(base*mult);
+    G.coins+=gain; G.exp+=10; G.studied++;
+    G.mastered[word]=(G.mastered[word]||0)+1;
+    coinPop();
+    fb.style.color='#2f8f3a';fb.textContent=`정답! 🪙 +${gain}`;
+    document.getElementById('comboMsg').textContent=combo>1?`🔥 ${combo} 콤보! (보너스 ×${mult.toFixed(1)})`:'';
+    if(G.mastered[word]===3)toast('🎓 졸업생 배출! ('+esc(word)+')');
+    // level up?
+    while(G.exp>=expNeed()){G.exp-=expNeed();G.lv++;G.cap+=1;toast('⭐ 학원 Lv.'+G.lv+'! 한 층 더 커졌어요');}
+    touchDay();hud();
+    setTimeout(nextQ,650);
+  }else{
+    combo=0;fb.style.color='#c23b3b';fb.innerHTML=`아쉬워요 — 정답: <b>${esc(correct)}</b>`;
+    hud();
+    setTimeout(nextQ,1300);
+  }
+}
+function closeStudy(){clearOv();hud();}
+function clearOv(){const o=document.getElementById('studyOv')||document.getElementById('shopOv');if(o)o.remove();}
+
+/* ---------- shop ---------- */
+function openShop(){
+  const items=shopItems();
+  const ov=document.createElement('div');ov.className='overlay';ov.id='shopOv';
+  ov.innerHTML=`<div class="card">
+    <button class="x" onclick="clearOv()">✕</button>
+    <h3>🔨 건설 · 고용 &nbsp;🪙 <span id="shopCoins">${G.coins}</span></h3>
+    <div id="shopList">${items.map(renderItem).join('')}</div>
+    <div class="small">코인은 오직 <b>공부(수업)</b>로만 모입니다. 과금 없음.</div>
+  </div>`;
+  clearOv();document.getElementById('scene').appendChild(ov);
+}
+function shopItems(){return [
+  {id:'desk',ic:'🪑',t:'책상 추가',d:'학생 정원 +1 (학원이 북적여요)',cost:15+G.desks*12},
+  {id:'tutor',ic:'👩‍🏫',t:'강사 고용',d:'수업 코인 획득량 +40% (누적)',cost:40+G.tutors*45},
+  {id:'pack',ic:'📦',t:'단어팩 해금',d:'새 단어 +30개 (지금 '+unlockedCount()+'/'+WORDS.length+')',cost:30+(G.tier-1)*35, max:unlockedCount()>=WORDS.length},
+  {id:'deco',ic:'🪴',t:'화분 놓기',d:'분위기 +, 문제당 코인 +1',cost:20+G.deco*15},
+];}
+function renderItem(it){
+  const dis=it.max||G.coins<it.cost;
+  return `<div class="shopitem"><div class="ic">${it.ic}</div><div class="info"><div class="t">${it.t}</div><div class="d">${it.d}</div></div>
+  <button class="buy" ${dis?'disabled':''} onclick="buy('${it.id}')">${it.max?'완료':'🪙 '+it.cost}</button></div>`;
+}
+function buy(id){
+  const it=shopItems().find(x=>x.id===id);if(!it||it.max||G.coins<it.cost)return;
+  G.coins-=it.cost;
+  if(id==='desk'){G.desks++;G.cap++;toast('🪑 책상 추가! 정원 '+G.cap);}
+  if(id==='tutor'){G.tutors++;toast('👩‍🏫 강사 고용! 코인 획득 ↑');}
+  if(id==='pack'){G.tier++;toast('📦 단어팩 해금! 단어 '+unlockedCount()+'개');}
+  if(id==='deco'){G.deco++;toast('🪴 화분 놓기!');}
+  hud();openShop();
+}
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+load();hud();requestAnimationFrame(draw);
+</script>
+</body>
+</html>
