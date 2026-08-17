@@ -87,19 +87,20 @@ body{background:#15121a;color:#f3ecdb;font-family:ui-monospace,Menlo,Consolas,mo
 <div class="toast" id="toast"></div>
 
 <script>
-const WORDS=[{"w":"access","k":"접근","lv":"academic"},{"w":"addition","k":"추가","lv":"core"},{"w":"rigid","k":"엄격한","lv":"academic"},{"w":"notion","k":"개념","lv":"academic"},{"w":"implement","k":"시행하다","lv":"academic"},{"w":"grant","k":"부여하다, 수여하다","lv":"academic"},{"w":"communicate","k":"의사소통하다","lv":"academic"},{"w":"promise","k":"약속","lv":"plus"},{"w":"indicate","k":"나타내다","lv":"academic"},{"w":"fund","k":"자금","lv":"academic"},{"w":"team","k":"팀","lv":"academic"},{"w":"population","k":"인구","lv":"core"},{"w":"equip","k":"갖추다","lv":"academic"},{"w":"organize","k":"조직하다","lv":"plus"},{"w":"principle","k":"원칙","lv":"academic"},{"w":"commission","k":"위원회","lv":"academic"},{"w":"isolate","k":"고립시키다","lv":"academic"},{"w":"design","k":"설계","lv":"academic"},{"w":"available","k":"이용 가능한","lv":"academic"},{"w":"maintain","k":"유지하다","lv":"academic"},{"w":"percent","k":"퍼센트","lv":"academic"},{"w":"create","k":"창조하다","lv":"academic"},{"w":"blood","k":"피","lv":"plus"},{"w":"federal","k":"연방의","lv":"academic"},{"w":"abstract","k":"추상적인","lv":"academic"},{"w":"decline","k":"감소하다","lv":"academic"},{"w":"pause","k":"멈춤, 중지","lv":"core"},{"w":"adjust","k":"조정하다","lv":"academic"},{"w":"assign","k":"할당하다","lv":"academic"},{"w":"insert","k":"삽입하다","lv":"academic"},{"w":"executive","k":"임원","lv":"plus"},{"w":"quote","k":"인용하다","lv":"academic"},{"w":"responsible","k":"책임이 있는","lv":"plus"},{"w":"statement","k":"진술","lv":"plus"},{"w":"ultimate","k":"궁극적인","lv":"academic"},{"w":"finite","k":"유한한","lv":"academic"},{"w":"exploit","k":"이용하다","lv":"academic"},{"w":"argument","k":"논쟁","lv":"plus"},{"w":"trend","k":"경향","lv":"academic"},{"w":"welfare","k":"복지","lv":"academic"},{"w":"imply","k":"암시하다","lv":"academic"},{"w":"orient","k":"지향하게 하다","lv":"academic"},{"w":"weight","k":"무게","lv":"plus"},{"w":"credit","k":"공로","lv":"academic"},{"w":"secure","k":"안전한","lv":"academic"},{"w":"substitute","k":"대체하다","lv":"academic"},{"w":"adult","k":"성인","lv":"academic"},{"w":"input","k":"투입, 입력","lv":"academic"},{"w":"extract","k":"추출하다","lv":"academic"},{"w":"presume","k":"추정하다, 가정하다","lv":"academic"},{"w":"logic","k":"논리","lv":"academic"},{"w":"notwithstanding","k":"~에도 불구하고","lv":"academic"},{"w":"attain","k":"달성하다","lv":"academic"},{"w":"distinct","k":"뚜렷한","lv":"academic"},{"w":"factor","k":"요인","lv":"academic"},{"w":"integrate","k":"통합하다","lv":"academic"},{"w":"component","k":"구성 요소","lv":"academic"},{"w":"abandon","k":"버리다","lv":"academic"},{"w":"overall","k":"전반적인","lv":"academic"},{"w":"express","k":"표현하다","lv":"plus"},{"w":"volume","k":"양","lv":"academic"},{"w":"initiate","k":"시작하다, 착수하다","lv":"academic"},{"w":"energy","k":"에너지","lv":"academic"},{"w":"strike","k":"친다","lv":"plus"},{"w":"albeit","k":"비록 ~일지라도","lv":"academic"},{"w":"phenomenon","k":"현상","lv":"academic"},{"w":"assess","k":"평가하다","lv":"academic"},{"w":"discriminate","k":"차별하다","lv":"academic"},{"w":"relevant","k":"관련 있는","lv":"academic"},{"w":"controversy","k":"논란","lv":"academic"},{"w":"incentive","k":"유인, 동기","lv":"academic"},{"w":"visible","k":"보이는","lv":"academic"},{"w":"complement","k":"보완물","lv":"academic"},{"w":"theme","k":"주제","lv":"academic"},{"w":"aspect","k":"측면","lv":"academic"},{"w":"illustrate","k":"설명하다","lv":"academic"},{"w":"prior","k":"이전의","lv":"academic"},{"w":"involve","k":"포함하다","lv":"academic"},{"w":"diverse","k":"다양한","lv":"academic"},{"w":"director","k":"이사","lv":"core"},{"w":"relation","k":"관계","lv":"plus"},{"w":"exercise","k":"운동","lv":"plus"},{"w":"injure","k":"부상을 입히다","lv":"academic"},{"w":"status","k":"지위","lv":"academic"},{"w":"particularly","k":"특히","lv":"core"},{"w":"negative","k":"부정적인","lv":"plus"},{"w":"estate","k":"재산","lv":"academic"},{"w":"virtual","k":"가상의","lv":"academic"},{"w":"confer","k":"상의하다","lv":"academic"},{"w":"recognize","k":"인식하다","lv":"core"},{"w":"debate","k":"토론","lv":"academic"},{"w":"dollar","k":"달러 (화폐 단위)","lv":"plus"},{"w":"anticipate","k":"예상하다","lv":"academic"},{"w":"nevertheless","k":"그럼에도 불구하고","lv":"academic"},{"w":"message","k":"메시지","lv":"plus"},{"w":"cycle","k":"주기","lv":"academic"},{"w":"acknowledge","k":"인정하다","lv":"academic"},{"w":"foundation","k":"기초","lv":"academic"},{"w":"define","k":"정의하다","lv":"academic"},{"w":"perceive","k":"인지하다","lv":"academic"},{"w":"undergo","k":"겪다","lv":"academic"},{"w":"officer","k":"장교","lv":"plus"},{"w":"correct","k":"정확한","lv":"plus"},{"w":"induce","k":"유도하다","lv":"academic"},{"w":"imagine","k":"상상하다","lv":"plus"},{"w":"institute","k":"기관","lv":"academic"},{"w":"displace","k":"대체하다","lv":"academic"},{"w":"ability","k":"능력","lv":"plus"},{"w":"somebody","k":"누군가","lv":"plus"},{"w":"perspective","k":"관점","lv":"academic"},{"w":"hierarchy","k":"위계","lv":"academic"},{"w":"recommend","k":"추천하다","lv":"plus"},{"w":"route","k":"경로","lv":"academic"},{"w":"notice","k":"알아차리다","lv":"core"},{"w":"refine","k":"정제하다","lv":"academic"},{"w":"bias","k":"편견","lv":"academic"},{"w":"manipulate","k":"조작하다","lv":"academic"},{"w":"job","k":"직업","lv":"academic"},{"w":"prefer","k":"선호하다","lv":"plus"},{"w":"trouble","k":"문제","lv":"plus"},{"w":"promote","k":"촉진하다","lv":"academic"},{"w":"replace","k":"교체하다","lv":"plus"},{"w":"plus","k":"더하기","lv":"academic"},{"w":"pattern","k":"양식","lv":"plus"},{"w":"commit","k":"저지르다","lv":"academic"},{"w":"financial","k":"재정의","lv":"core"},{"w":"expert","k":"전문가","lv":"academic"},{"w":"coherent","k":"일관된","lv":"academic"},{"w":"speech","k":"연설","lv":"plus"},{"w":"directly","k":"직접","lv":"plus"},{"w":"quickly","k":"빨리","lv":"plus"},{"w":"myself","k":"나 자신","lv":"core"},{"w":"heart","k":"심장","lv":"core"},{"w":"accompany","k":"동반하다","lv":"academic"},{"w":"monitor","k":"감시하다","lv":"academic"},{"w":"immediately","k":"즉시","lv":"plus"},{"w":"alter","k":"바꾸다","lv":"academic"},{"w":"exactly","k":"정확히","lv":"core"},{"w":"sector","k":"부문","lv":"academic"},{"w":"investment","k":"투자","lv":"plus"}];
-const LS='vocadungeon_v5';
-const CORE_MAX=10, CORE_ID=5;
-// 구역 그래프: 입구 → (상/하) → 중앙 → 심층 → 용의 방
+const WORDS=[{"w":"access","k":"접근","lv":"academic"},{"w":"addition","k":"추가","lv":"core"},{"w":"rigid","k":"엄격한","lv":"academic"},{"w":"notion","k":"개념","lv":"academic"},{"w":"implement","k":"시행하다","lv":"academic"},{"w":"grant","k":"부여하다, 수여하다","lv":"academic"},{"w":"communicate","k":"의사소통하다","lv":"academic"},{"w":"promise","k":"약속","lv":"plus"},{"w":"indicate","k":"나타내다","lv":"academic"},{"w":"fund","k":"자금","lv":"academic"},{"w":"team","k":"팀","lv":"academic"},{"w":"population","k":"인구","lv":"core"},{"w":"equip","k":"갖추다","lv":"academic"},{"w":"organize","k":"조직하다","lv":"plus"},{"w":"principle","k":"원칙","lv":"academic"},{"w":"commission","k":"위원회","lv":"academic"},{"w":"isolate","k":"고립시키다","lv":"academic"},{"w":"design","k":"설계","lv":"academic"},{"w":"available","k":"이용 가능한","lv":"academic"},{"w":"maintain","k":"유지하다","lv":"academic"},{"w":"percent","k":"퍼센트","lv":"academic"},{"w":"create","k":"창조하다","lv":"academic"},{"w":"blood","k":"피","lv":"plus"},{"w":"federal","k":"연방의","lv":"academic"},{"w":"abstract","k":"추상적인","lv":"academic"},{"w":"decline","k":"감소하다","lv":"academic"},{"w":"pause","k":"멈춤, 중지","lv":"core"},{"w":"adjust","k":"조정하다","lv":"academic"},{"w":"assign","k":"할당하다","lv":"academic"},{"w":"insert","k":"삽입하다","lv":"academic"},{"w":"executive","k":"임원","lv":"plus"},{"w":"quote","k":"인용하다","lv":"academic"},{"w":"responsible","k":"책임이 있는","lv":"plus"},{"w":"statement","k":"진술","lv":"plus"},{"w":"ultimate","k":"궁극적인","lv":"academic"},{"w":"finite","k":"유한한","lv":"academic"},{"w":"exploit","k":"이용하다","lv":"academic"},{"w":"argument","k":"논쟁","lv":"plus"},{"w":"trend","k":"경향","lv":"academic"},{"w":"welfare","k":"복지","lv":"academic"},{"w":"imply","k":"암시하다","lv":"academic"},{"w":"orient","k":"지향하게 하다","lv":"academic"},{"w":"weight","k":"무게","lv":"plus"},{"w":"credit","k":"공로","lv":"academic"},{"w":"secure","k":"안전한","lv":"academic"},{"w":"substitute","k":"대체하다","lv":"academic"},{"w":"adult","k":"성인","lv":"academic"},{"w":"input","k":"투입, 입력","lv":"academic"},{"w":"extract","k":"추출하다","lv":"academic"},{"w":"presume","k":"추정하다, 가정하다","lv":"academic"},{"w":"logic","k":"논리","lv":"academic"},{"w":"notwithstanding","k":"~에도 불구하고","lv":"academic"},{"w":"attain","k":"달성하다","lv":"academic"},{"w":"distinct","k":"뚜렷한","lv":"academic"},{"w":"factor","k":"요인","lv":"academic"},{"w":"integrate","k":"통합하다","lv":"academic"},{"w":"component","k":"구성 요소","lv":"academic"},{"w":"abandon","k":"버리다","lv":"academic"},{"w":"overall","k":"전반적인","lv":"academic"},{"w":"express","k":"표현하다","lv":"plus"},{"w":"volume","k":"양","lv":"academic"},{"w":"initiate","k":"시작하다, 착수하다","lv":"academic"},{"w":"energy","k":"에너지","lv":"academic"},{"w":"strike","k":"치다","lv":"plus"},{"w":"albeit","k":"비록 ~일지라도","lv":"academic"},{"w":"phenomenon","k":"현상","lv":"academic"},{"w":"assess","k":"평가하다","lv":"academic"},{"w":"discriminate","k":"차별하다","lv":"academic"},{"w":"relevant","k":"관련 있는","lv":"academic"},{"w":"controversy","k":"논란","lv":"academic"},{"w":"incentive","k":"유인, 동기","lv":"academic"},{"w":"visible","k":"보이는","lv":"academic"},{"w":"complement","k":"보완물","lv":"academic"},{"w":"theme","k":"주제","lv":"academic"},{"w":"aspect","k":"측면","lv":"academic"},{"w":"illustrate","k":"설명하다","lv":"academic"},{"w":"prior","k":"이전의","lv":"academic"},{"w":"involve","k":"포함하다","lv":"academic"},{"w":"diverse","k":"다양한","lv":"academic"},{"w":"director","k":"이사","lv":"core"},{"w":"relation","k":"관계","lv":"plus"},{"w":"exercise","k":"운동","lv":"plus"},{"w":"injure","k":"부상을 입히다","lv":"academic"},{"w":"status","k":"지위","lv":"academic"},{"w":"particularly","k":"특히","lv":"core"},{"w":"negative","k":"부정적인","lv":"plus"},{"w":"estate","k":"재산","lv":"academic"},{"w":"virtual","k":"가상의","lv":"academic"},{"w":"confer","k":"상의하다","lv":"academic"},{"w":"recognize","k":"인식하다","lv":"core"},{"w":"debate","k":"토론","lv":"academic"},{"w":"dollar","k":"달러 (화폐 단위)","lv":"plus"},{"w":"anticipate","k":"예상하다","lv":"academic"},{"w":"nevertheless","k":"그럼에도 불구하고","lv":"academic"},{"w":"message","k":"메시지","lv":"plus"},{"w":"cycle","k":"주기","lv":"academic"},{"w":"acknowledge","k":"인정하다","lv":"academic"},{"w":"foundation","k":"기초","lv":"academic"},{"w":"define","k":"정의하다","lv":"academic"},{"w":"perceive","k":"인지하다","lv":"academic"},{"w":"undergo","k":"겪다","lv":"academic"},{"w":"officer","k":"장교","lv":"plus"},{"w":"correct","k":"정확한","lv":"plus"},{"w":"induce","k":"유도하다","lv":"academic"},{"w":"imagine","k":"상상하다","lv":"plus"},{"w":"institute","k":"기관","lv":"academic"},{"w":"displace","k":"대체하다","lv":"academic"},{"w":"ability","k":"능력","lv":"plus"},{"w":"somebody","k":"누군가","lv":"plus"},{"w":"perspective","k":"관점","lv":"academic"},{"w":"hierarchy","k":"위계","lv":"academic"},{"w":"recommend","k":"추천하다","lv":"plus"},{"w":"route","k":"경로","lv":"academic"},{"w":"notice","k":"알아차리다","lv":"core"},{"w":"refine","k":"정제하다","lv":"academic"},{"w":"bias","k":"편견","lv":"academic"},{"w":"manipulate","k":"조작하다","lv":"academic"},{"w":"job","k":"직업","lv":"academic"},{"w":"prefer","k":"선호하다","lv":"plus"},{"w":"trouble","k":"문제","lv":"plus"},{"w":"promote","k":"촉진하다","lv":"academic"},{"w":"replace","k":"교체하다","lv":"plus"},{"w":"plus","k":"더하기","lv":"academic"},{"w":"pattern","k":"양식","lv":"plus"},{"w":"commit","k":"저지르다","lv":"academic"},{"w":"financial","k":"재정의","lv":"core"},{"w":"expert","k":"전문가","lv":"academic"},{"w":"coherent","k":"일관된","lv":"academic"},{"w":"speech","k":"연설","lv":"plus"},{"w":"directly","k":"직접","lv":"plus"},{"w":"quickly","k":"빨리","lv":"plus"},{"w":"myself","k":"나 자신","lv":"core"},{"w":"heart","k":"심장","lv":"core"},{"w":"accompany","k":"동반하다","lv":"academic"},{"w":"monitor","k":"감시하다","lv":"academic"},{"w":"immediately","k":"즉시","lv":"plus"},{"w":"alter","k":"바꾸다","lv":"academic"},{"w":"exactly","k":"정확히","lv":"core"},{"w":"sector","k":"부문","lv":"academic"},{"w":"investment","k":"투자","lv":"plus"}];
+const LS='vocadungeon_v6';
+const CORE_MAX=10, CORE_ID=6;
+// 구역 그래프: 입구 → (상/하 분기) → 중앙(상/하) → 심층 → 용의 방
 const ZONES=[
-  {id:0,nm:'입구',x:34,y:120,kind:'entry'},
-  {id:1,nm:'상',x:100,y:56,kind:'build'},
-  {id:2,nm:'하',x:100,y:184,kind:'build'},
-  {id:3,nm:'중앙',x:170,y:120,kind:'build'},
-  {id:4,nm:'심층',x:236,y:120,kind:'build'},
-  {id:5,nm:'용의 방',x:294,y:120,kind:'core'},
+  {id:0,nm:'입구',  x:30, y:120,kind:'entry'},
+  {id:1,nm:'입구상',x:90, y:58, kind:'build'},
+  {id:2,nm:'입구하',x:90, y:182,kind:'build'},
+  {id:3,nm:'중앙상',x:160,y:58, kind:'build'},
+  {id:4,nm:'중앙하',x:160,y:182,kind:'build'},
+  {id:5,nm:'심층',  x:232,y:120,kind:'build'},
+  {id:6,nm:'용의 방',x:292,y:120,kind:'core'},
 ];
-const EDGES=[[0,1],[0,2],[1,3],[2,3],[3,4],[4,5]];
+const EDGES=[[0,1],[0,2],[1,3],[2,4],[3,5],[4,5],[5,6]];
 const FAC={
   none: {nm:'빈 방',    cost:0,  cap:0, traps:[],                 d:'없음'},
   wait2:{nm:'소형 대기실',cost:10, cap:2, traps:[],                 d:'몬스터 2'},
@@ -108,7 +109,7 @@ const FAC={
   corr: {nm:'함정 회랑',  cost:20, cap:0, traps:['wall','cage','cage'], d:'벽1+우리2 (함정만)'},
 };
 const FAC_MENU=['none','wait2','wait4','arrow','corr'];
-const TRAP={arrow:{nm:'화살',em:'🏹',dmg:1,rate:0.6},wall:{nm:'벽',em:'🧱',dmg:3,rate:0.25},cage:{nm:'우리',em:'🕸️',dmg:1,rate:0.7}};
+const TRAP={arrow:{nm:'화살',em:'🏹',dmg:1,rate:0.5,uses:3},wall:{nm:'벽',em:'🧱',dmg:2,rate:0.3,uses:2},cage:{nm:'우리',em:'🕸️',dmg:1,rate:0.5,uses:3}};
 const MONS=[
   {id:'slime', nm:'슬라임',em:'🟢',hp:1,atk:1,cost:8, uw:1},
   {id:'bat',   nm:'박쥐', em:'🦇',hp:1,atk:2,cost:16,uw:2},
@@ -121,11 +122,11 @@ function mMax(i){return mon(i.mid).hp+(i.lv-1);}
 function mAtk(i){return mon(i.mid).atk+(i.lv-1);}
 function upCost(i){return Math.round(mon(i.mid).cost*0.8*i.lv);}
 const HERO={
-  squire:{nm:'견습병',em:'🧟',hp:1,time:4,  power:1,gold:6, col:'#8bd88b'},
-  soldier:{nm:'병사', em:'💂',hp:1,time:3,  power:1,gold:9, col:'#7fb0ff'},
-  knight:{nm:'기사',  em:'🛡️',hp:2,time:2,  power:2,gold:15,col:'#e6c05a'},
-  champ:{nm:'용사',   em:'⚔️',hp:3,time:1.2,power:3,gold:26,col:'#e6802a'},
-  boss:{nm:'대용사',  em:'👑',hp:5,time:0.8,power:5,gold:70,col:'#e35d5d'},
+  squire:{nm:'견습병',em:'🧟',hp:1,time:5,  power:1,gold:6, col:'#8bd88b'},
+  soldier:{nm:'병사', em:'💂',hp:1,time:4,  power:1,gold:9, col:'#7fb0ff'},
+  knight:{nm:'기사',  em:'🛡️',hp:2,time:3,  power:2,gold:15,col:'#e6c05a'},
+  champ:{nm:'용사',   em:'⚔️',hp:3,time:2.2,power:3,gold:26,col:'#e6802a'},
+  boss:{nm:'대용사',  em:'👑',hp:5,time:1.8,power:5,gold:70,col:'#e35d5d'},
 };
 const WAVES=[
   ['squire','squire','squire'],
@@ -135,16 +136,16 @@ const WAVES=[
   ['knight','champ','knight','champ','soldier'],
   ['champ','champ','knight','champ','boss'],
 ];
-function newZ(){return {1:{fac:'none',mons:[]},2:{fac:'none',mons:[]},3:{fac:'none',mons:[]},4:{fac:'none',mons:[]},5:{fac:'core',mons:[]}};}
+function newZ(){const z={};for(let i=1;i<=5;i++)z[i]={fac:'none',mons:[]};z[CORE_ID]={fac:'core',mons:[]};return z;}
 let G={gold:80,core:CORE_MAX,wave:0,fear:10,cleared:false,over:false,muted:false,miss:{},route:'split',z:newZ()};
 function capOf(z){return z===CORE_ID?2:FAC[G.z[z].fac].cap;}
 function trapsOf(z){return z===CORE_ID?[]:FAC[G.z[z].fac].traps;}
 function save(){try{localStorage.setItem(LS,JSON.stringify(G));}catch(e){}}
 function load(){try{const s=JSON.parse(localStorage.getItem(LS));if(s){Object.assign(G,s);
-  if(!G.z||!G.z[5])G.z=newZ();
-  for(const k of [1,2,3,4,5]){const zc=G.z[k];if(!zc){G.z[k]={fac:k===5?'core':'none',mons:[]};continue;}if(!Array.isArray(zc.mons))zc.mons=[];zc.mons.forEach(m=>{if(m&&m.lv==null)m.lv=1;});}
+  if(!G.z||!G.z[CORE_ID])G.z=newZ();
+  for(const k of [1,2,3,4,5,6]){const zc=G.z[k];if(!zc){G.z[k]={fac:k===CORE_ID?'core':'none',mons:[]};continue;}if(!Array.isArray(zc.mons))zc.mons=[];zc.mons.forEach(m=>{if(m&&m.lv==null)m.lv=1;});}
 }}catch(e){}}
-function monCount(){let n=0;for(const k of[1,2,3,4,5])n+=G.z[k].mons.length;return n;}
+function monCount(){let n=0;for(const k of[1,2,3,4,5,6])n+=G.z[k].mons.length;return n;}
 
 /* ---------- sound ---------- */
 let AC=null;function ac(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}}return AC;}
@@ -193,7 +194,7 @@ function draw(){
     }
   }
   // core monsters (draw small over core box)
-  const cm=G.z[5].mons;if(cm.length){let mx=294-((Math.min(cm.length,2)-1)*11)/2;for(let i=0;i<Math.min(cm.length,2);i++){cx.font='12px serif';cx.fillText(mon(cm[i].mid).em,mx+i*11,120-6);}}
+  const cm=G.z[CORE_ID].mons;if(cm.length){let mx=ZONES[CORE_ID].x-((Math.min(cm.length,2)-1)*11)/2;for(let i=0;i<Math.min(cm.length,2);i++){cx.font='12px serif';cx.fillText(mon(cm[i].mid).em,mx+i*11,ZONES[CORE_ID].y-6);}}
   // heroes
   for(const h of heroes){const H=HERO[h.k];cx.font='16px serif';cx.fillText(H.em,h.px,h.py-1);cx.fillStyle=H.col;cx.font='8px monospace';cx.fillText('▮'.repeat(h.hp),h.px,h.py-13);}
   pops=pops.filter(p=>p.life>0);cx.textBaseline='alphabetic';
@@ -254,12 +255,12 @@ function askReset(){if(running){toast('침공 중에는 초기화할 수 없어�
 
 /* ---------- invasion ---------- */
 function firstAliveMon(z){const a=G.z[z].mons;for(let i=0;i<a.length;i++)if(a[i]&&a[i].hp>0)return i;return -1;}
-function routeBranch(){return G.route==='up'?1:G.route==='down'?2:(spawnCount%2?1:2);}
+function heroPath(){const up=G.route==='up'?true:G.route==='down'?false:(spawnCount%2===0);return up?[0,1,3,5,CORE_ID]:[0,2,4,5,CORE_ID];}
 function startWave(){
   if(running||G.over||G.cleared)return;
   if(monCount()===0){toast('대기실에 몬스터를 한 마리 이상 배치하세요');return;}
   ac();placing=false;running=true;
-  for(const k of[1,2,3,4,5])G.z[k].mons.forEach(m=>m.hp=mMax(m));
+  for(const k of[1,2,3,4,5,6]){G.z[k].mons.forEach(m=>m.hp=mMax(m));G.z[k].tu=trapsOf(k).map(t=>TRAP[t].uses);}
   spawnQ=WAVES[G.wave].slice();
   const extra=Math.floor((G.fear-10)/40);for(let i=0;i<extra;i++)spawnQ.push('soldier');
   spawnT=0;spawnCount=0;heroes=[];
@@ -271,12 +272,12 @@ const SPD=1.4;
 function step(){
   if(!running)return;if(duel){requestAnimationFrame(step);return;}
   spawnT++;
-  if(spawnQ.length&&spawnT>=58){spawnT=0;const k=spawnQ.shift();heroes.push({k,hp:HERO[k].hp,path:[0,routeBranch(),3,4,5],idx:0,px:ZONES[0].x,py:ZONES[0].y});spawnCount++;}
+  if(spawnQ.length&&spawnT>=58){spawnT=0;const k=spawnQ.shift();heroes.push({k,hp:HERO[k].hp,path:heroPath(),idx:0,px:ZONES[0].x,py:ZONES[0].y});spawnCount++;}
   for(const h of heroes){
     if(h.dead)continue;
     const nx=h.path[h.idx+1];
     if(nx==null){ // 코어 도달(몬스터 정리됨) → 코어 피해
-      G.core-=HERO[h.k].power;pop('코어-'+HERO[h.k].power,'#ff6b6b',ZONES[5].x,ZONES[5].y-24);sfx('bad');h.dead=true;hud();
+      G.core-=HERO[h.k].power;pop('코어-'+HERO[h.k].power,'#ff6b6b',ZONES[CORE_ID].x,ZONES[CORE_ID].y-24);sfx('bad');h.dead=true;hud();
       if(G.core<=0){G.core=0;return gameOver();}continue;
     }
     const Z=ZONES[nx],dx=Z.x-h.px,dy=Z.y-h.py,d=Math.hypot(dx,dy);
@@ -287,11 +288,12 @@ function step(){
   if(!spawnQ.length&&heroes.length===0)return waveClear();
   requestAnimationFrame(step);
 }
-function killHero(h,z){G.gold+=HERO[h.k].gold;pop('🪙+'+HERO[h.k].gold,'#ffcf3f',ZONES[z].x,ZONES[z].y-22);sfx('die');h.dead=true;hud();}
+function killHero(h,z,byTrap){const g=byTrap?Math.max(1,Math.floor(HERO[h.k].gold/2)):HERO[h.k].gold;G.gold+=g;pop('🪙+'+g,'#ffcf3f',ZONES[z].x,ZONES[z].y-22);sfx('die');h.dead=true;hud();}
 function arrive(h,z){ // true면 전투 시작(루프 중단)
-  for(const t of trapsOf(z)){const T=TRAP[t];if(Math.random()<T.rate){h.hp-=T.dmg;pop(T.em+'-'+T.dmg,'#ff6b6b',ZONES[z].x,ZONES[z].y-22);sfx('bad');if(h.hp<=0){killHero(h,z);return false;}}}
+  const tr=trapsOf(z),tu=G.z[z]?G.z[z].tu:null;
+  for(let i=0;i<tr.length;i++){const T=TRAP[tr[i]];if(tu&&(tu[i]|0)<=0)continue;if(Math.random()<T.rate){h.hp-=T.dmg;if(tu)tu[i]=(tu[i]|0)-1;pop(T.em+'-'+T.dmg,'#ff6b6b',ZONES[z].x,ZONES[z].y-22);sfx('bad');if(h.hp<=0){killHero(h,z,true);return false;}}}
   if(firstAliveMon(z)>=0){startDuel(h,z);return true;}
-  if(z===CORE_ID){G.core-=HERO[h.k].power;pop('코어-'+HERO[h.k].power,'#ff6b6b',ZONES[5].x,ZONES[5].y-24);sfx('bad');h.dead=true;hud();if(G.core<=0){G.core=0;gameOver();return true;}}
+  if(z===CORE_ID){G.core-=HERO[h.k].power;pop('코어-'+HERO[h.k].power,'#ff6b6b',ZONES[CORE_ID].x,ZONES[CORE_ID].y-24);sfx('bad');h.dead=true;hud();if(G.core<=0){G.core=0;gameOver();return true;}}
   return false;
 }
 
@@ -348,7 +350,7 @@ function afterWave(){document.getElementById('banner').innerHTML=`건설 단계 
 function victory(){
   G.cleared=true;running=false;const g=G.core>=9?'S':G.core>=6?'A':G.core>=3?'B':'C';const col=g==='S'?'#e35d5d':g==='A'?'#e6952a':g==='B'?'#5aa9e6':'#8a7a55';
   const ov=mkEv();ov.innerHTML=`<div class="card center"><h3>🏆 모든 침공을 막아냈습니다!</h3><div class="grade" style="color:${col}">${g}</div>
-    <div style="font-size:14px">둥지 🐉 <b>${G.core}</b>/10 사수</div><div class="small">축하합니다! 6차 침공을 모두 방어했어요.</div><div style="height:8px"></div>
+    <div style="font-size:14px">둥지 🐉 <b>${G.core}</b>/10 사수</div><div class="small">축하합니다! 6차 침곴을 모두 방어했어요.</div><div style="height:8px"></div>
     <button class="btn" onclick="restart()">🔁 다시</button></div>`;sfx('win');hud();
 }
 function gameOver(){
