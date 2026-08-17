@@ -101,6 +101,15 @@ const MONS=[
   {id:'golem', nm:'골렘',   em:'🗿', hp:3, atk:3, cost:48, uw:4, d:'체력3 · 정답당 용사 -3 (요충지용)'},
 ];
 function mon(id){return MONS.find(m=>m.id===id);}
+const TRAPS=[
+  {id:'spike',nm:'가시 함정',em:'🪤',dmg:1,cost:10,uw:1,d:'지나는 용사에게 자동 1 피해 (문제 없음)'},
+  {id:'lava', nm:'용암 함정',em:'🔥',dmg:2,cost:24,uw:3,d:'지나는 용사에게 자동 2 피해'},
+];
+function trap(id){return TRAPS.find(t=>t.id===id);}
+function unlockedTraps(){return TRAPS.filter(t=>t.uw<=G.wave+1);}
+function mMax(inst){return mon(inst.mid).hp+(inst.lv-1);}   // 레벨업: 체력 +1/레벨
+function mAtk(inst){return mon(inst.mid).atk+(inst.lv-1);}  // 레벨업: 공격 +1/레벨
+function upCost(inst){return Math.round(mon(inst.mid).cost*0.8*inst.lv);}
 const HEROES={
   squire:{nm:'견습병', em:'🧑\u200d🌾', hp:1, time:4,   power:1, coin:6,  col:'#8bd88b'},
   soldier:{nm:'병사',  em:'💂', hp:1, time:3,   power:1, coin:9,  col:'#7fb0ff'},
@@ -122,6 +131,7 @@ function load(){try{const s=JSON.parse(localStorage.getItem(LS));if(s){Object.as
   if(!Array.isArray(G.grid)||G.grid.length!==ROWS)G.grid=emptyGrid();
   else for(let r=0;r<ROWS;r++)if(!Array.isArray(G.grid[r])||G.grid[r].length!==COLS)G.grid=emptyGrid();
   G.grid[ENTR.r][ENTR.c].path=true;G.grid[CORE.r][CORE.c].path=true;
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){const cl=G.grid[r][c];if(cl&&cl.mon&&cl.mon.lv==null)cl.mon.lv=1;if(cl&&cl.trap===undefined)cl.trap=null;}
   }}catch(e){}}
 function isEntr(r,c){return r===ENTR.r&&c===ENTR.c;}
 function isCore(r,c){return r===CORE.r&&c===CORE.c;}
@@ -207,7 +217,8 @@ function draw(){
   for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){const cell=G.grid[r][c],x=cxp(c),y=cyp(r);
     if(isEntr(r,c)){R(x-RH,y-RH,RH*2,RH*2,'#6b4a2a');R(x-RH+3,y-RH+3,RH*2-6,RH*2-6,'#2e2013');cx.fillStyle='#ffcf3f';cx.font='15px serif';cx.fillText('▶',x,y-2);cx.font='8px monospace';cx.fillStyle='#ffe9a8';cx.fillText('입구',x,y+12);}
     else if(isCore(r,c)){R(x-RH,y-RH,RH*2,RH*2,'#c9a86a');R(x-RH,y-RH,RH*2,3,'#e0c48a');cx.strokeStyle='#8a5a2a';cx.lineWidth=2;cx.strokeRect(x-RH+1,y-RH+1,RH*2-2,RH*2-2);cx.font='21px serif';cx.fillText('🐉',x,y-3);cx.font='8px monospace';cx.fillStyle='#8a2a2a';cx.fillText('🥚'+G.nest,x,y+13);}
-    else if(cell.mon){const m=mon(cell.mon.mid);cx.font='20px serif';cx.fillText(m.em,x,y-3);cx.font='9px monospace';cx.fillStyle='#b0331f';cx.fillText('♥'.repeat(cell.mon.hp),x,y+13);}
+    else if(cell.mon){const m=mon(cell.mon.mid);cx.font='20px serif';cx.fillText(m.em,x,y-3);if(cell.mon.lv>1){cx.font='8px monospace';cx.fillStyle='#c8791a';cx.fillText('Lv'+cell.mon.lv,x,y-13);}cx.font='9px monospace';cx.fillStyle='#b0331f';cx.fillText('♥'.repeat(Math.max(0,cell.mon.hp)),x,y+13);}
+    else if(cell.trap){cx.font='18px serif';cx.fillText(trap(cell.trap.tid).em,x,y-1);}
     else if(cell.path&&placing){cx.fillStyle='#a98f60';cx.font='13px serif';cx.fillText('＋',x,y-1);}
     else if(!cell.path&&placing){cx.fillStyle='#6b5a44';cx.font='12px serif';cx.fillText('⛏',x,y);}
   }
@@ -234,25 +245,41 @@ cv.addEventListener('click',ev=>{
 });
 function openCell(r,c){
   const cell=G.grid[r][c];
-  const items=unlockedMons().map(m=>{const dis=G.coins<m.cost;
+  const monItems=unlockedMons().map(m=>{const dis=G.coins<m.cost;
     return `<div class="shopitem"><div class="ic">${m.em}</div><div class="info"><div class="t">${m.nm}</div><div class="d">${m.d}</div></div>
       <button class="buy" ${dis?'disabled':''} onclick="placeMon(${r},${c},'${m.id}')">🪙 ${m.cost}</button></div>`;}).join('');
-  const rm=cell.mon?`<button class="buy rm" onclick="removeMon(${r},${c})">몬스터 치우기 (환불 🪙${Math.floor(mon(cell.mon.mid).cost/2)})</button> `:'';
+  const trapItems=unlockedTraps().map(t=>{const dis=G.coins<t.cost;
+    return `<div class="shopitem"><div class="ic">${t.em}</div><div class="info"><div class="t">${t.nm}</div><div class="d">${t.d}</div></div>
+      <button class="buy" ${dis?'disabled':''} onclick="placeTrap(${r},${c},'${t.id}')">🪙 ${t.cost}</button></div>`;}).join('');
+  let head='이 방에 몬스터나 함정을 놓으세요', up='';
+  if(cell.mon){const mm=mon(cell.mon.mid),uc=upCost(cell.mon);
+    head=`현재: ${mm.em} ${mm.nm} ⭐Lv.${cell.mon.lv} (공격 ${mAtk(cell.mon)} · 체력 ${mMax(cell.mon)})`;
+    up=`<button class="buy" ${G.coins<uc?'disabled':''} onclick="upgradeMon(${r},${c})">⬆ 강화 Lv.${cell.mon.lv}→${cell.mon.lv+1} (🪙${uc})</button> `;
+  }else if(cell.trap){head=`현재: ${trap(cell.trap.tid).em} ${trap(cell.trap.tid).nm}`;}
+  const rm=(cell.mon||cell.trap)?`<button class="buy rm" onclick="removeMon(${r},${c})">치우기(환불)</button> `:'';
   const ov=document.createElement('div');ov.className='overlay';ov.id='ov';
   ov.innerHTML=`<div class="card"><button class="x" onclick="closeOv()">✕</button>
-    <h3>🧱 길 칸 (${r+1},${c+1}) &nbsp;🪙 ${G.coins}</h3>
-    ${cell.mon?`<div class="small">현재: ${mon(cell.mon.mid).em} ${mon(cell.mon.mid).nm} · 교체하려면 새로 선택</div>`:'<div class="small">이 길 칸에 몬스터를 세우세요</div>'}
-    ${items}
+    <h3>🧱 던전 방 (${r+1},${c+1}) &nbsp;🪙 ${G.coins}</h3>
+    <div class="small">${head}</div>
+    ${up?`<div class="center" style="margin:2px 0 8px">${up}</div>`:''}
+    <div class="small" style="text-align:left;color:#7a5a2a;margin-top:4px"><b>몬스터</b> — 문제로 용사 처치, 강화 가능</div>
+    ${monItems}
+    <div class="small" style="text-align:left;color:#7a5a2a"><b>함정</b> — 지나는 용사에게 자동 피해</div>
+    ${trapItems}
     <div class="center" style="margin-top:4px">${rm}<button class="buy wall" onclick="fillWall(${r},${c})">길 메우기(벽)</button></div>
-    <div class="small">일자보다 <b>구불구불하게</b> 지으면 용사가 더 많은 몬스터를 지납니다.</div></div>`;
+    <div class="small">구불구불하게 지을수록 용사가 더 많은 방을 지납니다.</div></div>`;
   closeOv();document.getElementById('scene').appendChild(ov);
 }
 function placeMon(r,c,id){const m=mon(id);if(G.coins<m.cost)return;const cell=G.grid[r][c];
-  if(cell.mon)G.coins+=Math.floor(mon(cell.mon.mid).cost/2);
-  G.coins-=m.cost;cell.mon={mid:id,hp:m.hp};sfx('hit');toast(m.em+' '+m.nm+' 배치!');closeOv();hud();
+  clearRefund(cell);G.coins-=m.cost;cell.trap=null;cell.mon={mid:id,hp:m.hp,lv:1};sfx('hit');toast(m.em+' '+m.nm+' 배치!');closeOv();hud();
 }
-function removeMon(r,c){const cell=G.grid[r][c];if(!cell.mon)return;G.coins+=Math.floor(mon(cell.mon.mid).cost/2);cell.mon=null;closeOv();hud();}
-function fillWall(r,c){const cell=G.grid[r][c];if(cell.mon)G.coins+=Math.floor(mon(cell.mon.mid).cost/2);cell.mon=null;cell.path=false;sfx('dig');closeOv();hud();}
+function placeTrap(r,c,id){const t=trap(id);if(G.coins<t.cost)return;const cell=G.grid[r][c];
+  clearRefund(cell);G.coins-=t.cost;cell.mon=null;cell.trap={tid:id};sfx('hit');toast(t.em+' '+t.nm+' 설치!');closeOv();hud();
+}
+function upgradeMon(r,c){const cell=G.grid[r][c];if(!cell.mon)return;const uc=upCost(cell.mon);if(G.coins<uc)return;G.coins-=uc;cell.mon.lv++;cell.mon.hp=mMax(cell.mon);sfx('ok');toast('⬆ '+mon(cell.mon.mid).nm+' Lv.'+cell.mon.lv+'!');closeOv();hud();}
+function clearRefund(cell){if(cell.mon)G.coins+=Math.floor(mon(cell.mon.mid).cost/2);if(cell.trap)G.coins+=Math.floor(trap(cell.trap.tid).cost/2);}
+function removeMon(r,c){const cell=G.grid[r][c];clearRefund(cell);cell.mon=null;cell.trap=null;closeOv();hud();}
+function fillWall(r,c){const cell=G.grid[r][c];clearRefund(cell);cell.mon=null;cell.trap=null;cell.path=false;sfx('dig');closeOv();hud();}
 function closeOv(){const o=document.getElementById('ov')||document.getElementById('duelOv')||document.getElementById('evOv');if(o)o.remove();}
 
 /* ---------- waves ---------- */
@@ -262,7 +289,7 @@ function startWave(){
   if(!path){toast('입구(▶)와 둥지(🐉)가 길로 이어지지 않았어요');return;}
   if(!anyMon()){toast('길 위에 몬스터를 한 마리 이상 세우세요');return;}
   ac();placing=false;running=true;wavePath=path;
-  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(G.grid[r][c].mon)G.grid[r][c].mon.hp=mon(G.grid[r][c].mon.mid).hp;
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(G.grid[r][c].mon)G.grid[r][c].mon.hp=mMax(G.grid[r][c].mon);
   spawnQ=WAVES[G.wave].slice();spawnT=0;heroes=[];
   document.getElementById('banner').innerHTML=`🌊 <b>웨이브 ${G.wave+1}</b> 진행 중! 용사 ${spawnQ.length}명이 미로로 들어옵니다`;
   document.getElementById('hint').textContent='용사가 몬스터 칸에 닿으면 문제가 출제됩니다';
@@ -279,7 +306,9 @@ function step(){
     if(!nx){G.nest-=HEROES[h.k].power;pop('둥지 -'+HEROES[h.k].power,'#ff6b6b',cxp(CORE.c),cyp(CORE.r)-18);sfx('bad');h.dead=true;hud();if(G.nest<=0){G.nest=0;return gameOver();}continue;}
     const tx=cxp(nx.c),ty=cyp(nx.r),dx=tx-h.px,dy=ty-h.py,dist=Math.hypot(dx,dy);
     if(dist>HSPEED){h.px+=dx/dist*HSPEED;h.py+=dy/dist*HSPEED;}
-    else{h.px=tx;h.py=ty;h.idx++;const cell=G.grid[nx.r][nx.c];if(cell.mon&&cell.mon.hp>0){startDuel(h,nx.r,nx.c);return;}}
+    else{h.px=tx;h.py=ty;h.idx++;const cell=G.grid[nx.r][nx.c];
+      if(cell.trap){const tp=trap(cell.trap.tid);h.hp-=tp.dmg;pop(tp.em+' -'+tp.dmg,'#ff6b6b',tx,ty-14);sfx('bad');if(h.hp<=0){G.coins+=HEROES[h.k].coin;pop('🪙+'+HEROES[h.k].coin,'#ffcf3f',tx,ty-16);sfx('die');h.dead=true;hud();}}
+      if(!h.dead&&cell.mon&&cell.mon.hp>0){startDuel(h,nx.r,nx.c);return;}}
   }
   heroes=heroes.filter(h=>!h.dead);
   if(!spawnQ.length&&heroes.length===0){return waveClear();}
@@ -307,7 +336,7 @@ function duelQ(){
   ov.innerHTML=`
     <div class="sbubble"><div class="b"><div class="w">${esc(w.w)}</div><div class="s">${H.em} ${H.nm}이(가) 뜻을 물었다 · ⏱ ${H.time}초</div></div></div>
     <div class="duelbar">
-      <div class="dheart"><span style="color:${H.col}">${H.em} ${H.nm} ${'▮'.repeat(h.hp)}</span><span style="color:#ff8a8a">${mm.nm} ${mm.em} ${'♥'.repeat(m.hp)}</span></div>
+      <div class="dheart"><span style="color:${H.col}">${H.em} ${H.nm} ${'▮'.repeat(h.hp)}</span><span style="color:#ff8a8a">${mm.nm}${m.lv>1?' ⭐'+m.lv:''} ${mm.em} ${'♥'.repeat(m.hp)}</span></div>
       <div class="optrow">${opts.map(o=>`<button class="opt" onclick="duelAns(this,'${esc(o).replace(/'/g,"\\'")}')">${esc(o)}</button>`).join('')}</div>
       <div class="dtimer"><div class="tbar"><div class="tfill" id="tfill"></div></div><span class="tnum" id="tnum">${H.time.toFixed(1)}</span></div>
       <div class="fb" id="fb"></div>
@@ -318,8 +347,8 @@ function duelQ(){
 function duelAns(el,val){stopTimer();duelResolve(val===qCorrect,el);}
 function duelResolve(good,el){
   document.querySelectorAll('.opt').forEach(b=>{b.onclick=null;if(b.textContent===qCorrect)b.classList.add('ok');else if(el&&b===el)b.classList.add('bad');});
-  const h=duel.h,cell=G.grid[duel.r][duel.c],m=cell.mon,mm=mon(m.mid),fb=document.getElementById('fb');
-  if(good){markHit(qWord);h.hp-=mm.atk;sfx('ok');fb.style.color='#8be08f';fb.innerHTML=`정답! 용사에게 -${mm.atk} 타격`;}
+  const h=duel.h,cell=G.grid[duel.r][duel.c],m=cell.mon,mm=mon(m.mid),atk=mAtk(m),fb=document.getElementById('fb');
+  if(good){markHit(qWord);h.hp-=atk;sfx('ok');fb.style.color='#8be08f';fb.innerHTML=`정답! 용사에게 -${atk} 타격`;}
   else{markMiss(qWord);m.hp-=1;sfx('bad');fb.style.color='#ff9a9a';fb.innerHTML=`오답 — 정답: ${esc(qCorrect)} · 몬스터 체력 -1`;}
   hud();
   setTimeout(()=>{
