@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>🎲 다같이 주사위 보드게임</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:#12203a;color:#fff;font-family:'DungGeunMo',ui-rounded,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100%;overflow:hidden;position:fixed;inset:0}
+#wrap{width:100%;max-width:560px;height:100%;display:flex;flex-direction:column;padding:6px}
+.topbar{display:flex;gap:5px;align-items:center;flex-wrap:wrap;padding:4px 2px}
+.title{flex:1;font-size:15px;font-weight:bold;color:#ffd94a;min-width:120px}
+.pchip{display:flex;align-items:center;gap:4px;background:#1c2c4d;border:2px solid #000;border-radius:6px;padding:3px 7px;font-size:12px;font-weight:bold}
+.pchip .dot{width:12px;height:12px;border-radius:50%;border:1px solid #000}
+.pchip.cur{outline:2px solid #ffd94a}
+#boardwrap{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
+#board{width:min(96vw,min(70vh,540px));height:min(96vw,min(70vh,540px));display:grid;grid-template:repeat(6,1fr)/repeat(6,1fr);gap:2px;background:#0c1830;border:3px solid #000;border-radius:8px;padding:3px}
+.tile{background:#20335a;border:1.5px solid #0a1428;border-radius:5px;position:relative;display:flex;flex-direction:column;justify-content:flex-start;padding:2px;overflow:hidden;font-size:9px;line-height:1.05}
+.tile .band{height:7px;border-radius:2px;margin-bottom:1px}
+.tile .nm{font-weight:bold;font-size:9px;color:#eaf1ff;word-break:keep-all}
+.tile .pr{font-size:8px;color:#a9c0e6;margin-top:auto}
+.tile.sp{background:#2c2350}
+.tile.start{background:#2e7d46}
+.tile.core .big{font-size:16px}
+.tile .toks{position:absolute;right:1px;bottom:1px;display:flex;flex-wrap:wrap-reverse;gap:1px;max-width:70%;justify-content:flex-end}
+.tok{width:11px;height:11px;border-radius:50%;border:1.5px solid #fff;box-shadow:0 0 0 1px #000}
+.owner{position:absolute;top:1px;right:1px;width:10px;height:10px;border-radius:2px;border:1px solid #000;font-size:7px;text-align:center;color:#000;font-weight:bold;line-height:10px}
+.tile .lv{position:absolute;top:9px;right:1px;font-size:8px}
+.center{grid-column:2/6;grid-row:2/6;background:#16264a;border:2px solid #000;border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;overflow:auto}
+.now{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:bold}
+.now .dot{width:16px;height:16px;border-radius:50%;border:2px solid #000}
+.money{color:#ffd94a}
+.dice{display:flex;gap:6px;justify-content:center;font-size:38px;line-height:1;min-height:40px;color:#fff;text-shadow:0 2px 0 #000}
+.guessrow{display:flex;align-items:center;justify-content:center;gap:8px}
+.gbtn{width:38px;height:38px;border-radius:8px;border:2px solid #000;background:#ffd94a;color:#2b2233;font-size:22px;font-weight:bold;cursor:pointer;box-shadow:0 3px 0 #a8791b}
+.gbtn:active{transform:translateY(2px);box-shadow:0 1px 0 #a8791b}
+.gval{font-size:30px;font-weight:bold;min-width:56px;text-align:center;color:#fff;background:#0c1830;border:2px solid #000;border-radius:8px;padding:2px 6px}
+.msg{text-align:center;font-size:12px;min-height:32px;color:#eaf1ff;line-height:1.4}
+.msg b{color:#ffd94a}
+.btn{background:#e35d5d;color:#fff;border:2px solid #000;border-radius:8px;padding:11px;font-family:inherit;font-size:15px;font-weight:bold;box-shadow:0 4px 0 #9c2f2f;cursor:pointer;width:100%}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 #9c2f2f}
+.btn:disabled{background:#5a6072;box-shadow:0 4px 0 #3a3f4d;color:#c9c2d4;cursor:default}
+.btn.g{background:#3fa74a;box-shadow:0 4px 0 #256b2c}
+.btn.y{background:#ffd94a;color:#2b2233;box-shadow:0 4px 0 #a8791b}
+.btnrow{display:flex;gap:6px}
+.log{font-size:10px;color:#9fb4d8;max-height:44px;overflow:auto;line-height:1.5;border-top:1px dashed #35507f;padding-top:3px}
+.overlay{position:fixed;inset:0;background:rgba(8,14,30,.86);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40}
+.card{width:100%;max-width:380px;background:#16264a;border:3px solid #000;border-radius:12px;padding:18px;text-align:center}
+.card h2{font-size:20px;color:#ffd94a;margin-bottom:4px}
+.card h3{font-size:15px;margin:10px 0 6px}
+.card p{font-size:12px;color:#bcd0f0;line-height:1.6}
+.opts{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:6px 0}
+.opt{background:#20335a;border:2px solid #000;border-radius:10px;padding:12px 16px;font-family:inherit;font-size:15px;font-weight:bold;color:#fff;cursor:pointer;box-shadow:0 3px 0 #0a1428}
+.opt.on{background:#ffd94a;color:#2b2233;box-shadow:0 3px 0 #a8791b}
+.toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#2b2233;color:#ffd94a;border:2px solid #000;border-radius:20px;padding:9px 18px;font-size:14px;font-weight:bold;z-index:50;opacity:0;transition:.25s;white-space:nowrap;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="topbar">
+    <div class="title">🎲 다같이 주사위 보드게임</div>
+    <div id="pchips" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+  </div>
+  <div id="boardwrap"><div id="board"></div></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<!-- 시작 화면 -->
+<div class="overlay" id="setup">
+  <div class="card">
+    <h2>🎲 다같이 주사위 보드게임</h2>
+    <p>주사위를 굴려 땅을 사고, 통행료로 돈을 모으는 게임이에요.<br>합을 맞히면 다 가고, 틀리면 <b>차이만큼 덜</b> 가요!</p>
+    <h3>주사위 개수</h3>
+    <div class="opts" id="diceOpts">
+      <button class="opt on" data-d="2">🎲🎲 2개</button>
+      <button class="opt" data-d="3">🎲🎲🎲 3개</button>
+    </div>
+    <h3>플레이어 수</h3>
+    <div class="opts" id="npOpts">
+      <button class="opt" data-n="2">2명</button>
+      <button class="opt on" data-n="3">3명</button>
+      <button class="opt" data-n="4">4명</button>
+    </div>
+    <div style="height:8px"></div>
+    <button class="btn g" onclick="startGame()">게임 시작!</button>
+  </div>
+</div>
+
+<script>
+/* ---------- 보드 정의 (오리지널) ---------- */
+const NAMES=['서울','도쿄','베이징','방콕','싱가포르','시드니','두바이','카이로','로마','파리','런던','뉴욕','리우','하와이'];
+const GROUPS=['#e35d5d','#e6952a','#ffd94a','#63c76a','#4fd0c0','#5aa9e6','#c78bff'];
+// 20칸: 0 출발 + 특수(찬스/세금/쉼터/여행) + 나머지 땅
+const SPECIAL={0:'start',3:'chance',5:'tax',8:'jail',10:'chance',13:'travel',16:'chance'};
+function buildTiles(){
+  const coords=[];
+  for(let c=6;c>=1;c--)coords.push([6,c]);      // 0-5 아래(우→좌)
+  for(let r=5;r>=1;r--)coords.push([r,1]);      // 6-10 좌(아래→위)
+  for(let c=2;c<=6;c++)coords.push([1,c]);      // 11-15 위(좌→우)
+  for(let r=2;r<=5;r++)coords.push([r,6]);      // 16-19 우(위→아래)
+  const tiles=[];let ni=0,pi=0;
+  for(let i=0;i<20;i++){
+    const [r,c]=coords[i];const t={i,r,c};
+    if(SPECIAL[i]){t.type=SPECIAL[i];}
+    else{const price=100+Math.floor(pi)*20+ (i>10?60:0);t.type='prop';t.name=NAMES[ni++];t.price=price;t.toll=Math.round(price*0.4/10)*10;t.group=GROUPS[pi%GROUPS.length];t.owner=null;t.lv=0;pi++;}
+    tiles.push(t);
+  }
+  return tiles;
+}
+let TILES=buildTiles();
+const COLORS=['#e35d5d','#5aa9e6','#63c76a','#e6a52a'];
+const PNAMES=['빨강','파랑','초록','노랑'];
+const START_MONEY=1500, SALARY=200, TAX=120;
+
+let G=null, setupDice=2, setupN=3;
+
+/* ---------- 시작 화면 ---------- */
+document.querySelectorAll('#diceOpts .opt').forEach(b=>b.onclick=()=>{document.querySelectorAll('#diceOpts .opt').forEach(x=>x.classList.remove('on'));b.classList.add('on');setupDice=+b.dataset.d;});
+document.querySelectorAll('#npOpts .opt').forEach(b=>b.onclick=()=>{document.querySelectorAll('#npOpts .opt').forEach(x=>x.classList.remove('on'));b.classList.add('on');setupN=+b.dataset.n;});
+function startGame(){
+  TILES=buildTiles();
+  const players=[];
+  for(let i=0;i<setupN;i++)players.push({name:PNAMES[i],color:COLORS[i],money:START_MONEY,pos:0,alive:true,skip:0});
+  G={dice:setupDice,players,cur:0,phase:'guess',guess:setupDice*3,roll:[],sum:0,move:0};
+  document.getElementById('setup').style.display='none';
+  renderBoard();renderChips();nextTurnFresh();
+}
+
+/* ---------- 렌더 ---------- */
+const board=document.getElementById('board');
+function renderBoard(){
+  board.innerHTML='';
+  for(const t of TILES){
+    const d=document.createElement('div');d.className='tile';d.style.gridRow=t.r;d.style.gridColumn=t.c;d.id='tile'+t.i;
+    if(t.type==='start'){d.classList.add('start');d.innerHTML='<div class="nm">출발</div><div style="font-size:16px">🏁</div><div class="pr">+'+SALARY+'</div>';}
+    else if(t.type==='prop'){d.innerHTML='<div class="band" style="background:'+t.group+'"></div><div class="nm">'+t.name+'</div><div class="pr">🪙'+t.price+'</div>';}
+    else{d.classList.add('sp');const m={chance:['🎲','찬스'],tax:['💸','세금'],jail:['🏝️','쉼터'],travel:['🚀','여행']}[t.type];d.innerHTML='<div style="font-size:16px;text-align:center">'+m[0]+'</div><div class="nm" style="text-align:center">'+m[1]+'</div>';}
+    const tk=document.createElement('div');tk.className='toks';tk.id='toks'+t.i;d.appendChild(tk);
+    board.appendChild(d);
+  }
+  // center panel
+  const c=document.createElement('div');c.className='center';c.id='center';board.appendChild(c);
+  renderTokens();renderCenter();
+}
+function renderTokens(){
+  for(const t of TILES){const el=document.getElementById('toks'+t.i);if(el)el.innerHTML='';}
+  for(const t of TILES){
+    if(t.type==='prop'&&t.owner!=null){let o=document.getElementById('tile'+t.i).querySelector('.owner');if(!o){o=document.createElement('div');o.className='owner';document.getElementById('tile'+t.i).appendChild(o);}o.style.background=G.players[t.owner].color;o.textContent=t.lv||'';}
+  }
+  G.players.forEach((p,i)=>{if(!p.alive)return;const el=document.getElementById('toks'+p.pos);if(el){const dot=document.createElement('div');dot.className='tok';dot.style.background=p.color;el.appendChild(dot);}});
+}
+function renderChips(){
+  const w=document.getElementById('pchips');w.innerHTML='';
+  G.players.forEach((p,i)=>{const c=document.createElement('div');c.className='pchip'+(i===G.cur?' cur':'')+(p.alive?'':' out');c.style.opacity=p.alive?1:0.4;c.innerHTML='<span class="dot" style="background:'+p.color+'"></span>'+p.name+' 🪙'+p.money;w.appendChild(c);});
+}
+function diceFace(n){return ['','⚀','⚁','⚂','⚃','⚄','⚅'][n];}
+function renderCenter(){
+  const c=document.getElementById('center');if(!c)return;const p=G.players[G.cur];
+  const minG=G.dice, maxG=G.dice*6;
+  let html='<div class="now"><span class="dot" style="background:'+p.color+'"></span>'+p.name+' 차례 · <span class="money">🪙'+p.money+'</span></div>';
+  html+='<div class="dice" id="diceBox">'+(G.roll.length?G.roll.map(diceFace).join(' '):'🎲'.repeat(G.dice))+'</div>';
+  if(G.phase==='guess'){
+    html+='<div style="text-align:center;font-size:12px;color:#bcd0f0">주사위 '+G.dice+'개의 <b style="color:#ffd94a">합</b>을 예상! ('+minG+'~'+maxG+')</div>';
+    html+='<div class="guessrow"><button class="gbtn" onclick="chg(-1)">−</button><div class="gval" id="gval">'+G.guess+'</div><button class="gbtn" onclick="chg(1)">＋</button></div>';
+    html+='<button class="btn y" onclick="roll()">🎲 굴리기!</button>';
+  }else if(G.phase==='rolled'){
+    html+='<div class="msg" id="msg">'+G.msgHtml+'</div>';
+    html+='<button class="btn" onclick="afterMove()">이동!</button>';
+  }else if(G.phase==='action'){
+    html+='<div class="msg" id="msg">'+G.msgHtml+'</div>';
+    html+='<div class="btnrow" id="actrow">'+G.actHtml+'</div>';
+  }
+  html+='<div class="log" id="log">'+(G.log||[]).slice(-4).join('<br>')+'</div>';
+  c.innerHTML=html;
+}
+function chg(d){const minG=G.dice,maxG=G.dice*6;G.guess=Math.max(minG,Math.min(maxG,G.guess+d));document.getElementById('gval').textContent=G.guess;}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1500);}
+function log(m){(G.log=G.log||[]).push(m);}
+
+/* ---------- 턴 진행 ---------- */
+function nextTurnFresh(){
+  const p=G.players[G.cur];
+  if(p.skip>0){p.skip--;log('😴 '+p.name+' 쉼터에서 한 턴 쉬어요');toast(p.name+' 한 턴 쉼');G.cur=nextAlive(G.cur);renderChips();setTimeout(nextTurnFresh,700);return;}
+  G.phase='guess';G.roll=[];G.guess=Math.round(G.dice*3.5);G.msgHtml='';G.actHtml='';
+  renderChips();renderCenter();
+}
+function nextAlive(from){let i=from;for(let k=0;k<G.players.length;k++){i=(i+1)%G.players.length;if(G.players[i].alive)return i;}return from;}
+function aliveCount(){return G.players.filter(p=>p.alive).length;}
+
+function roll(){
+  const r=[];for(let i=0;i<G.dice;i++)r.push(1+Math.floor(Math.random()*6));
+  G.roll=r;G.sum=r.reduce((a,b)=>a+b,0);
+  const diff=Math.abs(G.guess-G.sum);
+  G.move=diff===0?G.sum:Math.max(0,G.sum-diff);
+  const p=G.players[G.cur];
+  let m='주사위 합 <b>'+G.sum+'</b> · 내 예상 '+G.guess+'<br>';
+  if(diff===0){p.money+=50;m+='🎉 <b>정답!</b> 보너스 🪙+50 · <b>'+G.move+'칸</b> 이동!';toast('정답! +50');}
+  else{m+='아쉬워요(차이 '+diff+') → '+G.sum+'−'+diff+' = <b>'+G.move+'칸</b>만 이동';}
+  G.msgHtml=m;G.phase='rolled';renderChips();renderCenter();
+}
+function afterMove(){
+  const p=G.players[G.cur];let steps=G.move;G.phase='moving';renderCenter();
+  const iv=setInterval(()=>{
+    if(steps<=0){clearInterval(iv);landOn(p.pos);return;}
+    p.pos=(p.pos+1)%20;steps--;
+    if(p.pos===0){p.money+=SALARY;log('🏁 '+p.name+' 출발 통과 +'+SALARY);}
+    renderTokens();renderChips();
+  },180);
+}
+
+/* ---------- 칸 도착 ---------- */
+function landOn(pos){
+  const t=TILES[pos],p=G.players[G.cur];G.phase='action';
+  if(t.type==='start'){finishAction('🏁 출발 쫸! 다음 차례로.','<button class="btn" onclick="endTurn()">확인</button>');return;}
+  if(t.type==='tax'){p.money-=TAX;log('💸 '+p.name+' 세금 -'+TAX);checkBust(p);finishAction('💸 세금 <b>'+TAX+'</b> 냈어요.','<button class="btn" onclick="endTurn()">확인</button>');return;}
+  if(t.type==='jail'){p.skip=1;log('🏝️ '+p.name+' 쉼터(다음 턴 쉼)');finishAction('🏝️ 쉼터에 왔어요. 다음 턴은 쉬어요.','<button class="btn" onclick="endTurn()">확인</button>');return;}
+  if(t.type==='travel'){p.pos=0;p.money+=SALARY;renderTokens();log('🚀 '+p.name+' 여행→출발 +'+SALARY);finishAction('🚀 여행! 출발로 이동하고 🪙+'+SALARY+'.','<button class="btn" onclick="endTurn()">확인</button>');return;}
+  if(t.type==='chance'){doChance(p);return;}
+  // 땅
+  if(t.owner==null){
+    if(p.money>=t.price)finishAction('🏞️ <b>'+t.name+'</b> · 값 🪙'+t.price+'<br>살까요?','<button class="btn g" onclick="buy()">🪙'+t.price+' 구매</button><button class="btn" onclick="endTurn()">안 사기</button>');
+    else finishAction('🏞️ '+t.name+' · 돈이 부족해요.','<button class="btn" onclick="endTurn()">확인</button>');
+  }else if(t.owner===G.cur){
+    if(t.lv<2&&p.money>=t.price)finishAction('🏠 내 땅 <b>'+t.name+'</b>(Lv'+t.lv+')<br>건물 지으면 통행료가 올라요!','<button class="btn y" onclick="build()">🪙'+t.price+' 건물</button><button class="btn" onclick="endTurn()">그만</button>');
+    else finishAction('🏠 내 땅 '+t.name+' (Lv'+t.lv+')','<button class="btn" onclick="endTurn()">확인</button>');
+  }else{
+    const owner=G.players[t.owner];const toll=t.toll*(t.lv+1);
+    p.money-=toll;owner.money+=toll;log('💰 '+p.name+'→'+owner.name+' 통행료 '+toll);checkBust(p);
+    finishAction('💰 <b>'+t.name+'</b>은 '+owner.name+' 땅!<br>통행료 <b>'+toll+'</b> 냈어요.','<button class="btn" onclick="endTurn()">확인</button>');
+  }
+}
+function doChance(p){
+  const evs=[
+    ()=>{p.money+=200;log('🎁 '+p.name+' 찬스 +200');return '🎁 용돈 도착! 🪙+200';},
+    ()=>{p.money-=100;log('🎲 '+p.name+' 찬스 -100');checkBust(p);return '😵 실수로 🪙-100';},
+    ()=>{p.pos=0;p.money+=SALARY;renderTokens();log('🚀 '+p.name+' 찬스→출발');return '🚀 출발로 순간이동! +'+SALARY;},
+    ()=>{p.money+=100;log('⭐ '+p.name+' 찬스 +100');return '⭐ 보너스 🪙+100';},
+    ()=>{const g=aliveCount()>1;if(g){G.players.forEach(o=>{if(o!==p&&o.alive){o.money-=30;p.money+=30;}});}log('🍭 '+p.name+' 찬스: 모두에게 간식비');return '🍭 다른 친구들이 🪙30씩 줬어요!';},
+  ];
+  const m=evs[Math.floor(Math.random()*evs.length)]();
+  finishAction('🎲 <b>찬스!</b><br>'+m,'<button class="btn" onclick="endTurn()">확인</button>');
+}
+function finishAction(msg,act){G.phase='action';G.msgHtml=msg;G.actHtml=act;renderChips();renderCenter();}
+function buy(){const t=TILES[G.players[G.cur].pos],p=G.players[G.cur];p.money-=t.price;t.owner=G.cur;t.lv=0;log('🏞️ '+p.name+' '+t.name+' 구매');renderTokens();toast(t.name+' 구매!');endTurn();}
+function build(){const t=TILES[G.players[G.cur].pos],p=G.players[G.cur];p.money-=t.price;t.lv++;log('🏠 '+p.name+' '+t.name+' 건물 Lv'+t.lv);renderTokens();toast('건물 Lv'+t.lv+'!');endTurn();}
+function checkBust(p){if(p.money<0){p.alive=false;p.money=0;TILES.forEach(t=>{if(t.owner===G.players.indexOf(p)){t.owner=null;t.lv=0;}});log('💥 '+p.name+' 파산!');renderTokens();}}
+function endTurn(){
+  renderChips();
+  if(aliveCount()<=1){return gameOver();}
+  G.cur=nextAlive(G.cur);
+  nextTurnFresh();
+}
+function gameOver(){
+  const win=G.players.find(p=>p.alive)||G.players.slice().sort((a,b)=>b.money-a.money)[0];
+  const rank=G.players.slice().sort((a,b)=>b.money-a.money);
+  const ov=document.createElement('div');ov.className='overlay';
+  ov.innerHTML='<div class="card"><h2>🏆 '+win.name+' 승리!</h2><p>'+rank.map((p,i)=>(i+1)+'등 '+p.name+' — 🪙'+p.money+(p.alive?'':' (파산)')).join('<br>')+'</p><div style="height:10px"></div><button class="btn g" onclick="location.reload()">다시 하기</button></div>';
+  document.body.appendChild(ov);
+}
+</script>
+</body>
+</html>
