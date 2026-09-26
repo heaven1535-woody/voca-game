@@ -3,653 +3,585 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>몽테크리스토 — 복수의 서막</title>
+<title>34번의 14년 — 제1장 (M0)</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/quiple/galmuri/dist/galmuri.css">
 <style>
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
-  html,body{width:100%;height:100%;overflow:hidden;background:#0b1020;
-    font-family:'Galmuri11','Galmuri9',monospace;touch-action:none;overscroll-behavior:none;}
-  #screen{display:block;width:100vw;height:100vh;image-rendering:pixelated;background:#0b1020;}
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0a0a12;touch-action:none;overscroll-behavior:none;
+    font-family:'Galmuri11','Galmuri9',monospace;}
+  #wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
+  #screen{image-rendering:pixelated;background:#12131f;box-shadow:0 0 0 3px #000,0 6px 30px #000a;}
 </style>
 </head>
 <body>
-<canvas id="screen"></canvas>
+<div id="wrap"><canvas id="screen"></canvas></div>
 <script>
+/* ============================================================
+   34번의 14년 — 제1장 M0 (감방 육성 루프)
+   데이터(밸런스/대사)는 아래 BAL, TXT 오브젝트로 분리.
+   코드 수정 없이 수치·대사만 고칠 수 있게 설계.
+   ============================================================ */
+
+/* ============== DATA: balance.json 상당 ============== */
+const BAL={
+  totalTurns:56, startYear:1815,
+  seasons:['봄','여름','가을','겨울'],
+  statOrder:['지식','언어','체력','의지','땅굴','의심'],
+  statInit:{지식:5,언어:5,체력:40,의지:60,땅굴:0,의심:0},
+  statMax:{지식:100,언어:100,체력:100,의지:100,땅굴:100,의심:100},
+  fariaJoinTurn:9,        // 명세 5년차(≈17턴) → M0 재미 테스트용으로 3년차(9턴)로 조정 [CHANGELOG]
+  wobble:1,
+  sameSlotBonus:0.5,      // 두 번째 같은 행동 +50%
+  actions:{
+    수업:{req:'faria', eff:{지식:5,언어:4,의지:-2}},
+    운동:{req:null,    eff:{체력:5,의지:-3}},
+    땅굴:{req:'faria', eff:{땅굴:6,의심:8,체력:-2}, patrol:true},
+    제작:{req:'faria', craft:true},
+    휴식:{req:null,    eff:{의지:10,의심:-5}}
+  },
+  patrolMs:1200, patrolFailSusp:10,
+  matRates:[['생선뼈',0.40],['그을음',0.25],['기름',0.20],['쇳조각',0.10],['천',0.05]],
+  recipes:{
+    바늘:{mat:{생선뼈:2}, unlock:{turn:4}, kind:'item', desc:'5막 자루 꿰매기 필수'},
+    촛불:{mat:{기름:2}, unlock:{지식:20}, kind:'passive', desc:'수업 효율 +1'},
+    펜잉크:{mat:{생선뼈:1,그을음:2}, unlock:{언어:25}, kind:'passive', desc:'수업 시 언어 +1'},
+    땅굴도구:{mat:{쇳조각:3}, unlock:{체력:30}, kind:'passive', desc:'땅굴 +3, 의심 +2'},
+    칼:{mat:{쇳조각:4,천:1}, unlock:{turn:40}, kind:'item', desc:'5막 줄 끊기 판정 확대'}
+  },
+  inspect:{threshold:60, chance:0.30, confisc:0.50, tunnelLoss:10, suspDrop:30, soloAt:90},
+  eventsPerYear:2,
+  enemies:{절망:40,분노:50,광기:60},
+  minds:{
+    기억:{req:null, base:12, strong:'절망'},
+    사색:{req:null, base:8, knowDiv:10, strong:'광기'},
+    희망:{req:'faria', base:15, strong:'분노'}
+  },
+  enemyAtk:[6,10],
+  battleLosePenaltyWill:30,
+  grade:{S:240, A:180}   // 지식+언어+체력+의지 합
+};
+
+/* ============== DATA: dialogue.json 상당 ============== */
+const TXT={
+  title:['34번의 14년','― 몬테크리스토 백작 제1장 ―','화면을 눌러 시작하세요','(소리가 켜집니다)'],
+  intro:['1815년, 재판도 없이 샤토 디프에 갇혔다.','오늘부터 나의 이름은 34번.','14년(56계절)을 버텨 스스로 탈출하라.'],
+  fariaCome:'벽 너머에서 소리가… 파리아 신부가 굴을 잘못 파 내 방으로 왔다! 수업·땅굴·제작이 열렸다.',
+  actionLine:{
+    수업:['오늘은 이탈리아어일세. 따라 해 보게.','역사는 누가 누구를 배신했는지의 기록이지.','별의 위치를 알면 어디서든 길을 잃지 않네.'],
+    운동:['팔굽혀펴기 백 번. …아흔아홉, 백.','몸도 공부의 일부일세.'],
+    땅굴:['오늘은 손바닥 한 뼘.','조급함은 소리를 만들고, 소리는 간수를 부르지.'],
+    휴식:['오늘은 파도 소리만 듣고 싶다.','쉬는 것도 기술이야.'],
+    제작:['쓸모없는 물건은 없네. 아직 못 찾았을 뿐이지.']
+  },
+  report:{
+    지식:'자네 머리가 이렇게 좋을 줄은. 선원으로 두기 아깝군.',
+    체력:'몸이 먼저 준비됐군. 이제 머리가 따라올 차례.',
+    의지:'이곳에서 웃을 수 있다는 것, 그게 제일 어려운 공부지.',
+    낮음:'괜찮네. 올해는 버틴 것만으로 충분해.',
+    의심:'공부는 좋지만, 간수들 눈빛이 심상치 않네. 조심하게.'
+  },
+  patrolAlert:'발소리다! 화면을 눌러 멈춰라!',
+  patrolOk:'…지나갔다.',
+  patrolFail:'간수: 방금 무슨 소리였지?',
+  inspect:'간수: 검사다! 숨길 물건 하나만 골라라.',
+  inspectDone:'간수: 흠… 이번엔 봐준다.',
+  solo:'독방 벌칙! 다음 한 계절은 파리아를 만날 수 없다.',
+  events:[
+    {t:'폭풍 치는 밤. 잠들지 못했다.', eff:{의지:-5}},
+    {t:'파리아의 옛이야기를 들었다.', eff:{지식:3}, req:'faria'},
+    {t:'작은 쥐가 빵을 노린다. 나눠 줄까?', choice:true}
+  ],
+  ratShare:'너도 여기 갇혔구나. (의지 +3)',
+  ratNo:'쥐를 쫓아냈다.',
+  battle:{
+    절망:{in:'절망: 아무도 널 기억하지 않아.', win:'…아직 기억하는 사람이 있다고?'},
+    분노:{in:'분노: 그놈들은 지금 웃고 있어.', win:'분노로는 벽을 못 뚫어.'},
+    광기:{in:'광기: 벽이 말을 걸지 않니?', win:'생각이… 정리된다.'},
+    lose:'한 계절이 아무것도 하지 못한 채 지나갔다.',
+    mind:{기억:'메르세데스는 기다린다고 했어.',사색:'이유가 있을 거다. 그걸 알아낼 때까진 미칠 수 없어.',희망:'머릿속은 아무도 가둘 수 없다.'}
+  },
+  gradeMsg:{S:'파도는 당신 편이었다.',A:'거친 바다를 끝내 건넜다.',B:'살아남았다. 그것만으로도 기적이다.'}
+};
+
+/* ============== engine ============== */
 const CV=document.getElementById('screen'), X=CV.getContext('2d');
-let VW=360, VH=640, DPR=1, TS=40;
-
-/* ---------- palette (Kairosoft-bright) ---------- */
-const C={
-  bg:'#0b1020',
-  sky1:'#173a63', sky2:'#0e2647',
-  sea1:'#3aa8d8', sea2:'#2b8fc4', sea3:'#7fd4ec', foam:'#eafaff',
-  moon:'#fff6c8',
-  grass:'#7cc36a', grassD:'#5fae55', grassT:'#95d67f',
-  path:'#e6d2a0', pathD:'#cdb884',
-  wall:'#8c95b0', wallD:'#6b7290', wallL:'#aab2c9', floor:'#3f4a६0',
-  dstone:'#565f7e', dstoneD:'#434a63', dfloor:'#2f3650', dfloorL:'#3a4260',
-  wood:'#c78a46', woodD:'#a06e33', woodL:'#e0a860',
-  gold:'#ffd24a', goldD:'#d69f27',
-  ink:'#20233a', line:'#141726',
-  skin:'#ffcfa0', skinS:'#e0a878',
-  text:'#22263f', textL:'#fff7ea',
-  panel:'#fbf3dc', panelE:'#c9a86a', panelE2:'#8f6f3a', panelSh:'#0006',
-  red:'#e05a4a', hpg:'#66c96a', mpb:'#5aa9e6',
-  sel:'#ffd24a'
-};
-C.floor='#3f4a60';
-
-/* ---------- resize ---------- */
+const LW=180, LH=320; let SC=1, OX=0, OY=0;
 function resize(){
-  VW=Math.round(document.documentElement.clientWidth);
-  VH=Math.round(window.innerHeight);
-  DPR=Math.min(2, window.devicePixelRatio||1);
-  CV.width=Math.round(VW*DPR); CV.height=Math.round(VH*DPR);
-  CV.style.width=VW+'px'; CV.style.height=VH+'px';
-  X.setTransform(DPR,0,0,DPR,0,0);
-  X.imageSmoothingEnabled=false;
-  TS=Math.max(30, Math.floor(Math.min(VW,VH)/9));
+  const vw=document.documentElement.clientWidth, vh=window.innerHeight;
+  SC=Math.max(1, Math.floor(Math.min(vw/LW, vh/LH)));
+  CV.width=LW*SC; CV.height=LH*SC;
+  CV.style.width=(LW*SC)+'px'; CV.style.height=(LH*SC)+'px';
+  X.setTransform(SC,0,0,SC,0,0); X.imageSmoothingEnabled=false;
+  const r=CV.getBoundingClientRect(); OX=r.left; OY=r.top;
 }
-addEventListener('resize',resize); resize();
+addEventListener('resize',resize);
 
-/* ---------- draw helpers ---------- */
-function px(x,y,w,h,col){X.fillStyle=col;X.fillRect(Math.round(x),Math.round(y),Math.ceil(w),Math.ceil(h));}
-function rr(x,y,w,h,r,col){X.fillStyle=col;X.beginPath();X.roundRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h),r);X.fill();}
-function circ(x,y,r,col){X.fillStyle=col;X.beginPath();X.arc(x,y,r,0,7);X.fill();}
-function txt(s,x,y,col,size,align){X.fillStyle=col;X.font=size+"px 'Galmuri11',monospace";X.textAlign=align||'left';X.textBaseline='top';X.fillText(s,x,y);}
-function fs(base){return Math.max(11, Math.round(base));}
+/* audio (enabled on first tap) */
+let AC=null;
+function beep(freq,dur,type,vol){ if(!AC)return; try{const o=AC.createOscillator(),g=AC.createGain();
+  o.type=type||'square'; o.frequency.value=freq; g.gain.value=vol||0.06; o.connect(g); g.connect(AC.destination);
+  const t=AC.currentTime; o.start(t); g.gain.setValueAtTime(g.gain.value,t); g.gain.exponentialRampToValueAtTime(0.0001,t+(dur||0.08)); o.stop(t+(dur||0.08)+0.02);}catch(e){} }
+const SFX={tap:()=>beep(520,0.05,'square',0.05), up:()=>beep(760,0.09,'triangle',0.06),
+  alert:()=>beep(240,0.12,'sawtooth',0.08), fail:()=>beep(150,0.18,'sawtooth',0.09),
+  ok:()=>beep(880,0.1,'triangle',0.06), page:()=>beep(400,0.04,'square',0.04)};
 
-/* ---------- input (touch/pointer) ---------- */
-let tap=null;
-function toLocal(e){const r=CV.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
-CV.addEventListener('pointerdown',e=>{e.preventDefault();const p=toLocal(e);tap={x:p.x,y:p.y};},{passive:false});
-// keyboard optional (desktop)
-const kq=[];
-addEventListener('keydown',e=>{
-  const k=e.key;
-  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d','W','A','S','D'].includes(k)){kq.push(k);e.preventDefault();}
-  else if([' ','Enter','z','Z','x','X'].includes(k)){tap={confirm:true};e.preventDefault();}
-});
+/* draw helpers */
+function px(x,y,w,h,c){X.fillStyle=c;X.fillRect(x,y,w,h);}
+function rr(x,y,w,h,r,c){X.fillStyle=c;X.beginPath();X.roundRect(x,y,w,h,r);X.fill();}
+function ro(x,y,w,h,r,c,lw){X.strokeStyle=c;X.lineWidth=lw||1;X.beginPath();X.roundRect(x,y,w,h,r);X.stroke();}
+function T(s,x,y,c,sz,al){X.fillStyle=c;X.font=(sz||8)+"px 'Galmuri11',monospace";X.textAlign=al||'left';X.textBaseline='top';X.fillText(s,x,y);}
+function wrap(s,x,y,mw,lh,c,sz){X.font=(sz||8)+"px 'Galmuri11',monospace";X.fillStyle=c;X.textAlign='left';X.textBaseline='top';
+  let ln='',yy=y; for(const ch of s){ if(ch==='\n'){X.fillText(ln,x,yy);ln='';yy+=lh;continue;} const t=ln+ch;
+    if(X.measureText(t).width>mw){X.fillText(ln,x,yy);ln=ch;yy+=lh;} else ln=t; } X.fillText(ln,x,yy); return yy+lh; }
+if(!X.roundRect){X.roundRect=function(x,y,w,h,r){this.moveTo(x+r,y);this.arcTo(x+w,y,x+w,y+h,r);this.arcTo(x+w,y+h,x,y+h,r);this.arcTo(x,y+h,x,y,r);this.arcTo(x,y,x+w,y,r);return this;};}
 
-/* ---------- actors (cute chibi) ---------- */
-const ACTORS={
-  edmond:{hair:'#3a2a18',skin:C.skin,body:'#3f7ad0',bodyD:'#2f5ea8'},
-  count:{hair:'#1c1c26',skin:C.skin,body:'#3a3550',bodyD:'#26223a',cape:'#b23142'},
-  mercedes:{hair:'#5a3a20',skin:'#ffd8b0',body:'#e56aa0',bodyD:'#c24d82'},
-  faria:{hair:'#e8e8e8',skin:'#eabf95',body:'#8a8fa6',bodyD:'#6b7088'},
-  villain:{hair:'#20202a',skin:'#e6b48a',body:'#6a4a8a',bodyD:'#4c3266'},
-  villain2:{hair:'#3a2a1a',skin:'#e6b48a',body:'#4a7a5a',bodyD:'#356043'},
-  guard:{hair:'#3a2a10',skin:'#e0aa78',body:'#c0503a',bodyD:'#963a28'}
-};
-function actor(sx,sy,type,dir,frame){
-  const p=ACTORS[type]||ACTORS.edmond, u=TS/16;
-  const bob=frame? -u*0.6:0;
-  const cx=sx+TS/2, top=sy+u*1.5+bob;
-  // shadow
-  X.fillStyle='#0004'; X.beginPath(); X.ellipse(cx, sy+TS-u*1.5, TS*0.30, TS*0.12, 0,0,7); X.fill();
-  const O=C.line;
-  // body
-  rr(cx-4.6*u, top+7.2*u, 9.2*u, 7.4*u, 2.4*u, O);
-  rr(cx-3.8*u, top+7.6*u, 7.6*u, 6.4*u, 2*u, p.bodyD);
-  rr(cx-3.8*u, top+7.6*u, 7.6*u, 4.2*u, 2*u, p.body);
-  if(p.cape){ rr(cx-5.6*u, top+7*u, 2.2*u, 8*u, 1*u, p.cape); rr(cx+3.4*u, top+7*u, 2.2*u, 8*u, 1*u, p.cape); }
-  // feet
-  px(cx-3*u, top+14.2*u, 2.2*u, 1.6*u, O); px(cx+0.8*u, top+14.2*u, 2.2*u, 1.6*u, O);
-  // head
-  rr(cx-5*u, top-0.6*u, 10*u, 9*u, 3.4*u, O);
-  rr(cx-4.3*u, top, 8.6*u, 8*u, 3*u, p.skin);
-  // hair
-  rr(cx-4.6*u, top-0.6*u, 9.2*u, 4.2*u, 2.6*u, p.hair);
-  px(cx-4.6*u, top+1.6*u, 1.6*u, 3*u, p.hair); px(cx+3*u, top+1.6*u, 1.6*u, 3*u, p.hair);
-  // face (down/side)
-  if(dir!=='up'){
-    const ex=dir==='left'?-0.8*u: dir==='right'?0.8*u:0;
-    circ(cx-2.2*u+ex, top+4.4*u, 0.9*u, C.ink);
-    circ(cx+2.2*u+ex, top+4.4*u, 0.9*u, C.ink);
-    // cheeks
-    X.fillStyle='#ff9a9a55'; X.beginPath(); X.arc(cx-3*u+ex, top+6*u, 1*u,0,7); X.arc(cx+3*u+ex, top+6*u, 1*u,0,7); X.fill();
+/* palette */
+const P={bg:'#12131f',cell:'#20232f',cellD:'#171923',stone:'#2c3040',wall:'#3a3f52',
+  ink:'#e9edf7',dim:'#8a90a6',gold:'#ffcf4a',goldD:'#b98f28',
+  panel:'#f5edd6',panelE:'#b9974f',panelT:'#2a2418',
+  dantes:'#5a8fd6',faria:'#c9c9c9',rat:'#a08a6a',
+  bar:{지식:'#6fd07a',언어:'#7fb0ff',체력:'#ff9a5a',의지:'#ffd24a',땅굴:'#c79a5a',의심:'#e06a6a'},
+  btn:'#e9edf7',btnOn:'#ffcf4a',btnOff:'#454a5e',red:'#e05a4a',ok:'#4fbf6a'};
+
+/* game state */
+let G=null;
+function newGame(){ return {
+  turn:1, stats:JSON.parse(JSON.stringify(BAL.statInit)),
+  mats:{생선뼈:0,그을음:0,기름:0,쇳조각:0,천:0},
+  passives:{촛불:false,펜잉크:false,땅굴도구:false}, items:{바늘:false,칼:false},
+  faria:false, solo:false, evYear:0, lastYear:1815,
+  battles:0, losses:0, patrolFails:0,
+  screen:'title', slots:[], log:'',
+}; }
+
+/* persistence */
+const KEY='m0_34_14_v1';
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(G)); }catch(e){} }
+function load(){ try{ const s=localStorage.getItem(KEY); return s?JSON.parse(s):null; }catch(e){return null;} }
+function wipe(){ try{ localStorage.removeItem(KEY);}catch(e){} }
+
+/* helpers */
+function yearOf(t){ return BAL.startYear + Math.floor((t-1)/4); }
+function seasonOf(t){ return BAL.seasons[(t-1)%4]; }
+function clampStat(k){ G.stats[k]=Math.max(0,Math.min(BAL.statMax[k]||100, Math.round(G.stats[k]))); }
+function actionUnlocked(name){ const a=BAL.actions[name]; if(a.req==='faria' && !G.faria) return false; if(G.solo && (name==='수업'||name==='제작')) return false; return true; }
+
+/* buttons registry (rebuilt each frame) */
+let BTN=[];
+function button(x,y,w,h,label,fn,opt){ opt=opt||{};
+  const on=opt.on, off=opt.off;
+  rr(x+1,y+2,w,h,4,'#0006');
+  rr(x,y,w,h,4, off?P.btnOff : (on?P.btnOn:'#e9edf7'));
+  ro(x,y,w,h,4, off?'#5a5f70':(on?'#fff2c0':'#aab0c6'),1);
+  T(label, x+w/2, y+h/2-4, off?'#7a8098':(on?'#5a3a00':'#2a2f45'), opt.sz||8, 'center');
+  if(!off) BTN.push({x,y,w,h,fn});
+}
+function tapHit(lx,ly){ for(let i=BTN.length-1;i>=0;i--){ const b=BTN[i]; if(lx>=b.x&&lx<=b.x+b.w&&ly>=b.y&&ly<=b.y+b.h){ b.fn(); return true; } } return false; }
+
+/* ============== screens ============== */
+function toScreen(s){ G.screen=s; }
+
+/* number popups */
+let pops=[];
+function pop(x,y,txt,c){ pops.push({x,y,txt,c,t:0}); }
+function drawPops(){ for(const p of pops){ p.t++; T(p.txt, p.x, p.y-p.t*0.4, p.c, 8,'center'); } pops=pops.filter(p=>p.t<40); }
+
+/* cell art */
+function drawCell(){
+  rr(8,26,164,120,6,P.cellD); ro(8,26,164,120,6,P.wall,2);
+  // barred window
+  px(120,36,34,26,'#0b0d16'); for(let i=0;i<4;i++) px(124+i*8,36,2,26,'#565f7e'); px(120,48,34,2,'#565f7e');
+  // floor
+  px(14,120,152,22,P.stone);
+  // tunnel progress (hole bottom-left)
+  const tp=G.stats.땅굴/100; px(18,128,6+tp*36,10,'#0a0a10'); if(tp>0)T('굴',20,129,'#c79a5a',7);
+  // table & books (지식)
+  px(96,104,48,10,'#7a5a34'); px(96,104,48,2,'#9a744a');
+  const books=Math.min(6,Math.floor(G.stats.지식/12)); for(let i=0;i<books;i++) px(100+i*7,96,5,8,['#c05','#5a5','#57a','#da5','#a5a','#5aa'][i%6]);
+  // candle if 촛불
+  if(G.passives.촛불){ px(146,96,3,8,'#eee'); px(146,92,3,4,'#ffcf4a'); }
+  // Dantès sprite (placeholder capsule; ages/darkens over time)
+  const age=Math.min(3,Math.floor((G.turn-1)/16)); const bd=['#5a8fd6','#4a7ab0','#3f6690','#33506f'][age];
+  const dx=44, dy=100;
+  px(dx-1,dy-1,16,30,'#00000030');
+  rr(dx,dy,14,20,4,'#111'); rr(dx+1,dy+1,12,18,3,bd); // body
+  rr(dx+1,dy-11,12,12,4,'#111'); rr(dx+2,dy-10,10,10,3,P.dantes==bd?bd:'#ffcf a'||'#ffd0a0');
+  rr(dx+2,dy-10,10,10,3,'#ffd0a0'); // head
+  px(dx+3,dy-13,8,4,['#3a2a18','#2a1e12','#22180e','#181008'][age]); // hair grows darker/longer
+  px(dx+4,dy-6,1.5,2,'#222'); px(dx+8,dy-6,1.5,2,'#222');
+  if(age>=1){ px(dx+4,dy-2,6,2,['','#5a4a38','#4a3a28','#3a2a1a'][age]); } // beard
+  // Faria
+  if(G.faria){ const fx=68; px(fx,dy,12,20,'#111'); rr(fx+1,dy+1,10,18,3,P.faria); rr(fx+1,dy-10,10,10,3,'#eaccaa'); px(fx+1,dy-12,10,4,'#e8e8e8');
+    px(fx+3,dy-6,1.5,2,'#222'); px(fx+7,dy-6,1.5,2,'#222'); }
+}
+
+/* stat bars */
+function drawStats(y0){
+  const order=BAL.statOrder;
+  for(let i=0;i<order.length;i++){ const k=order[i]; const col=i%2, row=(i/2)|0;
+    const x=10+col*86, y=y0+row*16;
+    T(k, x, y, P.dim, 7);
+    const bx=x+22, bw=54, v=G.stats[k]/100;
+    rr(bx,y,bw,7,3,'#0c0e18'); rr(bx+1,y+1,(bw-2)*Math.max(0,Math.min(1,v)),5,2,P.bar[k]);
+    T(''+G.stats[k], bx+bw+2, y, P.ink, 7);
   }
 }
 
-/* ---------- tiles ---------- */
-function tile(t,x,y,anim){
-  const u=TS/16;
-  switch(t){
-    case '~':{ px(x,y,TS,TS,C.sea1);
-      const o=Math.sin(x*0.05+anim*0.06)*2*u;
-      px(x,y+5*u+o,TS,1.6*u,C.sea2); px(x,y+10*u-o,TS,1.4*u,C.sea3);
-      if(((x/TS+(anim>>5))|0)%2===0) px(x+3*u,y+3*u,4*u,1.2*u,C.foam); break; }
-    case 'W':{ px(x,y,TS,TS,C.wood); px(x,y,TS,1.4*u,C.woodL); px(x,y+7*u,TS,1.2*u,C.woodD); px(x+7.4*u,y,1.2*u,TS,C.woodD); break; }
-    case ',':{ px(x,y,TS,TS,C.grass); px(x,y,TS,1.4*u,C.grassT);
-      X.fillStyle=C.grassD; const s=((x*13+y*7)>>4)%4; px(x+3*u+s*u,y+9*u,1.4*u,2.4*u,C.grassD); px(x+10*u,y+5*u,1.2*u,2*u,C.grassD); break; }
-    case 'p':{ px(x,y,TS,TS,C.path); px(x,y,TS,1.2*u,'#f2e3b8'); px(x,y+TS-1.2*u,TS,1.2*u,C.pathD); if(((x+y)>>4)%2)px(x+4*u,y+4*u,2*u,2*u,C.pathD); break; }
-    case 'T':{ px(x,y,TS,TS,C.grass); px(x+6.5*u,y+8*u,3*u,7*u,C.woodD);
-      circ(x+8*u,y+6*u,5.2*u,C.line); circ(x+8*u,y+5.4*u,4.6*u,'#57a84e'); circ(x+6.2*u,y+4.4*u,1.6*u,C.grassT); break; }
-    case 'x':{ px(x,y,TS,TS,C.grass); rr(x+2*u,y+2*u,12*u,12*u,1.6*u,C.line); rr(x+2.7*u,y+2.7*u,10.6*u,10.6*u,1.2*u,C.wood); px(x+2.7*u,y+7.2*u,10.6*u,1.2*u,C.woodD); break; }
-    case '#':{ px(x,y,TS,TS,C.wall); px(x,y,TS,1.6*u,C.wallL); px(x,y+TS-1.6*u,TS,1.6*u,C.wallD);
-      px(x+2*u,y+3*u,5*u,3*u,C.wallD); px(x+9*u,y+9*u,4*u,3*u,C.wallD); break; }
-    case 'B':{ px(x,y,TS,TS,C.dstone); px(x,y,TS,1.6*u,'#636c8c'); px(x,y+TS-1.6*u,TS,1.6*u,C.dstoneD);
-      // barred window
-      rr(x+3*u,y+3*u,10*u,8*u,1*u,'#12142400'); px(x+3.5*u,y+3.5*u,9*u,7*u,'#12162b');
-      px(x+5.6*u,y+3.5*u,1*u,7*u,'#8a90a8'); px(x+9*u,y+3.5*u,1*u,7*u,'#8a90a8'); px(x+3.5*u,y+6.5*u,9*u,1*u,'#8a90a8'); break; }
-    case '.':{ px(x,y,TS,TS,C.dfloor); if(((x+y)>>4)%2)px(x,y,TS,TS,C.dfloorL); px(x,y,TS,1*u,'#00000022'); break; }
-    case 'D':{ px(x,y,TS,TS,C.dstone); rr(x+2*u,y+1*u,12*u,15*u,2*u,C.line); rr(x+2.6*u,y+1.6*u,10.8*u,13.8*u,1.6*u,C.wood);
-      px(x+2.6*u,y+1.6*u,10.8*u,1.4*u,C.woodL); circ(x+11.5*u,y+8.5*u,1.2*u,C.gold); break; }
-    case 'C':{ px(x,y,TS,TS,C.dstone);
-      X.strokeStyle='#12142b'; X.lineWidth=Math.max(1,1.4*u); X.beginPath(); X.moveTo(x+8*u,y); X.lineTo(x+5*u,y+6*u); X.lineTo(x+10*u,y+10*u); X.lineTo(x+6*u,y+TS); X.stroke(); break; }
-    case 'g':{ px(x,y,TS,TS,C.dfloor); rr(x+2*u,y+9*u,12*u,5*u,1.4*u,C.goldD);
-      circ(x+5*u,y+8*u,2.4*u,C.gold); circ(x+9.5*u,y+7*u,2.8*u,C.gold); circ(x+7*u,y+5*u,2*u,'#fff0a8'); px(x+6.4*u,y+4.6*u,0.8*u,0.8*u,'#fff'); break; }
-    default: px(x,y,TS,TS,C.dfloor);
-  }
-}
-
-/* ---------- rooms (20x12) ---------- */
-function city(nm,price,grp){return {type:'city',name:nm,price:price,grp:grp,owner:null,lv:0};}
-const ROOMS={
-  marseille:{ name:'마르세유 항구 · 1815',
-    tiles:[
-      '~~~~~~~~~~~~~~~~~~~~',
-      '~~~~~~~~~~~~~~~~~~~~',
-      'WWWWWWWWWWWWWWWWWWWW',
-      ',,,,,,,ppp,,,,,,,,,,',
-      ',,T,,,,,p,,,,,x,,,T,',
-      ',,,,,,,,p,,,,,,,,,,,',
-      ',,,,,,,,p,,,,,x,,,,,',
-      ',,,,,,,,p,,,,,,,,,,,',
-      '###ppppppp,,,,,,,,,,',
-      '#D#,,,,,,,,,,,,,,,T,',
-      '###,,,,,,,,,,,,,,,,,',
-      ',,,,,,,,,,,,,,,,,,,,'
-    ],
-    start:[8,10,'up'],
-    npcs:[
-      {id:'mercedes',x:8,y:4,type:'mercedes',dir:'down',name:'메르세데스'},
-      {id:'danglars',x:4,y:8,type:'villain',dir:'down',name:'당글라르'},
-      {id:'fernand',x:14,y:8,type:'villain2',dir:'down',name:'페르낭'}
-    ]},
-  cell:{ name:'이프 성 지하 감옥',
-    tiles:[
-      'BBBBBBBBBBBBBBBBBBBB',
-      'B..................B',
-      'B..................B',
-      'B........xx........B',
-      'B..................B',
-      'B..................C',
-      'B..................C',
-      'B..................B',
-      'B..................B',
-      'B........DD........B',
-      'BBBBBBBBBBBBBBBBBBBB',
-      '                    '
-    ],
-    start:[9,8,'up'], npcs:[]},
-  corridor:{ name:'이프 성 복도',
-    tiles:[
-      'BBBBBBBBBBBBBBBBBBBB',
-      'B..................B',
-      'B..############....B',
-      'B..#........#.....B'.padEnd(20,'.').slice(0,19)+'B',
-      'B..#........#......B',
-      'B..#........#......D',
-      'B..#........#......B',
-      'B..######.###......B',
-      'B..................B',
-      'B..................B',
-      'BBBBBBBBBBBBBBBBBBBB',
-      '                    '
-    ],
-    start:[3,9,'up'],
-    npcs:[{id:'guard',x:14,y:5,type:'guard',dir:'left',name:'간수'}]},
-  treasure:{ name:'몬테크리스토 섬 · 보물 동굴',
-    tiles:[
-      'BBBBBBBBBBBBBBBBBBBB',
-      'B..................B',
-      'B...g....g....g....B',
-      'B..................B',
-      'B.....gggggggg.....B',
-      'B....gggggggggg....B',
-      'B.....gggggggg.....B',
-      'B..................B',
-      'B........gg........B',
-      'B........DD........B',
-      'BBBBBBBBBBBBBBBBBBBB',
-      '                    '
-    ],
-    start:[9,8,'up'], npcs:[]}
-};
-
-/* ---------- state ---------- */
-const G={
-  mode:'title', room:null, roomKey:'', anim:0, cam:{x:0,y:0},
-  px:0,py:0,dir:'down', moving:null, moveT:0, path:null, pend:null,
-  flags:{}, cut:null, cutI:0, _cutCb:null, _dialogCb:null,
-  dialog:null, fade:0, fadeDir:0, fadeCb:null,
-  player:{name:'에드몽',lv:1,hp:60,maxhp:60,mp:12,maxmp:12,atk:14,def:6},
-  battle:null, title:{sel:0, showHelp:false, rects:[]}
-};
-
-/* ---------- rooms helpers ---------- */
-function loadRoom(key){ G.room=ROOMS[key]; G.roomKey=key;
-  G.room.npcsLive=JSON.parse(JSON.stringify(G.room.npcs));
-  G.px=G.room.start[0]; G.py=G.room.start[1]; G.dir=G.room.start[2];
-  G.moving=null; G.path=null; G.pend=null; }
-function cols(){return G.room.tiles[0].length;}
-function rows(){return G.room.tiles.length;}
-function tileAt(x,y){ const r=G.room.tiles; if(y<0||y>=r.length||x<0||x>=r[0].length) return '#'; return r[y][x]; }
-function npcAt(x,y){ if(G.room.npcsLive) for(const n of G.room.npcsLive) if(n.x===x&&n.y===y) return n; return null; }
-function solid(x,y){ const t=tileAt(x,y); if('#~BTWx'.indexOf(t)>=0) return true; if(npcAt(x,y)) return true; return false; }
-function interactable(x,y){ const t=tileAt(x,y); if(npcAt(x,y)) return true; return 'DCg'.indexOf(t)>=0; }
-
-/* ---------- pathfinding (BFS) ---------- */
-function bfs(sx,sy,tx,ty,allowTarget){
-  const C0=cols(),R0=rows(); const key=(x,y)=>y*C0+x;
-  const prev=new Map(); prev.set(key(sx,sy),-1); const q=[[sx,sy]];
-  const dirs=[[0,1],[0,-1],[1,0],[-1,0]];
-  while(q.length){ const [x,y]=q.shift(); if(x===tx&&y===ty) break;
-    for(const [dx,dy] of dirs){ const nx=x+dx,ny=y+dy;
-      if(nx<0||ny<0||nx>=C0||ny>=R0) continue; if(prev.has(key(nx,ny))) continue;
-      const isTarget=(nx===tx&&ny===ty);
-      if(solid(nx,ny) && !(isTarget&&allowTarget)) continue;
-      prev.set(key(nx,ny),key(x,y)); q.push([nx,ny]); } }
-  if(!prev.has(key(tx,ty))) return null;
-  const path=[]; let c=key(tx,ty); while(c!==-1){ path.unshift([c%C0, (c/C0)|0]); c=prev.get(c); }
-  path.shift(); return path;
-}
-
-/* ---------- dialog ---------- */
-function say(list){ G.dialog={q:list.map(d=>typeof d==='string'?{who:'',txt:d}:d), i:0, shown:'', ci:0, t:0, done:false}; }
-function dialogAnim(){ const d=G.dialog,cur=d.q[d.i];
-  if(d.ci<cur.txt.length){ d.t++; if(d.t%2===0){ d.ci++; d.shown=cur.txt.slice(0,d.ci); } } else d.done=true; }
-function dialogAdvance(){ const d=G.dialog,cur=d.q[d.i];
-  if(!d.done){ d.ci=cur.txt.length; d.shown=cur.txt; d.done=true; return; }
-  d.i++; if(d.i>=d.q.length){ G.dialog=null; if(G._dialogCb){const cb=G._dialogCb;G._dialogCb=null;cb();} }
-  else { d.ci=0; d.shown=''; d.t=0; d.done=false; } }
-
-/* ---------- cutscene ---------- */
-function runCut(steps){ G.cut=steps; G.cutI=0; nextCut(); }
-function nextCut(){ if(!G.cut) return;
-  if(G.cutI>=G.cut.length){ G.cut=null; return; }
-  const s=G.cut[G.cutI++], t=s[0];
-  if(t==='say'){ say(s[1]); G._dialogCb=nextCut; }
-  else if(t==='wait'){ setTimeout(nextCut,s[1]); }
-  else if(t==='flag'){ G.flags[s[1]]=s[2]; nextCut(); }
-  else if(t==='goto'){ fadeTo(()=>{ loadRoom(s[1]); if(s[2]){G.px=s[2][0];G.py=s[2][1];G.dir=s[2][2];} }, nextCut); }
-  else if(t==='pos'){ G.px=s[1];G.py=s[2];G.dir=s[3]||G.dir; nextCut(); }
-  else if(t==='spawn'){ G.room.npcsLive.push(s[1]); nextCut(); }
-  else if(t==='despawn'){ G.room.npcsLive=G.room.npcsLive.filter(n=>n.id!==s[1]); nextCut(); }
-  else if(t==='battle'){ startBattle(s[1], nextCut); }
-  else if(t==='mode'){ G.mode=s[1]; nextCut(); }
-  else if(t==='fn'){ s[1](); nextCut(); }
-  else nextCut();
-}
-function fadeTo(mid,after){ G.fadeDir=1; G.fadeCb=()=>{ mid&&mid(); G.fadeDir=-1; G.fadeCb=()=>{ G.fadeDir=0; after&&after(); }; }; }
-
-/* ---------- battle ---------- */
-const ENEMIES={
-  guard:{name:'간수',hp:52,maxhp:52,atk:13,def:4},
-  chief:{name:'간수장',hp:92,maxhp:92,atk:18,def:7}
-};
-const BCMDS=[{n:'공격'},{n:'반격의 검'},{n:'희망'},{n:'방어'},{n:'도망'}];
-function startBattle(key,onWin,onLose){
-  const e=JSON.parse(JSON.stringify(ENEMIES[key]));
-  G.battle={e,onWin,onLose,phase:'intro',msg:e.name+'이(가) 나타났다!',msgQ:[],_after:null,_end:null,
-    flash:0,shake:0,ehit:0,defending:false,btns:[]};
-  G.mode='battle';
-}
-function bmsg(m){G.battle.msgQ.push(m);}
-function nextMsg(){ const b=G.battle;
-  if(b.msgQ.length){ b.msg=b.msgQ.shift(); b.phase='msg'; return; }
-  if(b._after){ const f=b._after; b._after=null; f(); return nextMsg(); }
-  if(b.phase!=='win'&&b.phase!=='lose') b.phase='menu'; }
-function chooseCmd(i){ const b=G.battle, pl=G.player; b.defending=false; b._after=null;
-  const cmd=BCMDS[i].n;
-  if(cmd==='공격') pAtk(pl.atk,'에드몽의 공격!');
-  else if(cmd==='반격의 검'){ if(pl.mp<5) bmsg('MP가 부족하다!'); else {pl.mp-=5; pAtk(Math.round(pl.atk*1.9),'반격의 검!');} }
-  else if(cmd==='희망'){ if(pl.mp<4) bmsg('MP가 부족하다!'); else {pl.mp-=4; const h=Math.min(pl.maxhp-pl.hp,28); pl.hp+=h; bmsg('희망을 되새겼다! HP +'+h); b._after=eTurn;} }
-  else if(cmd==='방어'){ b.defending=true; bmsg('에드몽은 몸을 웅크렸다.'); b._after=eTurn; }
-  else if(cmd==='도망'){ if(Math.random()<0.45){bmsg('도망쳤다!'); b._after=()=>{b.phase='win';b._end=b.onWin;};} else {bmsg('도망치지 못했다!'); b._after=eTurn;} }
-  b.phase='msg'; nextMsg();
-}
-function pAtk(pow,label){ const b=G.battle,e=b.e;
-  const dmg=Math.max(1,(pow-e.def+(Math.random()*4-2))|0); e.hp-=dmg; b.ehit=10; b.shake=8;
-  bmsg(label+' '+e.name+'에게 '+dmg+' 피해!');
-  b._after=()=>{ if(e.hp<=0){e.hp=0; bmsg(e.name+'을(를) 쓰러뜨렸다!'); b._after=()=>{b.phase='win';b._end=b.onWin;};} else eTurn(); }; }
-function eTurn(){ const b=G.battle,pl=G.player,e=b.e;
-  let dmg=Math.max(1,(e.atk-pl.def+(Math.random()*4-2))|0); if(b.defending)dmg=Math.max(1,(dmg/2)|0);
-  pl.hp-=dmg; b.flash=8; bmsg(e.name+'의 공격! '+dmg+' 피해를 입었다.');
-  b._after=()=>{ if(pl.hp<=0){pl.hp=0; bmsg('에드몽은 쓰러졌다...'); b._after=()=>{b.phase='lose';b._end=b.onLose||(()=>{G.mode='gameover';});};} else b.phase='menu'; }; }
-
-/* ---------- tap handling ---------- */
-function handleTap(t){
-  if(G.fadeDir!==0) return;
-  if(G.mode==='title'){
-    if(G.title.showHelp){ G.title.showHelp=false; return; }
-    for(const r of G.title.rects){ if(t.x>=r.x&&t.x<=r.x+r.w&&t.y>=r.y&&t.y<=r.y+r.h){ G.title.sel=r.i; if(r.i===0) startGame(); else G.title.showHelp=true; return; } }
-    return;
-  }
-  if(G.mode==='gameover'){ G.mode='title'; G.title.sel=0; return; }
-  if(G.mode==='ending'){ G.mode='title'; G.title.sel=0; return; }
-  if(G.mode==='battle'){ const b=G.battle;
-    if(b.phase==='menu'){ for(const r of b.btns){ if(t.x>=r.x&&t.x<=r.x+r.w&&t.y>=r.y&&t.y<=r.y+r.h){ chooseCmd(r.i); return; } } }
-    else if(b.phase==='win'||b.phase==='lose'){ G.mode='field'; const f=b._end; G.battle=null; f&&f(); }
-    else { nextMsg(); }
-    return;
-  }
-  if(G.mode==='field'){
-    if(G.dialog){ dialogAdvance(); return; }
-    if(G.cut) return;
-    if(t.confirm){ return; }
-    if(G.moving||G.path) { return; }
-    // world tile
-    const wx=Math.floor((t.x+G.cam.x)/TS), wy=Math.floor((t.y+G.cam.y)/TS);
-    if(wx<0||wy<0||wx>=cols()||wy>=rows()) return;
-    if(interactable(wx,wy)){
-      // path to nearest adjacent walkable, then interact
-      let best=null,bl=1e9;
-      for(const [dx,dy] of [[0,1],[0,-1],[1,0],[-1,0]]){ const ax=wx+dx,ay=wy+dy;
-        if(ax<0||ay<0||ax>=cols()||ay>=rows()) continue; if(solid(ax,ay)) continue;
-        const p=bfs(G.px,G.py,ax,ay,false); if(p&&p.length<bl){bl=p.length;best={path:p,ax,ay};} }
-      if((wx===G.px&&Math.abs(wy-G.py)===1)||(wy===G.py&&Math.abs(wx-G.px)===1)){
-        G.dir=wx<G.px?'left':wx>G.px?'right':wy<G.py?'up':'down'; doInteract(wx,wy); return; }
-      if(best){ G.path=best.path; G.pend={tx:wx,ty:wy,interact:true}; }
-      return;
-    }
-    if(!solid(wx,wy)){ const p=bfs(G.px,G.py,wx,wy,false); if(p&&p.length){ G.path=p; G.pend=null; } }
-  }
-}
-function doInteract(wx,wy){ const n=npcAt(wx,wy); const t=tileAt(wx,wy);
-  if(n) triggerNPC(n);
-  else if(t==='D') triggerDoor();
-  else if(t==='C') triggerCrack();
-  else if(t==='g') say([{who:'',txt:'눈부신 황금과 보석이 산처럼 쌓여 있다.'}]);
-}
-
-/* ---------- field update ---------- */
-function updateField(){
-  if(G.dialog){ dialogAnim(); return; }
-  if(G.cut) return;
-  // keyboard step
-  if(!G.moving && !G.path && kq.length){ const k=kq.shift();
-    let dx=0,dy=0,nd=G.dir;
-    if(k==='ArrowUp'||k==='w'||k==='W'){dy=-1;nd='up';} else if(k==='ArrowDown'||k==='s'||k==='S'){dy=1;nd='down';}
-    else if(k==='ArrowLeft'||k==='a'||k==='A'){dx=-1;nd='left';} else if(k==='ArrowRight'||k==='d'||k==='D'){dx=1;nd='right';}
-    G.dir=nd; const tx=G.px+dx,ty=G.py+dy;
-    if(interactable(tx,ty)) doInteract(tx,ty);
-    else if(!solid(tx,ty)){ G.moving={fx:G.px,fy:G.py,tx,ty}; G.moveT=0; }
-  }
-  if(G.moving){ G.moveT+=0.16;
-    if(G.moveT>=1){ G.px=G.moving.tx; G.py=G.moving.ty; G.moving=null;
-      if(G.path&&G.path.length){ stepPath(); }
-      else if(G.pend&&G.pend.interact){ const pn=G.pend; G.pend=null; G.dir=pn.tx<G.px?'left':pn.tx>G.px?'right':pn.ty<G.py?'up':'down'; doInteract(pn.tx,pn.ty); }
-    }
-  } else if(G.path&&G.path.length){ stepPath(); }
-}
-function stepPath(){ const [nx,ny]=G.path[0];
-  if(solid(nx,ny)){ G.path=null; G.pend=null; return; }
-  G.path.shift(); G.dir=nx<G.px?'left':nx>G.px?'right':ny<G.py?'up':'down'; G.moving={fx:G.px,fy:G.py,tx:nx,ty:ny}; G.moveT=0;
-  if(!G.path.length && !(G.pend&&G.pend.interact)) G.path=null;
-}
-
-/* ---------- STORY ---------- */
-function triggerNPC(n){
-  if(G.roomKey==='marseille'){
-    if(n.id==='mercedes'){
-      runCut([
-        ['say',[{who:'메르세데스',txt:'에드몽! 무사히 돌아왔군요. 파라옹호의 새 선장이 된다니, 이제 우리 결혼만 남았어요.'},
-                {who:'에드몽',txt:'그래, 메르세데스. 더 바랄 게 없어. 세상 누구보다 행복한 사람이 바로 나야.'},
-                {who:'',txt:'…그러나 그 행복을 시기하는 자들이 항구의 그늘에서 지켜보고 있었다.'}]],
-        ['spawn',{id:'g1',x:8,y:6,type:'guard',dir:'up',name:'헌병'}],
-        ['spawn',{id:'g2',x:9,y:6,type:'guard',dir:'up',name:'헌병'}],
-        ['pos',8,7,'up'],
-        ['say',[{who:'헌병',txt:'에드몽 단테스! 나폴레옹파 역모 혐의로 당신을 체포한다!'},
-                {who:'에드몽',txt:'뭐라고?! 난 죄가 없다! 이건 누명이야!'},
-                {who:'당글라르',txt:'후후… 선장 자리는 이제 내 것이겠군.'},
-                {who:'페르낭',txt:'그리고 메르세데스는 내 것이 되겠지.'}]],
-        ['goto','cell',[9,8,'down']],
-        ['say',[{who:'',txt:'— 이프 성. 육지에서 멀리 떨어진 절해의 감옥. 에드몽은 이곳에 산 채로 묻혔다.'},
-                {who:'에드몽',txt:'…몇 년이 흐른 거지. 아무도 오지 않아. 세상은 나를 잊었어…'}]],
-        ['flag','act',2],
-        ['say',[{who:'',txt:'(감옥 오른쪽 벽의 갈라진 틈 을 탭해서 조사해보자.)'}]]
-      ]);
-    } else say([{who:n.name,txt: n.id==='danglars'?'(당글라르가 장부 뒤에서 음흉하게 웃는다.)':'(페르낭이 메르세데스를 곁눈질하며 이를 간다.)'}]);
-  }
-  else if(G.roomKey==='corridor' && n.id==='guard'){
-    runCut([
-      ['say',[{who:'간수',txt:'죄수가 탈출이다! 게 섰거라!'},
-              {who:'에드몽',txt:'14년의 원한이 나를 여기까지 이끌었다. 비켜라!'}]],
-      ['battle','guard'],
-      ['say',[{who:'',txt:'간수를 쓰러뜨렸다! 오른쪽 끝의 문 으로 나아가자.'}]],
-      ['flag','guardDown',1],['despawn','guard']
-    ]);
-  }
-}
-function triggerCrack(){
-  if(G.roomKey==='cell' && !G.flags.faria){
-    G.flags.faria=1;
-    runCut([
-      ['say',[{who:'',txt:'벽 너머에서 돌을 긁는 소리… 이윽고 틈이 무너지고 백발의 노인이 흙투성이로 나타난다.'},
-              {who:'파리아 신부',txt:'오, 사람이군! 나는 파리아. 탈출로를 파다 방향을 잘못 잡았네만… 어쩌면 이게 운명일지도.'},
-              {who:'에드몽',txt:'신부님… 저는 왜 여기 있는지조차 모릅니다.'},
-              {who:'파리아 신부',txt:'함께 짚어보세. 자네의 승진을 시기한 당글라르, 약혼자를 탐낸 페르낭, 그리고 제 아비를 숨기려 자네를 묻어버린 검사 빌포르…'},
-              {who:'에드몽',txt:'그들이… 내 모든 것을 빼앗았군요. 이제야 보입니다.'},
-              {who:'파리아 신부',txt:'분노를 힘으로 바꾸게. 내가 지식과 언어, 검술, 그리고 한 가지 비밀을 주지.'},
-              {who:'파리아 신부',txt:'몬테크리스토 섬에 잠든 막대한 보물… 그것으로 자네는 새사람이 되어 정의를 세울 수 있네.'}]],
-      ['fn',()=>{ const p=G.player; p.maxhp=95;p.hp=95;p.maxmp=22;p.mp=22;p.atk=23;p.def=11;p.lv=9; }],
-      ['say',[{who:'',txt:'파리아 신부는 여러 해에 걸쳐 에드몽에게 모든 것을 가르쳤다. 에드몽은 몰라보게 강해졌다! (Lv9)'},
-              {who:'파리아 신부',txt:'콜록… 내 명은 여기까지인 듯하네. 내가 죽거든, 시신 자루에 나 대신 자네가 들어가게. 그것이 이 성을 나가는 유일한 문이야.'},
-              {who:'파리아 신부',txt:'가서… 살아서… 부디 정의를…'},
-              {who:'',txt:'파리아 신부는 조용히 눈을 감았다. 에드몽은 그의 계획대로 시신 자루에 몸을 숨겼다.'},
-              {who:'',txt:'간수들이 자루를 성벽 아래 바다로 던졌다 — 그것이 이프 성의 장례였다.'}]],
-      ['goto','corridor',[3,9,'up']],
-      ['say',[{who:'',txt:'(에드몽은 바다에 빠지기 직전 자루를 찢고 복도로 숨어들었다. 탈출로를 찾자!)'},
-              {who:'에드몽',txt:'앞을 지키는 간수가 있다. 여기서 멈출 수는 없어.'}]]
-    ]);
-  } else if(G.roomKey==='cell') say([{who:'',txt:'무너진 틈. 파리아 신부가 지나온 길이다.'}]);
-}
-function triggerDoor(){
-  if(G.roomKey==='cell'){ if(!G.flags.faria) say([{who:'',txt:'굳게 잠긴 감옥 문. 스스로는 나갈 수 없다… 다른 길을 찾아야 한다.'}]);
-    else fadeTo(()=>loadRoom('corridor')); }
-  else if(G.roomKey==='corridor'){ if(!G.flags.guardDown) say([{who:'',txt:'간수를 지나치지 않고는 문으로 갈 수 없다.'}]);
-    else runCut([
-      ['goto','treasure',[9,8,'up']],
-      ['say',[{who:'',txt:'— 여러 밤을 헤엄쳐, 에드몽은 마침내 몬테크리스토 섬에 닿았다.'},
-              {who:'',txt:'파리아가 남긴 지도를 따라 동굴 깊은 곳으로… 그곳에 전설의 보물이 잠들어 있었다.'},
-              {who:'에드몽',txt:'이것이… 파리아 신부의 유산. 이 힘으로 나는 다시 태어난다.'},
-              {who:'에드몽',txt:'당글라르, 페르낭, 빌포르… 기다려라. 이제 몬테크리스토 백작이 너희를 심판하러 간다.'}]],
-      ['flag','ending',1],['mode','ending']
-    ]); }
-  else if(G.roomKey==='treasure') say([{who:'',txt:'보물을 손에 넣었다. 복수는 이제부터다.'}]);
-}
-
-/* ---------- draw: field ---------- */
-function drawField(){
-  const r=G.room, C0=cols(), R0=rows(), worldW=C0*TS, worldH=R0*TS;
-  let ppx=G.px*TS, ppy=G.py*TS;
-  if(G.moving){ ppx=(G.moving.fx+(G.moving.tx-G.moving.fx)*G.moveT)*TS; ppy=(G.moving.fy+(G.moving.ty-G.moving.fy)*G.moveT)*TS; }
-  let camX=ppx+TS/2-VW/2, camY=ppy+TS/2-VH/2;
-  camX = worldW<=VW ? (worldW-VW)/2 : Math.max(0,Math.min(worldW-VW,camX));
-  camY = worldH<=VH ? (worldH-VH)/2 : Math.max(0,Math.min(worldH-VH,camY));
-  G.cam.x=camX; G.cam.y=camY;
-  px(0,0,VW,VH,C.bg);
-  const x0=Math.max(0,Math.floor(camX/TS)), x1=Math.min(C0-1,Math.floor((camX+VW)/TS));
-  const y0=Math.max(0,Math.floor(camY/TS)), y1=Math.min(R0-1,Math.floor((camY+VH)/TS));
-  for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++) tile(r.tiles[y][x], x*TS-camX, y*TS-camY, G.anim);
-  const walk=(G.moving)?(Math.floor(G.moveT*2)%2):0;
-  if(r.npcsLive) for(const n of r.npcsLive) actor(n.x*TS-camX, n.y*TS-camY, n.type, n.dir, 0);
-  actor(ppx-camX, ppy-camY, G.flags.ending?'count':'edmond', G.dir, walk);
-  // top banner
-  const bh=Math.round(TS*0.72);
-  px(0,0,VW,bh,'#0b1020cc'); px(0,bh,VW,2,C.panelE2);
-  txt(r.name, 10, bh*0.28, C.gold, fs(TS*0.34));
-  // hint (before first move)
-  if(!G.flags.act && !G.dialog){ txt('화면을 탭해서 이동 · 사람/사물을 탭해 조사', VW/2, VH-TS*0.9, '#ffffffcc', fs(TS*0.3), 'center'); }
-  if(G.dialog) drawDialog();
-}
-
-/* ---------- draw: dialog ---------- */
-function drawDialog(){
-  const d=G.dialog,cur=d.q[d.i];
-  const m=Math.round(TS*0.28);
-  const h=Math.min(VH*0.3, Math.max(TS*2.6, 130));
-  const y=VH-h-m, w=VW-m*2, x=m;
-  // panel
-  rr(x+3,y+4,w,h,10,C.panelSh);
-  rr(x,y,w,h,10,C.panelE2); rr(x+2,y+2,w-4,h-4,9,C.panelE); rr(x+4,y+4,w-8,h-8,8,C.panel);
-  const ts=fs(TS*0.38), pad=Math.round(TS*0.32);
-  let ty=y+pad;
-  if(cur.who){ txt(cur.who, x+pad, ty, C.panelE2, fs(TS*0.4)); ty+=ts+4; }
-  wrap(d.shown||'', x+pad, ty, w-pad*2, ts+4, C.text, ts);
-  if(d.done && (G.anim>>4)%2) txt('▼', x+w-pad, y+h-ts-6, C.panelE2, ts);
-}
-function wrap(s,x,y,maxw,lh,col,size){
-  X.font=size+"px 'Galmuri11',monospace"; X.fillStyle=col; X.textAlign='left'; X.textBaseline='top';
-  let line='',yy=y;
-  for(const ch of s){ if(ch==='\n'){X.fillText(line,x,yy);line='';yy+=lh;continue;}
-    const test=line+ch; if(X.measureText(test).width>maxw){X.fillText(line,x,yy);line=ch;yy+=lh;} else line=test; }
-  X.fillText(line,x,yy);
-}
-
-/* ---------- draw: battle ---------- */
-function drawBattle(){
-  const b=G.battle,pl=G.player,e=b.e;
-  // bg
-  const g=X.createLinearGradient(0,0,0,VH); g.addColorStop(0,'#241d33'); g.addColorStop(1,'#120c1c');
-  X.fillStyle=g; X.fillRect(0,0,VW,VH);
-  for(let i=0;i<50;i++) px((i*71%VW),(i*53%(VH*0.5)),2,2, i%4?'#2a2340':'#3a3358');
-  // enemy
-  let ex=VW/2, ey=VH*0.30; if(b.shake>0){ex+=(Math.random()*b.shake-b.shake/2);b.shake--;}
-  const es=TS*0.16;
-  if(!(b.ehit>0 && b.ehit%2)) drawGuard(ex,ey,es*16);
-  if(b.ehit>0)b.ehit--;
-  txt(e.name, VW/2, ey-TS*1.6, C.textL, fs(TS*0.4),'center');
-  bar(VW/2-TS*1.8, ey-TS*1.2, TS*3.6, TS*0.28, e.hp/e.maxhp, C.red);
-  if(b.flash>0){ px(0,0,VW,VH,'#e05a4a'+(b.flash>4?'44':'22')); b.flash--; }
-  // bottom UI area
-  const uh=Math.min(VH*0.42, TS*4.6), uy=VH-uh, m=Math.round(TS*0.28);
-  // status panel
-  const sw=(VW-m*3)/2;
-  panel(m,uy,sw,uh-m);
-  const sp=Math.round(TS*0.3);
-  txt(pl.name+'  Lv '+pl.lv, m+sp, uy+sp, C.text, fs(TS*0.36));
-  txt('HP', m+sp, uy+sp+TS*0.72, C.text, fs(TS*0.32));
-  bar(m+sp+TS*0.9, uy+sp+TS*0.74, sw-sp*2-TS*0.9, TS*0.28, pl.hp/pl.maxhp, C.hpg);
-  txt(pl.hp+'/'+pl.maxhp, m+sp, uy+sp+TS*1.16, C.text, fs(TS*0.3));
-  txt('MP', m+sp, uy+sp+TS*1.66, C.text, fs(TS*0.32));
-  bar(m+sp+TS*0.9, uy+sp+TS*1.68, sw-sp*2-TS*0.9, TS*0.28, pl.mp/pl.maxmp, C.mpb);
-  txt(pl.mp+'/'+pl.maxmp, m+sp, uy+sp+TS*2.1, C.text, fs(TS*0.3));
-  // right panel: menu or message
-  const rx=m*2+sw, rw=sw;
-  panel(rx,uy,rw,uh-m);
-  b.btns=[];
-  if(b.phase==='menu'){
-    const n=BCMDS.length, bh=(uh-m-sp*2)/n;
-    for(let i=0;i<n;i++){ const by=uy+sp+i*bh, bx=rx+sp, bw=rw-sp*2;
-      rr(bx,by+2,bw,bh-4,6,'#00000018'); rr(bx,by,bw,bh-6,6,'#fff'); rr(bx,by,bw,bh-6,6,'#ffffff');
-      X.strokeStyle=C.panelE; X.lineWidth=2; X.beginPath(); X.roundRect(bx,by,bw,bh-6,6); X.stroke();
-      txt(BCMDS[i].n, bx+bw/2, by+(bh-6)/2-fs(TS*0.34)/2, C.text, fs(TS*0.34),'center');
-      b.btns.push({x:bx,y:by,w:bw,h:bh-6,i}); }
-  } else {
-    wrap(b.msg||'', rx+sp, uy+sp, rw-sp*2, fs(TS*0.36)+4, C.text, fs(TS*0.36));
-    if((G.anim>>4)%2) txt('▼', rx+rw-sp, uy+uh-m-fs(TS*0.4)-6, C.panelE2, fs(TS*0.4));
-  }
-}
-function drawGuard(cx,cy,s){ const u=s/16;
-  X.fillStyle='#0005'; X.beginPath(); X.ellipse(cx,cy+8*u,8*u,3*u,0,0,7); X.fill();
-  rr(cx-6*u,cy-9*u,12*u,7*u,2*u,C.line); rr(cx-5.2*u,cy-8.4*u,10.4*u,5.6*u,1.6*u,'#4a3a16'); // helmet
-  rr(cx-4.4*u,cy-4*u,8.8*u,6*u,2*u,'#e0aa78'); // face
-  circ(cx-2*u,cy-1*u,1.1*u,C.ink); circ(cx+2*u,cy-1*u,1.1*u,C.ink);
-  rr(cx-6*u,cy+2*u,12*u,9*u,2.4*u,C.line); rr(cx-5.2*u,cy+2.6*u,10.4*u,7.6*u,2*u,'#c0503a'); // armor
-  px(cx+6*u,cy-6*u,1.6*u,14*u,'#8a8a9a'); px(cx+5.6*u,cy-9*u,2.4*u,3*u,'#d8d8e0'); // spear
-}
-function bar(x,y,w,h,frac,col){ rr(x,y,w,h,h/2,'#0007'); rr(x+1,y+1,w-2,h-2,(h-2)/2,'#00000030'); rr(x+1,y+1,Math.max(0,(w-2)*Math.max(0,Math.min(1,frac))),h-2,(h-2)/2,col); }
-function panel(x,y,w,h){ rr(x+2,y+3,w,h,9,C.panelSh); rr(x,y,w,h,9,C.panelE2); rr(x+2,y+2,w-4,h-4,8,C.panelE); rr(x+4,y+4,w-8,h-8,7,C.panel); }
-
-/* ---------- draw: title ---------- */
+/* ---- title ---- */
 function drawTitle(){
-  const a=G.anim;
-  const g=X.createLinearGradient(0,0,0,VH); g.addColorStop(0,C.sky1); g.addColorStop(0.6,C.sky2); g.addColorStop(1,'#081a30');
-  X.fillStyle=g; X.fillRect(0,0,VW,VH);
-  for(let i=0;i<80;i++){ const sx=(i*57+i*i*3)%VW, sy=(i*37)%(VH*0.55); if(((a>>4)&15)!==(i&15)) px(sx,sy,2,2, i%6?'#8fb0e0':'#fff'); }
-  // moon
-  circ(VW*0.76, VH*0.16, TS*0.9, C.moon); circ(VW*0.79, VH*0.145, TS*0.78, C.sky1);
-  // sea
-  const seaY=VH*0.52;
-  px(0,seaY,VW,VH-seaY,C.sea2);
-  for(let y=seaY;y<VH;y+=Math.max(3,TS*0.16)){ px(0,y,VW,2, ((y/TS+ (a>>5))|0)%2? C.sea1:C.sea3+'aa'); }
-  // fortress
-  const ix=VW*0.5, iy=seaY-TS*1.2, w=TS*4;
-  px(ix-w*0.75, iy+TS*0.9, w*1.5, TS*0.9, '#0a0f1e');
-  px(ix-w*0.5, iy, w, TS*1.1, '#13203a');
-  px(ix-w*0.6, iy-TS*0.7, TS*0.9, TS*1.8, '#182746'); px(ix+w*0.5-TS*0.9, iy-TS*0.7, TS*0.9, TS*1.8, '#182746');
-  px(ix-TS*0.6, iy-TS*1.1, TS*1.2, TS*2.2, '#1d2c50');
-  if((a>>5)%2) px(ix-w*0.45, iy+TS*0.2, TS*0.24, TS*0.34, C.gold);
-  px(ix-TS*0.35, iy-TS*0.5, TS*0.24, TS*0.34, (a>>4)%2?C.gold:'#6a4a10');
-  px(ix+w*0.3, iy+TS*0.2, TS*0.24, TS*0.34, C.gold);
-  // title text
-  txt('MONTE CRISTO', VW/2+2, VH*0.235+2, '#08122a', fs(TS*1.05),'center');
-  txt('MONTE CRISTO', VW/2, VH*0.235, C.gold, fs(TS*1.05),'center');
-  txt('몽테크리스토 — 복수의 서막', VW/2, VH*0.235+TS*1.1, C.textL, fs(TS*0.42),'center');
-  // menu buttons
-  const items=['새 게임','조작법']; G.title.rects=[];
-  const bw=Math.min(VW*0.6, TS*6), bh=TS*1.1, bx=VW/2-bw/2; let by=VH*0.68;
-  for(let i=0;i<items.length;i++){
-    const sel=i===G.title.sel;
-    rr(bx+2,by+3,bw,bh,10,'#0006'); rr(bx,by,bw,bh,10, sel?C.gold:'#e9edf7');
-    X.strokeStyle=sel?'#fff6c8':'#9fb0d8'; X.lineWidth=2; X.beginPath(); X.roundRect(bx,by,bw,bh,10); X.stroke();
-    txt(items[i], VW/2, by+bh/2-fs(TS*0.44)/2, sel?'#5a3a00':'#33436e', fs(TS*0.44),'center');
-    G.title.rects.push({x:bx,y:by,w:bw,h:bh,i}); by+=bh+TS*0.4;
-  }
-  if(G.title.showHelp){
-    const w=Math.min(VW*0.86,TS*8), h=TS*5.2, x=VW/2-w/2, y=VH/2-h/2;
-    panel(x,y,w,h);
-    wrap('조작법\n\n· 가고 싶은 곳을 탭하면 이동합니다.\n· 사람이나 사물을 탭하면 대화·조사.\n· 대화 중에는 화면을 탭해 다음으로.\n· 전투는 명령 버튼을 탭.\n\n폰·태블릿 모두 터치로 즐겨요.\n(탭하면 닫기)', x+TS*0.4, y+TS*0.4, w-TS*0.8, fs(TS*0.4)+4, C.text, fs(TS*0.4));
-  }
+  px(0,0,LW,LH,'#0b1024');
+  for(let i=0;i<50;i++){ const sx=(i*53+i*i*3)%LW, sy=(i*29)%180; if(((tick>>4)&15)!==(i&15)) px(sx,sy,1,1,'#7fa0d0'); }
+  T(TXT.title[0], LW/2, 70, P.gold, 16,'center');
+  T(TXT.title[1], LW/2, 96, P.ink, 8,'center');
+  // cell silhouette
+  rr(50,140,80,60,6,'#161a28'); px(70,150,40,22,'#0b0d16'); for(let i=0;i<4;i++)px(74+i*9,150,2,22,'#3a4considerable'.length&&'#3a4258'||'#3a4258');
+  T(TXT.title[2], LW/2, 236, ((tick>>4)%2)?P.gold:P.dim, 9,'center');
+  T(TXT.title[3], LW/2, 252, P.dim, 7,'center');
+  const hasSave=!!load();
+  BTN=[];
+  if(hasSave){ button(40,272,100,20,'이어하기',()=>{ const s=load(); if(s){G=s; ensure(); toScreen(G.faria||G.turn>1?'cell':'intro'); if(G.screen==='cell')prepPlan();} SFX.ok();});
+    button(52,296,76,16,'처음부터',()=>{ wipe(); startNew(); }, {sz:7}); }
+  else { button(40,278,100,22,'시작하기',()=>startNew()); }
 }
-function drawGameOver(){ px(0,0,VW,VH,'#180810'); txt('쓰러졌다…',VW/2,VH*0.4,C.red,fs(TS*0.9),'center'); txt('화면을 탭해 타이틀로',VW/2,VH*0.55,C.textL,fs(TS*0.42),'center'); }
-function drawEnding(){
-  const g=X.createLinearGradient(0,0,0,VH); g.addColorStop(0,'#0a0810'); g.addColorStop(1,'#161020'); X.fillStyle=g; X.fillRect(0,0,VW,VH);
-  for(let i=0;i<60;i++) px((i*61%VW),(i*47%VH),2,2,i%4?'#2a2338':C.gold);
-  txt('― 제 1 막  끝 ―', VW/2, VH*0.22, C.gold, fs(TS*0.7),'center');
-  wrap('에드몽 단테스는 죽고,\n몬테크리스토 백작이 태어났다.\n\n그의 복수는 이제\n막 시작되었다…', 0, VH*0.36, VW, fs(TS*0.5)+8, C.textL, fs(TS*0.5));
-  X.textAlign='center';
-  txt('제2막 「백작의 심판」에서 계속', VW/2, VH*0.72, '#9fb0d8', fs(TS*0.36),'center');
-  txt('화면을 탭해 타이틀로', VW/2, VH*0.8, C.gold, fs(TS*0.38),'center');
+function startNew(){ G=newGame(); enableAudio(); toScreen('intro'); G._introi=0; SFX.ok(); }
+function ensure(){ if(!G.passives)G.passives={촛불:false,펜잉크:false,땅굴도구:false}; if(!G.items)G.items={바늘:false,칼:false}; if(!G.mats)G.mats={생선뼈:0,그을음:0,기름:0,쇳조각:0,천:0}; }
+
+/* ---- intro ---- */
+function drawIntro(){
+  px(0,0,LW,LH,'#0c0d15');
+  panelBox(10,90,160,140);
+  let yy=104; for(let i=0;i<=(G._introi||0)&&i<TXT.intro.length;i++){ yy=wrap(TXT.intro[i], 20, yy, 140, 12, P.panelT, 8)+2; }
+  T('▶ 탭', 150, 214, P.panelE, 7);
+  BTN=[{x:0,y:0,w:LW,h:LH,fn:()=>{ G._introi=(G._introi||0)+1; SFX.page(); if(G._introi>=TXT.intro.length){ toScreen('cell'); prepPlan(); } }}];
+}
+function panelBox(x,y,w,h){ rr(x+2,y+3,w,h,6,'#0007'); rr(x,y,w,h,6,'#7a5f2e'); rr(x+2,y+2,w-4,h-4,5,P.panelE); rr(x+4,y+4,w-8,h-8,4,P.panel); }
+
+/* ---- cell / plan ---- */
+function prepPlan(){ G.slots=[]; G.screen='cell'; maybeYearRollover(); }
+function maybeYearRollover(){ const y=yearOf(G.turn); if(y!==G.lastYear){ G.lastYear=y; G.evYear=0; } }
+function drawCellScreen(){
+  px(0,0,LW,LH,P.bg);
+  // top bar
+  px(0,0,LW,24,'#0b0d16');
+  T(yearOf(G.turn)+'년 '+seasonOf(G.turn), 6, 4, P.gold, 9);
+  T((G.turn)+'/'+BAL.totalTurns+'턴', LW-6, 4, P.dim, 8,'right');
+  T('34번', LW/2, 14, P.dim, 7,'center');
+  drawCell();
+  drawStats(150);
+  // plan area
+  px(0,184,LW,136,'#0e0f1a'); px(0,184,LW,1,'#2a2f45');
+  T('한 계절에 할 일 2가지', 8, 190, P.ink, 8);
+  // slots
+  for(let i=0;i<2;i++){ const x=10+i*84, y=202; rr(x,y,78,18,4,'#1a1d2b'); ro(x,y,78,18,4,'#333a52',1);
+    T(G.slots[i]||('칸 '+(i+1)), x+39, y+5, G.slots[i]?P.gold:P.dim, 8,'center'); }
+  // action buttons
+  BTN=[];
+  const acts=['수업','운동','땅굴','제작','휴식'];
+  for(let i=0;i<acts.length;i++){ const name=acts[i]; const col=i%3,row=(i/3)|0;
+    const x=8+col*56, y=226+row*24; const locked=!actionUnlocked(name);
+    button(x,y,52,20, name, ()=>{ if(G.slots.length<2){G.slots.push(name);SFX.tap();} }, {off:locked, sz:8});
+  }
+  // reset slot + confirm
+  button(8,276,80,20,'다시 선택',()=>{G.slots=[];SFX.tap();},{sz:8});
+  button(92,276,80,20,'확정 ▶',()=>{ if(G.slots.length===2){ SFX.ok(); startProgress(); } },{on:G.slots.length===2, off:G.slots.length!==2, sz:8});
+  // materials + tiny menu
+  let mstr=''; for(const k in G.mats){ if(G.mats[k]>0) mstr+=k+G.mats[k]+' '; }
+  T(mstr||'재료 없음', 8, 300, P.dim, 7);
+  button(140,298,34,16,'저장',()=>{save();G.log='저장했다.';toScreen('toast');},{sz:7});
 }
 
-/* ---------- start ---------- */
-function startGame(){ const p=G.player;
-  G.flags={}; p.hp=60;p.maxhp=60;p.mp=12;p.maxmp=12;p.atk=14;p.def=6;p.lv=1;
-  fadeTo(()=>{ loadRoom('marseille'); G.mode='field';
-    setTimeout(()=>{ say([{who:'',txt:'1815년, 프랑스 마르세유. 젊은 선원 에드몽 단테스가 약혼자 메르세데스에게 돌아왔다.'},
-      {who:'',txt:'(위쪽의 메르세데스에게 다가가 탭해서 이야기하자.)'}]); },250);
+/* ---- progress ---- */
+let prog=null;
+function startProgress(){
+  // determine patrol (only meaningful if 땅굴)
+  const hasTunnel=G.slots.indexOf('땅굴')>=0;
+  prog={ t:0, patrol: (Math.random()<0.7), patroled:false, patrolStart:0, done:false, hasTunnel, result:null };
+  toScreen('progress');
+}
+function resolveEffects(){
+  // craft handled elsewhere; here apply eff actions
+  const gained={}; const before={}; BAL.statOrder.forEach(k=>before[k]=G.stats[k]);
+  const counts={}; G.slots.forEach(a=>counts[a]=(counts[a]||0)+1);
+  G.slots.forEach((a,idx)=>{
+    const A=BAL.actions[a]; if(!A||!A.eff) return;
+    let mult=1; if(counts[a]===2 && idx===1) mult=1+BAL.sameSlotBonus; // second same +50%
+    for(const k in A.eff){ let v=A.eff[k]*mult; if(v>0) v+=Math.round((Math.random()*2-1)*BAL.wobble);
+      // passives
+      if(a==='수업'&&k==='지식'&&G.passives.촛불) v+=1;
+      if(a==='수업'&&k==='언어'&&G.passives.펜잉크) v+=1;
+      if(a==='땅굴'&&k==='땅굴'&&G.passives.땅굴도구) v+=3;
+      if(a==='땅굴'&&k==='의심'&&G.passives.땅굴도구) v+=2;
+      G.stats[k]+=v;
+    }
   });
+  BAL.statOrder.forEach(clampStat);
+  // material gain
+  const mk=rollMat(); G.mats[mk]=(G.mats[mk]||0)+1;
+  // build log
+  let parts=[]; BAL.statOrder.forEach(k=>{ const d=G.stats[k]-before[k]; if(d!==0) parts.push(k+(d>0?'+':'')+d); });
+  G.settleLog=parts.join(' ')+'  ·  재료: '+mk;
+}
+function rollMat(){ let r=Math.random(),acc=0; for(const [k,p] of BAL.matRates){acc+=p; if(r<acc)return k;} return '생선뼈'; }
+function drawProgress(){
+  px(0,0,LW,LH,P.bg); px(0,0,LW,24,'#0b0d16');
+  T(yearOf(G.turn)+'년 '+seasonOf(G.turn), 6,4,P.gold,9);
+  drawCell();
+  panelBox(10,180,160,60);
+  if(prog.patrol && prog.hasTunnel && !prog.patroled){
+    // patrol challenge
+    if(!prog.patrolStart) { prog.patrolStart=performance.now(); SFX.alert(); }
+    const el=performance.now()-prog.patrolStart;
+    // red edges
+    if((tick>>2)%2){ px(0,0,LW,4,P.red); px(0,LH-4,LW,4,P.red); px(0,0,4,LH,P.red); px(LW-4,0,4,LH,P.red); }
+    wrap(TXT.patrolAlert, 20,192,140,12,P.red,9);
+    const left=Math.max(0,(BAL.patrolMs-el)/1000);
+    T(left.toFixed(1)+'s', LW/2, 216, P.panelT, 9,'center');
+    if(el>BAL.patrolMs){ // fail
+      prog.patroled=true; G.stats.의심+=BAL.patrolFailSusp; clampStat('의심'); G.patrolFails++; prog.patrolMsg=TXT.patrolFail; SFX.fail();
+    }
+    BTN=[{x:0,y:0,w:LW,h:LH,fn:()=>{ if(!prog.patroled){ prog.patroled=true; prog.patrolMsg=TXT.patrolOk; SFX.ok(); } }}];
+    return;
+  }
+  // running / show patrol result then settle
+  prog.t++;
+  wrap(prog.patrolMsg? prog.patrolMsg : '한 계절이 지나간다…', 20,196,140,12, P.panelT, 8);
+  T('▶ 탭', 150,222,P.panelE,7);
+  BTN=[{x:0,y:0,w:LW,h:LH,fn:()=>{ resolveEffects(); afterTurn(); }}];
 }
 
-/* ---------- main loop ---------- */
-function loop(){
-  G.anim++;
-  const t=tap; tap=null;
-  if(G.fadeDir!==0){
-    G.fade+=G.fadeDir*0.08;
-    if(G.fadeDir>0&&G.fade>=1){G.fade=1;const c=G.fadeCb;G.fadeCb=null;c&&c();}
-    else if(G.fadeDir<0&&G.fade<=0){G.fade=0;const c=G.fadeCb;G.fadeCb=null;c&&c();}
-  } else {
-    if(t) handleTap(t);
-    if(G.mode==='field') updateField();
-    if(G.dialog && G.mode!=='field') dialogAnim();
-  }
-  X.clearRect(0,0,VW,VH);
-  if(G.mode==='title') drawTitle();
-  else if(G.mode==='field') drawField();
-  else if(G.mode==='battle') drawBattle();
-  else if(G.mode==='gameover') drawGameOver();
-  else if(G.mode==='ending') drawEnding();
-  if(G.fade>0){ X.fillStyle='rgba(0,0,0,'+G.fade+')'; X.fillRect(0,0,VW,VH); }
-  requestAnimationFrame(loop);
+/* after a turn: settle -> events/checks -> report -> next or ending */
+function afterTurn(){ toScreen('settle'); }
+function drawSettle(){
+  px(0,0,LW,LH,P.bg); px(0,0,LW,24,'#0b0d16'); T(yearOf(G.turn)+'년 '+seasonOf(G.turn),6,4,P.gold,9);
+  drawCell(); drawStats(150);
+  panelBox(10,188,160,64);
+  T('계절 결산', 20,196,P.panelT,9);
+  wrap(G.settleLog||'', 20,210,140,11,P.panelT,8);
+  // faria line
+  const fl = G.faria ? pickLine(TXT.actionLine[G.slots[0]]||[]) : '';
+  if(fl) wrap('파리아: '+fl, 20,232,140,10,'#5a4a2a',7);
+  T('▶ 탭',150,236,P.panelE,7);
+  BTN=[{x:0,y:0,w:LW,h:LH,fn:()=>{ postSettle(); }}];
 }
-if(!X.roundRect){ X.roundRect=function(x,y,w,h,r){ this.moveTo(x+r,y); this.arcTo(x+w,y,x+w,y+h,r); this.arcTo(x+w,y+h,x,y+h,r); this.arcTo(x,y+h,x,y,r); this.arcTo(x,y,x+w,y,r); return this; }; }
-document.fonts && document.fonts.load("16px 'Galmuri11'").catch(()=>{});
-loop();
+function pickLine(arr){ return arr.length?arr[Math.floor(Math.random()*arr.length)]:''; }
+
+function postSettle(){
+  // clear solo after its turn
+  if(G.solo) G.solo=false;
+  // faria join
+  if(!G.faria && G.turn>=BAL.fariaJoinTurn){ G.faria=true; G.log=TXT.fariaCome; save(); toScreen('toast'); G._afterToast='checks'; return; }
+  runChecks();
+}
+function runChecks(){
+  // random event (max per year)
+  if(G.evYear<BAL.eventsPerYear && Math.random()<0.45){ const ev=pickEvent(); if(ev){ G.evYear++; G.curEvent=ev; toScreen('event'); return; } }
+  // mind battle if 의지<=0
+  if(G.stats.의지<=0){ startBattle(); return; }
+  // inspection
+  if(G.stats.의심>=BAL.inspect.threshold && Math.random()<BAL.inspect.chance){ startInspect(); return; }
+  // report card every 4 turns
+  if(G.turn%4===0){ toScreen('report'); return; }
+  advanceTurn();
+}
+function pickEvent(){ const cand=TXT.events.filter(e=>!e.req||(e.req==='faria'&&G.faria)); return cand.length?cand[Math.floor(Math.random()*cand.length)]:null; }
+
+/* ---- event ---- */
+function drawEvent(){
+  px(0,0,LW,LH,P.bg); drawCell(); panelBox(10,180,160,70);
+  const e=G.curEvent; wrap(e.t, 20,190,140,12,P.panelT,8);
+  BTN=[];
+  if(e.choice){ button(24,224,60,18,'나눠준다',()=>{ G.stats.의지=Math.min(100,G.stats.의지+3); G.log=TXT.ratShare; toScreen('toast'); G._afterToast='postEvent'; SFX.up(); });
+    button(96,224,60,18,'쫓아낸다',()=>{ G.log=TXT.ratNo; toScreen('toast'); G._afterToast='postEvent'; SFX.tap(); }); }
+  else { T('▶ 탭',150,236,P.panelE,7); BTN=[{x:0,y:0,w:LW,h:LH,fn:()=>{ if(e.eff){for(const k in e.eff){G.stats[k]+=e.eff[k];clampStat(k);}} postEvent(); }}]; }
+}
+function postEvent(){ G.curEvent=null; if(G.stats.의지<=0){startBattle();return;} if(G.stats.의심>=BAL.inspect.threshold&&Math.random()<BAL.inspect.chance){startInspect();return;} if(G.turn%4===0){toScreen('report');return;} advanceTurn(); }
+
+/* ---- inspection ---- */
+function startInspect(){ G.insp={pickable:Object.keys(G.mats).filter(k=>G.mats[k]>0)}; toScreen('inspect'); SFX.alert(); }
+function drawInspect(){
+  px(0,0,LW,LH,P.bg); drawCell(); panelBox(10,176,160,120);
+  wrap(TXT.inspect, 20,186,140,12,P.panelT,8);
+  BTN=[];
+  const ks=G.insp.pickable;
+  if(ks.length===0){ T('숨길 재료가 없다…',20,214,'#5a4a2a',8); T('▶ 탭',150,270,P.panelE,7);
+    BTN=[{x:0,y:0,w:LW,h:LH,fn:()=>doInspect(null)}]; return; }
+  for(let i=0;i<ks.length;i++){ const y=210+i*20; button(24,y,132,16, ks[i]+' ('+G.mats[ks[i]]+')', ()=>doInspect(ks[i]), {sz:7}); }
+}
+function doInspect(keep){
+  const c=BAL.inspect;
+  for(const k in G.mats){ if(k===keep) continue; if(G.mats[k]>0){ let lost=0; for(let n=0;n<G.mats[k];n++) if(Math.random()<c.confisc) lost++; G.mats[k]-=lost; } }
+  G.stats.땅굴=Math.max(0,G.stats.땅굴-c.tunnelLoss); G.stats.의심=Math.max(0,G.stats.의심-c.suspDrop);
+  let solo=false; if(G.stats.의심+c.suspDrop>=c.soloAt){ /* was high */ }
+  if((G.insp._suspBefore||G.stats.의심+c.suspDrop)>=c.soloAt){ G.solo=true; solo=true; }
+  G.log=TXT.inspectDone+(solo?'\n'+TXT.solo:''); toScreen('toast'); G._afterToast='postInspect';
+}
+function postInspect(){ if(G.turn%4===0){toScreen('report');return;} advanceTurn(); }
+
+/* ---- report card (every 4 turns) ---- */
+function drawReport(){
+  px(0,0,LW,LH,'#141018'); panelBox(8,20,164,280);
+  T(yearOf(G.turn)+'년 성적표', LW/2, 34, P.panelT, 11,'center');
+  const order=['지식','언어','체력','의지','땅굴','의심'];
+  for(let i=0;i<order.length;i++){ const k=order[i], y=58+i*24;
+    T(k, 22, y, P.panelT, 8); const bx=54,bw=90; rr(bx,y,bw,10,4,'#00000022'); rr(bx+1,y+1,(bw-2)*(G.stats[k]/100),8,3,P.bar[k]);
+    T(''+G.stats[k], bx+bw+4, y, P.panelT, 8); }
+  // faria remark
+  let key='낮음'; let mx=-1; ['지식','체력','의지'].forEach(k=>{ if(G.stats[k]>mx){mx=G.stats[k];key=k;} });
+  if(G.stats.의심>=60) key='의심'; if(mx<25 && G.stats.의심<60) key='낮음';
+  wrap('파리아: '+(TXT.report[key]||TXT.report.낮음), 22, 210, 128, 12, '#4a3a1e', 8);
+  T('▶ 탭해서 계속', LW/2, 280, P.panelE, 8,'center');
+  BTN=[{x:0,y:0,w:LW,h:LH,fn:()=>{ SFX.page(); advanceTurn(); }}];
+}
+
+/* ---- craft screen ---- */
+function openCraft(){ toScreen('craft'); }
+function recipeReady(name){ const r=BAL.recipes[name]; if(r.unlock){ if(r.unlock.turn&&G.turn<r.unlock.turn) return false; for(const s in r.unlock){ if(s!=='turn'&&G.stats[s]<r.unlock[s]) return false; } } return true; }
+function canPay(name){ const r=BAL.recipes[name]; for(const m in r.mat){ if((G.mats[m]||0)<r.mat[m]) return false; } return true; }
+function drawCraft(){
+  px(0,0,LW,LH,P.bg); px(0,0,LW,24,'#0b0d16'); T('제작', 8,6,P.gold,10);
+  let mstr=''; for(const k in G.mats) mstr+=k+G.mats[k]+' '; T(mstr,8,28,P.dim,7);
+  BTN=[]; const names=Object.keys(BAL.recipes); let y=42;
+  for(const nm of names){ const r=BAL.recipes[nm]; const rdy=recipeReady(nm); const owned=(r.kind==='item'&&G.items[nm])||(r.kind==='passive'&&G.passives[nm]);
+    rr(8,y,164,42,5,'#171a26'); ro(8,y,164,42,5,'#2a3048',1);
+    T(nm, 14,y+4,rdy?P.gold:P.dim,9); let need=''; for(const m in r.mat)need+=m+'×'+r.mat[m]+' '; T(need,14,y+18,P.dim,7);
+    T(r.desc,14,y+29,'#6f7690',6);
+    if(owned) T('보유',150,y+6,P.ok,8,'right');
+    else if(!rdy) T('잠김',150,y+6,'#7a8098',7,'right');
+    else { const pay=canPay(nm); button(120,y+22,46,16, pay?'만들기':'재료?', ()=>{ if(pay)makeItem(nm); }, {off:!pay, sz:7}); }
+    y+=46;
+  }
+  button(8,290,164,22,'◀ 감방으로',()=>{ toScreen('cell'); },{sz:8});
+}
+function makeItem(nm){ const r=BAL.recipes[nm]; for(const m in r.mat) G.mats[m]-=r.mat[m];
+  if(r.kind==='item') G.items[nm]=true; else G.passives[nm]=true; SFX.up(); G.log=nm+'을(를) 만들었다!'; toScreen('toast'); G._afterToast='craft'; }
+
+/* ---- mind battle (간이판) ---- */
+let bt=null;
+function startBattle(){ const es=Object.keys(BAL.enemies); const en=es[Math.floor(Math.random()*es.length)];
+  bt={en, ehp:BAL.enemies[en], emax:BAL.enemies[en], php:Math.max(30,G.stats.의지), pmax:Math.max(30,G.stats.의지), msg:TXT.battle[en].in, phase:'msg'};
+  G.battles++; toScreen('battle'); SFX.alert(); }
+function drawBattle(){
+  px(0,0,LW,LH,'#0c0812'); for(let i=0;i<40;i++)px((i*61%LW),(i*47%160),2,2,i%3?'#241c33':'#3a2f4a');
+  // enemy blob (abstract)
+  const ex=LW/2, ey=70; const c={절망:'#4a4a6a',분노:'#c0503a',광기:'#7a5aa0'}[bt.en];
+  const pulse=6+Math.sin(tick*0.2)*3; X.fillStyle=c; X.beginPath(); X.arc(ex,ey,22+pulse*0.2,0,7); X.fill();
+  X.fillStyle='#0008'; X.beginPath(); X.arc(ex-7,ey-4,3,0,7); X.arc(ex+7,ey-4,3,0,7); X.fill();
+  T(bt.en, LW/2, 30, P.ink, 10,'center');
+  rr(LW/2-40,44,80,7,3,'#000'); rr(LW/2-39,45,78*(bt.ehp/bt.emax),5,2,P.red);
+  // player will bar
+  T('의지', 10, 150, P.dim,8); rr(38,150,110,9,4,'#000'); rr(39,151,108*(bt.php/bt.pmax),7,3,P.bar.의지); T(bt.php+'/'+bt.pmax,150,150,P.ink,7);
+  panelBox(8,170,164,60); wrap(bt.msg||'', 18,180,144,12, P.panelT, 8);
+  BTN=[];
+  if(bt.phase==='msg'){ T('▶ 탭',150,214,P.panelE,7); BTN=[{x:0,y:0,w:LW,h:LH,fn:()=>{ bt.phase='menu'; }}]; return; }
+  if(bt.phase==='menu'){
+    const minds=['기억','사색','희망'];
+    for(let i=0;i<3;i++){ const m=minds[i]; const locked=(BAL.minds[m].req==='faria'&&!G.faria);
+      button(8+i*56,242,52,20, m, ()=>useMind(m), {off:locked, sz:8}); }
+    T('마음가짐을 골라 맞서라', LW/2, 270, P.dim,7,'center'); return;
+  }
+  if(bt.phase==='win'||bt.phase==='lose'){ T('▶ 탭',150,214,P.panelE,7); BTN=[{x:0,y:0,w:LW,h:LH,fn:()=>endBattle()}]; }
+}
+function useMind(m){ const M=BAL.minds[m]; let dmg=M.base||0; if(M.knowDiv) dmg+=Math.floor(G.stats.지식/M.knowDiv);
+  if(M.strong===bt.en) dmg*=2; bt.ehp-=dmg; SFX.up();
+  if(bt.ehp<=0){ bt.ehp=0; bt.msg=TXT.battle[bt.en].win; bt.phase='win'; return; }
+  // enemy hits
+  const [lo,hi]=BAL.enemyAtk; const a=lo+Math.floor(Math.random()*(hi-lo+1)); bt.php-=a; bt.msg=bt.en+'의 공격! 의지 -'+a+' ('+TXT.battle.mind[m]+')';
+  if(bt.php<=0){ bt.php=0; bt.phase='lose'; bt.msg=TXT.battle.lose; }
+}
+function endBattle(){
+  if(bt.phase==='win'){ G.stats.의지=Math.min(100,G.stats.의지+10); }
+  else { G.losses++; G.stats.의지=BAL.battleLosePenaltyWill; } // lose: consume, restore will
+  clampStat('의지'); const wasLose=bt.phase==='lose'; bt=null;
+  if(wasLose){ advanceTurn(); return; } // lose consumes the season already; move on
+  // win: continue checks (inspection/report)
+  if(G.stats.의심>=BAL.inspect.threshold&&Math.random()<BAL.inspect.chance){startInspect();return;}
+  if(G.turn%4===0){toScreen('report');return;} advanceTurn();
+}
+
+/* ---- toast ---- */
+function drawToast(){
+  // draw underlying cell faintly
+  drawCellScreenStatic();
+  px(0,0,LW,LH,'#0008'); panelBox(14,120,152,90);
+  wrap(G.log||'', 26,140,128,14, P.panelT, 8);
+  T('▶ 탭', 146,190,P.panelE,7);
+  BTN=[{x:0,y:0,w:LW,h:LH,fn:()=>{ const a=G._afterToast; G._afterToast=null; SFX.page();
+    if(a==='checks') runChecks();
+    else if(a==='postEvent') postEvent();
+    else if(a==='postInspect') postInspect();
+    else if(a==='craft') toScreen('craft');
+    else toScreen('cell');
+  }}];
+}
+function drawCellScreenStatic(){ px(0,0,LW,LH,P.bg); px(0,0,LW,24,'#0b0d16'); T(yearOf(G.turn)+'년 '+seasonOf(G.turn),6,4,P.gold,9); drawCell(); drawStats(150); }
+
+/* advance / ending */
+function advanceTurn(){
+  save();
+  if(G.turn>=BAL.totalTurns){ toScreen('ending'); return; }
+  G.turn++; G.slots=[]; maybeYearRollover(); toScreen('cell');
+}
+function drawEnding(){
+  px(0,0,LW,LH,'#0a0810'); for(let i=0;i<40;i++)px((i*61%LW),(i*53%LH),2,2,i%4?'#221a2a':P.gold);
+  const sum=G.stats.지식+G.stats.언어+G.stats.체력+G.stats.의지;
+  let g='B'; if(sum>=BAL.grade.S)g='S'; else if(sum>=BAL.grade.A)g='A';
+  if(G.losses+G.patrolFails>=8 && g!=='B') g = g==='S'?'A':'B'; // 재시도 많으면 하향
+  T('― 제1장 끝 ―', LW/2, 40, P.gold, 12,'center');
+  T('34번 — 사망 처리, 바다에 수장.', LW/2, 70, P.dim, 7,'center');
+  T('탈출 등급', LW/2, 100, P.ink, 8,'center');
+  T(g, LW/2, 118, g==='S'?P.gold:g==='A'?'#7fb0ff':'#e0a060', 40,'center');
+  wrap(TXT.gradeMsg[g], 0, 176, LW, 12, P.ink, 8); X.textAlign='center';
+  T('능력치 합 '+sum+' (지'+G.stats.지식+' 언'+G.stats.언어+' 체'+G.stats.체력+' 의'+G.stats.의지+')', LW/2, 200, P.dim,7,'center');
+  T('전투 패배 '+G.losses+' · 순찰 실패 '+G.patrolFails, LW/2, 214, P.dim,7,'center');
+  T('제2장 — 보물과 새 이름 (예정)', LW/2, 240, '#7f88a8', 7,'center');
+  BTN=[]; button(40,264,100,22,'타이틀로',()=>{ wipe(); G=newGame(); toScreen('title'); },{sz:8});
+  X.textAlign='left';
+}
+
+/* ============== main loop ============== */
+let tick=0;
+function frame(){
+  tick++;
+  X.clearRect(0,0,LW,LH);
+  const s=G?G.screen:'title';
+  if(s==='title') drawTitle();
+  else if(s==='intro') drawIntro();
+  else if(s==='cell') drawCellScreen();
+  else if(s==='progress') drawProgress();
+  else if(s==='settle') drawSettle();
+  else if(s==='event') drawEvent();
+  else if(s==='inspect') drawInspect();
+  else if(s==='report') drawReport();
+  else if(s==='craft') drawCraft();
+  else if(s==='battle') drawBattle();
+  else if(s==='toast') drawToast();
+  else if(s==='ending') drawEnding();
+  drawPops();
+  requestAnimationFrame(frame);
+}
+
+/* input */
+function enableAudio(){ if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended')AC.resume(); }catch(e){} } }
+CV.addEventListener('pointerdown',e=>{ e.preventDefault(); enableAudio();
+  const r=CV.getBoundingClientRect(); const lx=(e.clientX-r.left)/SC, ly=(e.clientY-r.top)/SC;
+  // craft open shortcut: tap 제작 handled via slots; but craft screen entered when 제작 chosen+confirm? -> we open craft immediately when 제작 tapped as action
+  tapHit(lx,ly);
+},{passive:false});
+
+/* if 제작 chosen as an action, open craft screen at confirm instead of progress */
+const _startProgress=startProgress;
+startProgress=function(){ if(G.slots.indexOf('제작')>=0){ // resolve non-craft parts as a normal turn but open craft first
+    // simplest: open craft; crafting doesn't consume the turn in M0 — user crafts then returns and confirms again
+    // remove 제작 from slots so it doesn't double-run; treat 제작 as "visit workshop"
+    G.slots=G.slots.filter(a=>a!=='제작'); openCraft(); return; }
+  _startProgress(); };
+
+/* boot */
+resize();
+G=newGame();
+const sv=load(); // don't auto-load into play; title offers 이어하기
+document.fonts && document.fonts.load("12px 'Galmuri11'").catch(()=>{});
+frame();
 </script>
 </body>
 </html>
