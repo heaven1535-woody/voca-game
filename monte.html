@@ -15688,7 +15688,7 @@ MC.addEvents({
     { "op": "say", "who": "think", "t": "레제르브 등불.{p:200} 모레는 여기가 온통 환하겠지." }
   ],
 
-  /* 1-7 끝: 당테스가 떠난 뒤 탁자 위 세 손 → 화면 정지 → '제1막 끝' */
+  /* 1-7 끝: 당테스가 떠난 뒤 탁자 위 세 손 → 화면 정지 → 정적 → (막 표시 없이) 암전 */
   "a1.hands": [
     { "op": "move", "id": "player", "path": "R1", "speed": 240 },
     { "op": "show", "id": "player", "v": false },
@@ -15710,9 +15710,7 @@ MC.addEvents({
     { "op": "amb", "id": null, "fade": 0 },
     { "op": "flash", "color": "#ffffff", "a": 0.3, "ms": 40 },
     { "op": "grade", "sat": 0.7, "ms": 0 },
-    { "op": "wait", "ms": 1200 },
-    { "op": "caption", "t": "제1막 끝", "ms": 2200 },
-    { "op": "wait", "ms": 400 },
+    { "op": "wait", "ms": 2600 },
     { "op": "set", "flag": "a1.done", "v": true },
     { "op": "call", "ev": "a2.start" }
   ]
@@ -17721,7 +17719,7 @@ MC.addEvents({
     const name = st.dispName || '34번', year = st.year || 1817;
     const summary = args.summary || '가장 행복한 날,\n모든 것을 잃었다.';
     const ledger = [name + '.', '1815년 2월 입소.', '죄목: 기재 없음.', year + '년 현재, 생존.'];
-    const next = args.next || '다음 · 제4막 「27번」';
+    const next = args.next || '다음 이야기 · 「27번」';
     const hook = args.hook || '벽 너머에서, 누군가 파고 있다.';
     const pm = Math.floor((st.playMs || 0) / 60000), stat = '플레이 ' + Math.floor(pm / 60) + ':' + String(pm % 60).padStart(2, '0') + ' · Lv ' + (lead.lv || 1);
     // 시간표
@@ -18177,12 +18175,10 @@ MC.addEvents({
           g.ditherRect(0, y0 + 25, W, H - y0 - 25, '#03050b', Math.round(10 * k));
         }
       }
-      // 로고 + 부제
+      // 로고 (부제 없음 — 원작 이름은 이야기 속에서 드러난다)
       const logo = bakeLogo(), lx = (W - logo.width) >> 1, ly = L.logoY;
       const la = U.lvl(t, 250, 600);
       if (la > 0) U.drawDither(logo, lx, ly, la);
-      const sub = MC.text.bake('몬테크리스토 백작 · 제1장', 'small', '#9aa8c8', { shadow: '#03050b' });
-      if (sub) U.drawDither(sub, (W - sub.width) >> 1, ly + logo.height + 6, U.lvl(t, 700, 500));
       // 1단계 안내
       if (sc.stage === 0 && t > 1100) {
         const k = ((t - 1100) / 533 | 0) % 4, colr = ['#6a7088', '#9aa8c8', '#e8ecf4', '#9aa8c8'][k];
