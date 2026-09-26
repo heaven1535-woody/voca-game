@@ -2,178 +2,172 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>몽테크리스토 — 복수의 서막</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/quiple/galmuri/dist/galmuri.css">
 <style>
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;}
-  html,body{height:100%;background:#05060c;font-family:'Galmuri11','Galmuri9',monospace;color:#e8eefc;}
-  body{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;overflow:hidden;}
-  #wrap{width:100%;max-width:520px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px;}
-  #screen{width:100%;image-rendering:pixelated;background:#000;border:2px solid #26304d;border-radius:6px;box-shadow:0 0 0 2px #0a0e1a,0 8px 24px #000a;}
-  /* touch controls */
-  #pad{width:100%;max-width:520px;display:flex;justify-content:space-between;align-items:center;padding:2px 10px 12px;}
-  .dpad{display:grid;grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,46px);gap:2px;}
-  .dpad button{background:#1a2340;color:#cfe0ff;border:2px solid #33436e;border-radius:8px;font-size:18px;font-family:inherit;}
-  .dpad button:active{background:#2c3c66;}
-  .dpad .sp{background:transparent;border:none;}
-  .abtns{display:flex;gap:14px;align-items:center;}
-  .abtns button{width:62px;height:62px;border-radius:50%;border:2px solid #6b5a2a;font-family:inherit;font-size:20px;font-weight:bold;}
-  #btnA{background:#c9a63a;color:#2a2005;}
-  #btnB{background:#3a4a6e;color:#dfe9ff;border-color:#556188;}
-  .abtns button:active{filter:brightness(1.2);}
-  .lbl{font-size:10px;color:#7f8db0;text-align:center;margin-top:2px;}
-  #hint{font-size:11px;color:#8896bb;text-align:center;line-height:1.5;padding:0 8px;}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0b1020;
+    font-family:'Galmuri11','Galmuri9',monospace;touch-action:none;overscroll-behavior:none;}
+  #screen{display:block;width:100vw;height:100vh;image-rendering:pixelated;background:#0b1020;}
 </style>
 </head>
 <body>
-<div id="wrap">
-  <canvas id="screen" width="320" height="200"></canvas>
-</div>
-<div id="pad">
-  <div>
-    <div class="dpad">
-      <button class="sp"></button><button data-k="up">▲</button><button class="sp"></button>
-      <button data-k="left">◀</button><button class="sp"></button><button data-k="right">▶</button>
-      <button class="sp"></button><button data-k="down">▼</button><button class="sp"></button>
-    </div>
-  </div>
-  <div class="abtns">
-    <div style="text-align:center"><button id="btnB" data-k="cancel">B</button><div class="lbl">취소</div></div>
-    <div style="text-align:center"><button id="btnA" data-k="confirm">A</button><div class="lbl">확인</div></div>
-  </div>
-</div>
-<div id="hint">방향키/WASD 이동 · Z 또는 A 확인 · X 또는 B 취소 (폰은 아래 버튼)</div>
-
+<canvas id="screen"></canvas>
 <script>
 const CV=document.getElementById('screen'), X=CV.getContext('2d');
-X.imageSmoothingEnabled=false;
-const W=320,H=200,TS=16;
+let VW=360, VH=640, DPR=1, TS=40;
 
-/* ---------- palette ---------- */
+/* ---------- palette (Kairosoft-bright) ---------- */
 const C={
-  night:'#0b1024', sea1:'#12335e', sea2:'#1b4a7a', sea3:'#2f6ea0', foam:'#bfe3f2',
-  moon:'#f4f1d0', moon2:'#c9c79c', star:'#fdfdf0',
-  stone:'#4a4f63', stone2:'#3a3e50', stoneL:'#5f6479', floor:'#2b2f40',
-  wall:'#2a2333', wallL:'#3a3145', grass:'#2f6b3c', grass2:'#276033', dirt:'#5a4632',
-  wood:'#6b4a2a', woodL:'#835c33', gold:'#e9c24a', goldD:'#a9832a',
-  skin:'#e8b98f', hair:'#2a1e14', shirt:'#3560a8', shirtD:'#274a86',
-  robe:'#6a6f82', robeD:'#4d5163', red:'#c0392b', text:'#f2f4ff',
-  win:'#101632', winB:'#4a5headd', winB2:'#8fa6d8', shadow:'#00000066'
+  bg:'#0b1020',
+  sky1:'#173a63', sky2:'#0e2647',
+  sea1:'#3aa8d8', sea2:'#2b8fc4', sea3:'#7fd4ec', foam:'#eafaff',
+  moon:'#fff6c8',
+  grass:'#7cc36a', grassD:'#5fae55', grassT:'#95d67f',
+  path:'#e6d2a0', pathD:'#cdb884',
+  wall:'#8c95b0', wallD:'#6b7290', wallL:'#aab2c9', floor:'#3f4a६0',
+  dstone:'#565f7e', dstoneD:'#434a63', dfloor:'#2f3650', dfloorL:'#3a4260',
+  wood:'#c78a46', woodD:'#a06e33', woodL:'#e0a860',
+  gold:'#ffd24a', goldD:'#d69f27',
+  ink:'#20233a', line:'#141726',
+  skin:'#ffcfa0', skinS:'#e0a878',
+  text:'#22263f', textL:'#fff7ea',
+  panel:'#fbf3dc', panelE:'#c9a86a', panelE2:'#8f6f3a', panelSh:'#0006',
+  red:'#e05a4a', hpg:'#66c96a', mpb:'#5aa9e6',
+  sel:'#ffd24a'
 };
-C.winB='#3a4a78';
+C.floor='#3f4a60';
 
-/* ---------- input ---------- */
-const keys={up:0,down:0,left:0,right:0,confirm:0,cancel:0};
-let confirmEdge=false, cancelEdge=false;
-const KMAP={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',w:'up',s:'down',a:'left',d:'right',W:'up',S:'down',A:'left',D:'right',z:'confirm',Z:'confirm',Enter:'confirm',x:'cancel',X:'cancel',Escape:'cancel',' ':'confirm'};
-addEventListener('keydown',e=>{const k=KMAP[e.key]; if(k){ if(!keys[k]){ if(k==='confirm')confirmEdge=true; if(k==='cancel')cancelEdge=true;} keys[k]=1; e.preventDefault();}});
-addEventListener('keyup',e=>{const k=KMAP[e.key]; if(k){keys[k]=0; e.preventDefault();}});
-document.querySelectorAll('#pad button[data-k]').forEach(b=>{
-  const k=b.dataset.k;
-  const dn=e=>{e.preventDefault(); if(!keys[k]){ if(k==='confirm')confirmEdge=true; if(k==='cancel')cancelEdge=true;} keys[k]=1;};
-  const up=e=>{e.preventDefault(); keys[k]=0;};
-  b.addEventListener('touchstart',dn,{passive:false}); b.addEventListener('touchend',up,{passive:false});
-  b.addEventListener('mousedown',dn); b.addEventListener('mouseup',up); b.addEventListener('mouseleave',up);
+/* ---------- resize ---------- */
+function resize(){
+  VW=Math.round(document.documentElement.clientWidth);
+  VH=Math.round(window.innerHeight);
+  DPR=Math.min(2, window.devicePixelRatio||1);
+  CV.width=Math.round(VW*DPR); CV.height=Math.round(VH*DPR);
+  CV.style.width=VW+'px'; CV.style.height=VH+'px';
+  X.setTransform(DPR,0,0,DPR,0,0);
+  X.imageSmoothingEnabled=false;
+  TS=Math.max(30, Math.floor(Math.min(VW,VH)/9));
+}
+addEventListener('resize',resize); resize();
+
+/* ---------- draw helpers ---------- */
+function px(x,y,w,h,col){X.fillStyle=col;X.fillRect(Math.round(x),Math.round(y),Math.ceil(w),Math.ceil(h));}
+function rr(x,y,w,h,r,col){X.fillStyle=col;X.beginPath();X.roundRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h),r);X.fill();}
+function circ(x,y,r,col){X.fillStyle=col;X.beginPath();X.arc(x,y,r,0,7);X.fill();}
+function txt(s,x,y,col,size,align){X.fillStyle=col;X.font=size+"px 'Galmuri11',monospace";X.textAlign=align||'left';X.textBaseline='top';X.fillText(s,x,y);}
+function fs(base){return Math.max(11, Math.round(base));}
+
+/* ---------- input (touch/pointer) ---------- */
+let tap=null;
+function toLocal(e){const r=CV.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
+CV.addEventListener('pointerdown',e=>{e.preventDefault();const p=toLocal(e);tap={x:p.x,y:p.y};},{passive:false});
+// keyboard optional (desktop)
+const kq=[];
+addEventListener('keydown',e=>{
+  const k=e.key;
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d','W','A','S','D'].includes(k)){kq.push(k);e.preventDefault();}
+  else if([' ','Enter','z','Z','x','X'].includes(k)){tap={confirm:true};e.preventDefault();}
 });
-function consumeConfirm(){ if(confirmEdge){confirmEdge=false;return true;} return false; }
-function consumeCancel(){ if(cancelEdge){cancelEdge=false;return true;} return false; }
 
-/* ---------- pixel helpers ---------- */
-function px(x,y,w,h,col){X.fillStyle=col;X.fillRect(x|0,y|0,w|0,h|0);}
-function textPix(str,x,y,col,size){ X.fillStyle=col||C.text; X.font=(size||10)+"px 'Galmuri11',monospace"; X.textBaseline='top'; X.fillText(str,x,y); }
-function textCenter(str,cx,y,col,size){ X.textAlign='center'; textPix(str,cx,y,col,size); X.textAlign='left'; }
-
-/* ---------- actors (chibi 16x16 drawn procedurally) ---------- */
+/* ---------- actors (cute chibi) ---------- */
 const ACTORS={
-  edmond:{hair:'#2a1e14',skin:C.skin,body:C.shirt,bodyD:C.shirtD},
-  edmondCount:{hair:'#20202a',skin:C.skin,body:'#20242f',bodyD:'#14161d',cape:'#6a1620'},
-  mercedes:{hair:'#3a2416',skin:'#f0c6a0',body:'#b0446e',bodyD:'#8f3559'},
-  faria:{hair:'#c9c9c9',skin:'#d9b48c',body:C.robe,bodyD:C.robeD},
-  villain:{hair:'#1a1a1a',skin:'#d9a980',body:'#4a2a4a',bodyD:'#382038'},
-  guard:{hair:'#33270f',skin:'#d0a070',body:'#5a1f1f',bodyD:'#421616'}
+  edmond:{hair:'#3a2a18',skin:C.skin,body:'#3f7ad0',bodyD:'#2f5ea8'},
+  count:{hair:'#1c1c26',skin:C.skin,body:'#3a3550',bodyD:'#26223a',cape:'#b23142'},
+  mercedes:{hair:'#5a3a20',skin:'#ffd8b0',body:'#e56aa0',bodyD:'#c24d82'},
+  faria:{hair:'#e8e8e8',skin:'#eabf95',body:'#8a8fa6',bodyD:'#6b7088'},
+  villain:{hair:'#20202a',skin:'#e6b48a',body:'#6a4a8a',bodyD:'#4c3266'},
+  villain2:{hair:'#3a2a1a',skin:'#e6b48a',body:'#4a7a5a',bodyD:'#356043'},
+  guard:{hair:'#3a2a10',skin:'#e0aa78',body:'#c0503a',bodyD:'#963a28'}
 };
-function drawActor(cx,cy,type,dir,step){
-  const p=ACTORS[type]||ACTORS.edmond;
-  const bob=step?( (step%2)? -1:0 ):0;
-  const x=cx, y=cy+bob;
+function actor(sx,sy,type,dir,frame){
+  const p=ACTORS[type]||ACTORS.edmond, u=TS/16;
+  const bob=frame? -u*0.6:0;
+  const cx=sx+TS/2, top=sy+u*1.5+bob;
   // shadow
-  X.fillStyle=C.shadow; X.beginPath?0:0; px(x+2,y+15,12,2,'#00000055');
+  X.fillStyle='#0004'; X.beginPath(); X.ellipse(cx, sy+TS-u*1.5, TS*0.30, TS*0.12, 0,0,7); X.fill();
+  const O=C.line;
   // body
-  px(x+3,y+8,10,7,p.bodyD);
-  px(x+4,y+8,8,6,p.body);
-  if(p.cape){ px(x+2,y+8,2,8,p.cape); px(x+12,y+8,2,8,p.cape); }
+  rr(cx-4.6*u, top+7.2*u, 9.2*u, 7.4*u, 2.4*u, O);
+  rr(cx-3.8*u, top+7.6*u, 7.6*u, 6.4*u, 2*u, p.bodyD);
+  rr(cx-3.8*u, top+7.6*u, 7.6*u, 4.2*u, 2*u, p.body);
+  if(p.cape){ rr(cx-5.6*u, top+7*u, 2.2*u, 8*u, 1*u, p.cape); rr(cx+3.4*u, top+7*u, 2.2*u, 8*u, 1*u, p.cape); }
+  // feet
+  px(cx-3*u, top+14.2*u, 2.2*u, 1.6*u, O); px(cx+0.8*u, top+14.2*u, 2.2*u, 1.6*u, O);
   // head
-  px(x+4,y+1,8,7,p.skin);
+  rr(cx-5*u, top-0.6*u, 10*u, 9*u, 3.4*u, O);
+  rr(cx-4.3*u, top, 8.6*u, 8*u, 3*u, p.skin);
   // hair
-  px(x+3,y,10,3,p.hair); px(x+3,y+2,2,3,p.hair); px(x+11,y+2,2,3,p.hair);
-  // eyes depending on dir
+  rr(cx-4.6*u, top-0.6*u, 9.2*u, 4.2*u, 2.6*u, p.hair);
+  px(cx-4.6*u, top+1.6*u, 1.6*u, 3*u, p.hair); px(cx+3*u, top+1.6*u, 1.6*u, 3*u, p.hair);
+  // face (down/side)
   if(dir!=='up'){
-    px(x+6,y+4,1,2,'#20202a'); px(x+9,y+4,1,2,'#20202a');
+    const ex=dir==='left'?-0.8*u: dir==='right'?0.8*u:0;
+    circ(cx-2.2*u+ex, top+4.4*u, 0.9*u, C.ink);
+    circ(cx+2.2*u+ex, top+4.4*u, 0.9*u, C.ink);
+    // cheeks
+    X.fillStyle='#ff9a9a55'; X.beginPath(); X.arc(cx-3*u+ex, top+6*u, 1*u,0,7); X.arc(cx+3*u+ex, top+6*u, 1*u,0,7); X.fill();
   }
-  // legs
-  px(x+4,y+15,3,1,'#1a1a22'); px(x+9,y+15,3,1,'#1a1a22');
 }
 
 /* ---------- tiles ---------- */
-function drawTile(t,x,y,anim){
+function tile(t,x,y,anim){
+  const u=TS/16;
   switch(t){
-    case '~': { // sea (animated)
-      px(x,y,TS,TS, C.sea1);
-      const o=Math.sin((x*0.3)+anim*0.06)*2;
-      px(x, y+4+o, TS,2, C.sea2);
-      px(x, y+9-o, TS,2, C.sea3);
-      if(((x/TS + (anim>>5))|0)%3===0) px(x+2,y+3, 4,1, C.foam);
-      break; }
-    case '#': { px(x,y,TS,TS,C.stone2); px(x,y,TS,1,C.stoneL); px(x,y,1,TS,C.stoneL);
-      px(x+1,y+1,TS-2,TS-2,C.stone); px(x+4,y+4,3,3,C.stone2); px(x+9,y+9,3,3,C.stone2); break; }
-    case 'B': { px(x,y,TS,TS,C.wall); px(x,y,TS,1,C.wallL);
+    case '~':{ px(x,y,TS,TS,C.sea1);
+      const o=Math.sin(x*0.05+anim*0.06)*2*u;
+      px(x,y+5*u+o,TS,1.6*u,C.sea2); px(x,y+10*u-o,TS,1.4*u,C.sea3);
+      if(((x/TS+(anim>>5))|0)%2===0) px(x+3*u,y+3*u,4*u,1.2*u,C.foam); break; }
+    case 'W':{ px(x,y,TS,TS,C.wood); px(x,y,TS,1.4*u,C.woodL); px(x,y+7*u,TS,1.2*u,C.woodD); px(x+7.4*u,y,1.2*u,TS,C.woodD); break; }
+    case ',':{ px(x,y,TS,TS,C.grass); px(x,y,TS,1.4*u,C.grassT);
+      X.fillStyle=C.grassD; const s=((x*13+y*7)>>4)%4; px(x+3*u+s*u,y+9*u,1.4*u,2.4*u,C.grassD); px(x+10*u,y+5*u,1.2*u,2*u,C.grassD); break; }
+    case 'p':{ px(x,y,TS,TS,C.path); px(x,y,TS,1.2*u,'#f2e3b8'); px(x,y+TS-1.2*u,TS,1.2*u,C.pathD); if(((x+y)>>4)%2)px(x+4*u,y+4*u,2*u,2*u,C.pathD); break; }
+    case 'T':{ px(x,y,TS,TS,C.grass); px(x+6.5*u,y+8*u,3*u,7*u,C.woodD);
+      circ(x+8*u,y+6*u,5.2*u,C.line); circ(x+8*u,y+5.4*u,4.6*u,'#57a84e'); circ(x+6.2*u,y+4.4*u,1.6*u,C.grassT); break; }
+    case 'x':{ px(x,y,TS,TS,C.grass); rr(x+2*u,y+2*u,12*u,12*u,1.6*u,C.line); rr(x+2.7*u,y+2.7*u,10.6*u,10.6*u,1.2*u,C.wood); px(x+2.7*u,y+7.2*u,10.6*u,1.2*u,C.woodD); break; }
+    case '#':{ px(x,y,TS,TS,C.wall); px(x,y,TS,1.6*u,C.wallL); px(x,y+TS-1.6*u,TS,1.6*u,C.wallD);
+      px(x+2*u,y+3*u,5*u,3*u,C.wallD); px(x+9*u,y+9*u,4*u,3*u,C.wallD); break; }
+    case 'B':{ px(x,y,TS,TS,C.dstone); px(x,y,TS,1.6*u,'#636c8c'); px(x,y+TS-1.6*u,TS,1.6*u,C.dstoneD);
       // barred window
-      px(x+3,y+3,10,8,'#0a0a12'); px(x+5,y+3,1,8,'#5a5a6a'); px(x+8,y+3,1,8,'#5a5a6a'); px(x+11,y+3,1,8,'#5a5a6a'); break; }
-    case '.': { px(x,y,TS,TS,C.floor); px(x,y,TS,1,'#343a4f'); if(((x+y)>>4)%2) px(x+2,y+2,2,2,'#242838'); break; }
-    case ',': { px(x,y,TS,TS,C.grass2); px(x+2,y+3,2,2,C.grass); px(x+9,y+8,2,2,C.grass); px(x+5,y+11,2,2,C.grass); break; }
-    case 'd': { px(x,y,TS,TS,C.dirt); px(x+3,y+5,2,2,'#6b5540'); px(x+10,y+9,2,2,'#4a3826'); break; }
-    case 'W': { // wooden dock
-      px(x,y,TS,TS,C.wood); px(x,y+5,TS,1,'#4a3018'); px(x,y+11,TS,1,'#4a3018'); px(x+7,y,1,TS,'#4a3018'); break; }
-    case 'D': { px(x,y,TS,TS,C.wall); px(x+2,y+1,12,15,C.wood); px(x+2,y+1,12,1,C.woodL); px(x+11,y+8,2,2,C.gold); break; }
-    case 'C': { px(x,y,TS,TS,C.stone2); // cracked wall
-      X.strokeStyle='#12131c'; X.lineWidth=1; X.beginPath(); X.moveTo(x+8,y); X.lineTo(x+5,y+6); X.lineTo(x+10,y+10); X.lineTo(x+6,y+16); X.stroke(); break; }
-    case 'T': { px(x,y,TS,TS,C.grass2); px(x+6,y+8,4,8,C.wood); px(x+2,y+1,12,9,C.grass); px(x+3,y+3,3,3,'#3a824a'); break; }
-    case 'x': { px(x,y,TS,TS,C.floor); px(x+2,y+2,12,12,C.wood); px(x+2,y+2,12,1,C.woodL); px(x+2,y+2,1,12,C.woodL); break; } // crate
-    case 'g': { px(x,y,TS,TS,C.floor); // gold pile
-      px(x+2,y+9,12,5,C.goldD); px(x+3,y+7,4,4,C.gold); px(x+8,y+6,4,5,C.gold); px(x+5,y+4,3,3,C.gold); break; }
-    default: px(x,y,TS,TS, C.floor);
+      rr(x+3*u,y+3*u,10*u,8*u,1*u,'#12142400'); px(x+3.5*u,y+3.5*u,9*u,7*u,'#12162b');
+      px(x+5.6*u,y+3.5*u,1*u,7*u,'#8a90a8'); px(x+9*u,y+3.5*u,1*u,7*u,'#8a90a8'); px(x+3.5*u,y+6.5*u,9*u,1*u,'#8a90a8'); break; }
+    case '.':{ px(x,y,TS,TS,C.dfloor); if(((x+y)>>4)%2)px(x,y,TS,TS,C.dfloorL); px(x,y,TS,1*u,'#00000022'); break; }
+    case 'D':{ px(x,y,TS,TS,C.dstone); rr(x+2*u,y+1*u,12*u,15*u,2*u,C.line); rr(x+2.6*u,y+1.6*u,10.8*u,13.8*u,1.6*u,C.wood);
+      px(x+2.6*u,y+1.6*u,10.8*u,1.4*u,C.woodL); circ(x+11.5*u,y+8.5*u,1.2*u,C.gold); break; }
+    case 'C':{ px(x,y,TS,TS,C.dstone);
+      X.strokeStyle='#12142b'; X.lineWidth=Math.max(1,1.4*u); X.beginPath(); X.moveTo(x+8*u,y); X.lineTo(x+5*u,y+6*u); X.lineTo(x+10*u,y+10*u); X.lineTo(x+6*u,y+TS); X.stroke(); break; }
+    case 'g':{ px(x,y,TS,TS,C.dfloor); rr(x+2*u,y+9*u,12*u,5*u,1.4*u,C.goldD);
+      circ(x+5*u,y+8*u,2.4*u,C.gold); circ(x+9.5*u,y+7*u,2.8*u,C.gold); circ(x+7*u,y+5*u,2*u,'#fff0a8'); px(x+6.4*u,y+4.6*u,0.8*u,0.8*u,'#fff'); break; }
+    default: px(x,y,TS,TS,C.dfloor);
   }
 }
 
-/* ---------- rooms ---------- */
-// 20 cols x 12 rows
+/* ---------- rooms (20x12) ---------- */
+function city(nm,price,grp){return {type:'city',name:nm,price:price,grp:grp,owner:null,lv:0};}
 const ROOMS={
-  marseille:{
-    name:'마르세유 항구, 1815',
+  marseille:{ name:'마르세유 항구 · 1815',
     tiles:[
       '~~~~~~~~~~~~~~~~~~~~',
       '~~~~~~~~~~~~~~~~~~~~',
-      '~~~~~~~~~~~~~~~~~~~~',
       'WWWWWWWWWWWWWWWWWWWW',
-      ',,,,,,,WW,,,,,,,,,,,',
-      ',,T,,,,WW,,,,,x,,,T,',
-      ',,,,,,,,,,,,,,,,,,,,',
-      ',,,,,,,,,,,,,,,,x,,,',
-      '#D#,,,,,,,,,,,,,,,,,',
+      ',,,,,,,ppp,,,,,,,,,,',
+      ',,T,,,,,p,,,,,x,,,T,',
+      ',,,,,,,,p,,,,,,,,,,,',
+      ',,,,,,,,p,,,,,x,,,,,',
+      ',,,,,,,,p,,,,,,,,,,,',
+      '###ppppppp,,,,,,,,,,',
+      '#D#,,,,,,,,,,,,,,,T,',
       '###,,,,,,,,,,,,,,,,,',
-      ',,,,,,,,,,,,,,,,,,,,',
       ',,,,,,,,,,,,,,,,,,,,'
     ],
-    start:[10,10,'up'],
+    start:[8,10,'up'],
     npcs:[
-      {id:'mercedes',x:9,y:6,type:'mercedes',dir:'down',name:'메르세데스'},
-      {id:'danglars',x:4,y:9,type:'villain',dir:'down',name:'당글라르'},
-      {id:'fernand',x:15,y:9,type:'villain',dir:'down',name:'페르낭'}
-    ]
-  },
-  cell:{
-    name:'이프 성 지하 감옥',
+      {id:'mercedes',x:8,y:4,type:'mercedes',dir:'down',name:'메르세데스'},
+      {id:'danglars',x:4,y:8,type:'villain',dir:'down',name:'당글라르'},
+      {id:'fernand',x:14,y:8,type:'villain2',dir:'down',name:'페르낭'}
+    ]},
+  cell:{ name:'이프 성 지하 감옥',
     tiles:[
       'BBBBBBBBBBBBBBBBBBBB',
       'B..................B',
@@ -188,279 +182,212 @@ const ROOMS={
       'BBBBBBBBBBBBBBBBBBBB',
       '                    '
     ],
-    start:[9,7,'down'],
-    npcs:[]
-  },
-  corridor:{
-    name:'이프 성 복도',
+    start:[9,8,'up'], npcs:[]},
+  corridor:{ name:'이프 성 복도',
     tiles:[
       'BBBBBBBBBBBBBBBBBBBB',
       'B..................B',
-      'B..###########.....B',
-      'B..#.........#.....B',
-      'B..#.........#.....B',
-      'B..#.........#.....D',
-      'B..#.........#.....B',
-      'B..###.#######.....B',
+      'B..############....B',
+      'B..#........#.....B'.padEnd(20,'.').slice(0,19)+'B',
+      'B..#........#......B',
+      'B..#........#......D',
+      'B..#........#......B',
+      'B..######.###......B',
       'B..................B',
       'B..................B',
       'BBBBBBBBBBBBBBBBBBBB',
       '                    '
     ],
     start:[3,9,'up'],
-    npcs:[
-      {id:'guard',x:14,y:5,type:'guard',dir:'left',name:'간수'}
-    ]
-  },
-  treasure:{
-    name:'몬테크리스토 섬 — 보물 동굴',
+    npcs:[{id:'guard',x:14,y:5,type:'guard',dir:'left',name:'간수'}]},
+  treasure:{ name:'몬테크리스토 섬 · 보물 동굴',
     tiles:[
       'BBBBBBBBBBBBBBBBBBBB',
       'B..................B',
       'B...g....g....g....B',
       'B..................B',
-      'B......gggggg......B',
       'B.....gggggggg.....B',
-      'B......gggggg......B',
+      'B....gggggggggg....B',
+      'B.....gggggggg.....B',
       'B..................B',
       'B........gg........B',
       'B........DD........B',
       'BBBBBBBBBBBBBBBBBBBB',
       '                    '
     ],
-    start:[9,8,'up'],
-    npcs:[]
-  }
+    start:[9,8,'up'], npcs:[]}
 };
 
-/* ---------- game state ---------- */
+/* ---------- state ---------- */
 const G={
-  mode:'title', room:null, roomKey:'', anim:0,
-  px:0, py:0, dir:'down', step:0, moving:null, moveT:0,
-  flags:{}, cut:null, cutI:0, waitInput:false,
-  player:{name:'에드몽',lv:1,hp:60,maxhp:60,mp:12,maxmp:12,atk:14,def:6,
-    skills:[{n:'반격의 검',mp:5,type:'atk',pow:1.9,msg:'에드몽의 반격의 검!'},
-            {n:'희망',mp:4,type:'heal',pow:24,msg:'에드몽은 희망을 되새겼다!'}]},
-  battle:null, dialog:null, fade:0, fadeDir:0, fadeCb:null,
-  title:{sel:0}
+  mode:'title', room:null, roomKey:'', anim:0, cam:{x:0,y:0},
+  px:0,py:0,dir:'down', moving:null, moveT:0, path:null, pend:null,
+  flags:{}, cut:null, cutI:0, _cutCb:null, _dialogCb:null,
+  dialog:null, fade:0, fadeDir:0, fadeCb:null,
+  player:{name:'에드몽',lv:1,hp:60,maxhp:60,mp:12,maxmp:12,atk:14,def:6},
+  battle:null, title:{sel:0, showHelp:false, rects:[]}
 };
 
-/* ---------- room helpers ---------- */
-function loadRoom(key,keepPos){
-  G.room=ROOMS[key]; G.roomKey=key;
+/* ---------- rooms helpers ---------- */
+function loadRoom(key){ G.room=ROOMS[key]; G.roomKey=key;
   G.room.npcsLive=JSON.parse(JSON.stringify(G.room.npcs));
-  if(!keepPos){ G.px=G.room.start[0]; G.py=G.room.start[1]; G.dir=G.room.start[2]; }
-  G.moving=null;
-}
-function tileAt(cx,cy){ const r=G.room.tiles; if(cy<0||cy>=r.length||cx<0||cx>=r[0].length) return '#'; return r[cy][cx]; }
-function solid(cx,cy){
-  const t=tileAt(cx,cy);
-  if('#~BTx'.includes(t)) return true;
-  // npc occupying
-  if(G.room.npcsLive) for(const n of G.room.npcsLive){ if(n.x===cx&&n.y===cy) return true; }
-  return false;
-}
-function npcFacing(){
-  let dx=0,dy=0; if(G.dir==='up')dy=-1; if(G.dir==='down')dy=1; if(G.dir==='left')dx=-1; if(G.dir==='right')dx=1;
-  const tx=G.px+dx, ty=G.py+dy;
-  if(G.room.npcsLive) for(const n of G.room.npcsLive){ if(n.x===tx&&n.y===ty) return n; }
-  const t=tileAt(tx,ty);
-  return {tile:t, tx,ty};
+  G.px=G.room.start[0]; G.py=G.room.start[1]; G.dir=G.room.start[2];
+  G.moving=null; G.path=null; G.pend=null; }
+function cols(){return G.room.tiles[0].length;}
+function rows(){return G.room.tiles.length;}
+function tileAt(x,y){ const r=G.room.tiles; if(y<0||y>=r.length||x<0||x>=r[0].length) return '#'; return r[y][x]; }
+function npcAt(x,y){ if(G.room.npcsLive) for(const n of G.room.npcsLive) if(n.x===x&&n.y===y) return n; return null; }
+function solid(x,y){ const t=tileAt(x,y); if('#~BTWx'.indexOf(t)>=0) return true; if(npcAt(x,y)) return true; return false; }
+function interactable(x,y){ const t=tileAt(x,y); if(npcAt(x,y)) return true; return 'DCg'.indexOf(t)>=0; }
+
+/* ---------- pathfinding (BFS) ---------- */
+function bfs(sx,sy,tx,ty,allowTarget){
+  const C0=cols(),R0=rows(); const key=(x,y)=>y*C0+x;
+  const prev=new Map(); prev.set(key(sx,sy),-1); const q=[[sx,sy]];
+  const dirs=[[0,1],[0,-1],[1,0],[-1,0]];
+  while(q.length){ const [x,y]=q.shift(); if(x===tx&&y===ty) break;
+    for(const [dx,dy] of dirs){ const nx=x+dx,ny=y+dy;
+      if(nx<0||ny<0||nx>=C0||ny>=R0) continue; if(prev.has(key(nx,ny))) continue;
+      const isTarget=(nx===tx&&ny===ty);
+      if(solid(nx,ny) && !(isTarget&&allowTarget)) continue;
+      prev.set(key(nx,ny),key(x,y)); q.push([nx,ny]); } }
+  if(!prev.has(key(tx,ty))) return null;
+  const path=[]; let c=key(tx,ty); while(c!==-1){ path.unshift([c%C0, (c/C0)|0]); c=prev.get(c); }
+  path.shift(); return path;
 }
 
 /* ---------- dialog ---------- */
-function say(list){ // list of {who,txt} or strings
-  G.dialog={q:list.map(d=> typeof d==='string'?{who:'',txt:d}:d), i:0, shown:'', ci:0, t:0, done:false};
-}
-function updateDialog(){
-  const d=G.dialog; const cur=d.q[d.i];
-  if(d.ci<cur.txt.length){ d.t++; if(d.t%2===0){ d.ci++; d.shown=cur.txt.slice(0,d.ci);} }
-  else d.done=true;
-  if(consumeConfirm()){
-    if(!d.done){ d.ci=cur.txt.length; d.shown=cur.txt; d.done=true; }
-    else { d.i++; if(d.i>=d.q.length){ G.dialog=null; if(G._dialogCb){const cb=G._dialogCb;G._dialogCb=null;cb();} } else { d.ci=0;d.shown='';d.t=0;d.done=false; } }
-  }
-}
-function drawDialog(){
-  const d=G.dialog; const cur=d.q[d.i];
-  const bx=8, by=H-58, bw=W-16, bh=50;
-  px(bx,by,bw,bh,'#0a0f22ee');
-  // border
-  X.strokeStyle=C.winB; X.lineWidth=2; X.strokeRect(bx+1,by+1,bw-2,bh-2);
-  X.strokeStyle='#8fa6d8'; X.lineWidth=1; X.strokeRect(bx+3,by+3,bw-6,bh-6);
-  if(cur.who){ textPix(cur.who, bx+8, by-2+6, C.gold, 11); }
-  // wrap text
-  wrapText(d.shown||'', bx+8, by+ (cur.who?22:10), bw-16, 13, C.text);
-  if(d.done){ if((G.anim>>4)%2) textPix('▼', W-26, by+bh-16, C.gold, 11); }
-}
-function wrapText(str,x,y,maxw,lh,col){
-  X.font="11px 'Galmuri11',monospace"; X.fillStyle=col; X.textBaseline='top';
-  let line='',yy=y;
-  for(const ch of str){
-    if(ch==='\n'){ X.fillText(line,x,yy); line=''; yy+=lh; continue; }
-    const test=line+ch;
-    if(X.measureText(test).width>maxw){ X.fillText(line,x,yy); line=ch; yy+=lh; }
-    else line=test;
-  }
-  X.fillText(line,x,yy);
-}
+function say(list){ G.dialog={q:list.map(d=>typeof d==='string'?{who:'',txt:d}:d), i:0, shown:'', ci:0, t:0, done:false}; }
+function dialogAnim(){ const d=G.dialog,cur=d.q[d.i];
+  if(d.ci<cur.txt.length){ d.t++; if(d.t%2===0){ d.ci++; d.shown=cur.txt.slice(0,d.ci); } } else d.done=true; }
+function dialogAdvance(){ const d=G.dialog,cur=d.q[d.i];
+  if(!d.done){ d.ci=cur.txt.length; d.shown=cur.txt; d.done=true; return; }
+  d.i++; if(d.i>=d.q.length){ G.dialog=null; if(G._dialogCb){const cb=G._dialogCb;G._dialogCb=null;cb();} }
+  else { d.ci=0; d.shown=''; d.t=0; d.done=false; } }
 
-/* ---------- cutscenes ---------- */
-function runCut(steps,cb){ G.cut=steps; G.cutI=0; G._cutCb=cb; nextCut(); }
-function nextCut(){
-  if(!G.cut) return;
-  if(G.cutI>=G.cut.length){ G.cut=null; if(G._cutCb){const c=G._cutCb;G._cutCb=null;c();} return; }
-  const s=G.cut[G.cutI++];
-  const t=s[0];
+/* ---------- cutscene ---------- */
+function runCut(steps){ G.cut=steps; G.cutI=0; nextCut(); }
+function nextCut(){ if(!G.cut) return;
+  if(G.cutI>=G.cut.length){ G.cut=null; return; }
+  const s=G.cut[G.cutI++], t=s[0];
   if(t==='say'){ say(s[1]); G._dialogCb=nextCut; }
-  else if(t==='wait'){ setTimeout(nextCut, s[1]); }
+  else if(t==='wait'){ setTimeout(nextCut,s[1]); }
   else if(t==='flag'){ G.flags[s[1]]=s[2]; nextCut(); }
-  else if(t==='goto'){ fadeTo(()=>{ loadRoom(s[1], false); if(s[2]){G.px=s[2][0];G.py=s[2][1];G.dir=s[2][2];} }, nextCut); }
+  else if(t==='goto'){ fadeTo(()=>{ loadRoom(s[1]); if(s[2]){G.px=s[2][0];G.py=s[2][1];G.dir=s[2][2];} }, nextCut); }
   else if(t==='pos'){ G.px=s[1];G.py=s[2];G.dir=s[3]||G.dir; nextCut(); }
   else if(t==='spawn'){ G.room.npcsLive.push(s[1]); nextCut(); }
   else if(t==='despawn'){ G.room.npcsLive=G.room.npcsLive.filter(n=>n.id!==s[1]); nextCut(); }
-  else if(t==='battle'){ startBattle(s[1], ()=>nextCut(), s[2]); }
+  else if(t==='battle'){ startBattle(s[1], nextCut); }
   else if(t==='mode'){ G.mode=s[1]; nextCut(); }
   else if(t==='fn'){ s[1](); nextCut(); }
   else nextCut();
 }
-function fadeTo(mid,after){
-  G.fadeDir=1; G.fadeCb=()=>{ mid&&mid(); G.fadeDir=-1; G.fadeCb=()=>{ G.fadeDir=0; after&&after(); }; };
-}
+function fadeTo(mid,after){ G.fadeDir=1; G.fadeCb=()=>{ mid&&mid(); G.fadeDir=-1; G.fadeCb=()=>{ G.fadeDir=0; after&&after(); }; }; }
 
 /* ---------- battle ---------- */
 const ENEMIES={
-  guard:{name:'간수',hp:46,maxhp:46,atk:12,def:4,exp:0,spr:'guard'},
-  chief:{name:'간수장',hp:80,maxhp:80,atk:17,def:6,exp:0,spr:'guard'}
+  guard:{name:'간수',hp:52,maxhp:52,atk:13,def:4},
+  chief:{name:'간수장',hp:92,maxhp:92,atk:18,def:7}
 };
+const BCMDS=[{n:'공격'},{n:'반격의 검'},{n:'희망'},{n:'방어'},{n:'도망'}];
 function startBattle(key,onWin,onLose){
   const e=JSON.parse(JSON.stringify(ENEMIES[key]));
-  G.battle={e, onWin, onLose, phase:'intro', mi:0, msg:e.name+'이(가) 나타났다!', msgQ:[], _after:null, _end:null, flash:0, shake:0, ehit:0, defending:false, _h:0};
+  G.battle={e,onWin,onLose,phase:'intro',msg:e.name+'이(가) 나타났다!',msgQ:[],_after:null,_end:null,
+    flash:0,shake:0,ehit:0,defending:false,btns:[]};
   G.mode='battle';
 }
-function bmsg(m){ G.battle.msgQ.push(m); }
-function nextMsg(){
-  const b=G.battle;
+function bmsg(m){G.battle.msgQ.push(m);}
+function nextMsg(){ const b=G.battle;
   if(b.msgQ.length){ b.msg=b.msgQ.shift(); b.phase='msg'; return; }
   if(b._after){ const f=b._after; b._after=null; f(); return nextMsg(); }
-  if(b.phase!=='win'&&b.phase!=='lose') b.phase='menu';
-}
-const BCMDS=['공격','반격의 검','희망','방어','도망'];
-function battleInput(){
-  const b=G.battle;
-  if(b.phase==='intro'){ if(consumeConfirm()){ b.phase='menu'; } return; }
-  if(b.phase==='msg'){ if(consumeConfirm()){ nextMsg(); } return; }
-  if(b.phase==='win'||b.phase==='lose'){ if(consumeConfirm()){ G.mode='field'; const f=b._end; G.battle=null; f&&f(); } return; }
-  if(b.phase==='menu'){
-    if(consumeConfirm()){ chooseCmd(); return; }
-    if(keys.up&&!b._h){ b.mi=(b.mi+BCMDS.length-1)%BCMDS.length; b._h=1; }
-    else if(keys.down&&!b._h){ b.mi=(b.mi+1)%BCMDS.length; b._h=1; }
-    else if(!keys.up&&!keys.down){ b._h=0; }
-  }
-}
-function chooseCmd(){
-  const b=G.battle, pl=G.player;
-  const cmd=BCMDS[b.mi]; b.defending=false; b._after=null;
-  if(cmd==='공격'){ playerAttack(pl.atk, '에드몽의 공격!'); }
-  else if(cmd==='반격의 검'){ if(pl.mp<5){ bmsg('MP가 부족하다!'); } else { pl.mp-=5; playerAttack(Math.round(pl.atk*1.9), '반격의 검!'); } }
-  else if(cmd==='희망'){ if(pl.mp<4){ bmsg('MP가 부족하다!'); } else { pl.mp-=4; const h=Math.min(pl.maxhp-pl.hp,26); pl.hp+=h; bmsg('에드몽은 희망을 되새겼다! HP +'+h); b._after=enemyTurn; } }
-  else if(cmd==='방어'){ b.defending=true; bmsg('에드몽은 몸을 웅크렸다.'); b._after=enemyTurn; }
-  else if(cmd==='도망'){ if(Math.random()<0.45){ bmsg('도망쳤다!'); b._after=()=>{ b.phase='win'; b._end=b.onWin; }; } else { bmsg('도망치지 못했다!'); b._after=enemyTurn; } }
+  if(b.phase!=='win'&&b.phase!=='lose') b.phase='menu'; }
+function chooseCmd(i){ const b=G.battle, pl=G.player; b.defending=false; b._after=null;
+  const cmd=BCMDS[i].n;
+  if(cmd==='공격') pAtk(pl.atk,'에드몽의 공격!');
+  else if(cmd==='반격의 검'){ if(pl.mp<5) bmsg('MP가 부족하다!'); else {pl.mp-=5; pAtk(Math.round(pl.atk*1.9),'반격의 검!');} }
+  else if(cmd==='희망'){ if(pl.mp<4) bmsg('MP가 부족하다!'); else {pl.mp-=4; const h=Math.min(pl.maxhp-pl.hp,28); pl.hp+=h; bmsg('희망을 되새겼다! HP +'+h); b._after=eTurn;} }
+  else if(cmd==='방어'){ b.defending=true; bmsg('에드몽은 몸을 웅크렸다.'); b._after=eTurn; }
+  else if(cmd==='도망'){ if(Math.random()<0.45){bmsg('도망쳤다!'); b._after=()=>{b.phase='win';b._end=b.onWin;};} else {bmsg('도망치지 못했다!'); b._after=eTurn;} }
   b.phase='msg'; nextMsg();
 }
-function playerAttack(power,label){
-  const b=G.battle, e=b.e;
-  const dmg=Math.max(1, (power - e.def + (Math.random()*4-2))|0);
-  e.hp-=dmg; b.ehit=10; b.shake=8;
-  bmsg(label+' '+e.name+'에게 '+dmg+'의 피해!');
-  b._after=()=>{
-    if(e.hp<=0){ e.hp=0; bmsg(e.name+'을(를) 쓰러뜨렸다!'); b._after=()=>{ b.phase='win'; b._end=b.onWin; }; }
-    else enemyTurn();
-  };
-}
-function enemyTurn(){
-  const b=G.battle, pl=G.player, e=b.e;
-  let dmg=Math.max(1, (e.atk - pl.def + (Math.random()*4-2))|0);
-  if(b.defending) dmg=Math.max(1,(dmg/2)|0);
-  pl.hp-=dmg; b.flash=8;
-  bmsg(e.name+'의 공격! 에드몽은 '+dmg+'의 피해를 입었다.');
-  b._after=()=>{
-    if(pl.hp<=0){ pl.hp=0; bmsg('에드몽은 쓰러졌다...'); b._after=()=>{ b.phase='lose'; b._end=b.onLose||(()=>gameOver()); }; }
-    else b.phase='menu';
-  };
-}
-function drawBattle(){
-  const b=G.battle, pl=G.player, e=b.e;
-  // bg
-  px(0,0,W,H,'#0a0812');
-  for(let i=0;i<40;i++){ px((i*67%W),(i*89%120), 1,1, i%5? '#1a1830':'#2a2740'); }
-  px(0,120,W,80,'#141019'); px(0,120,W,2,'#241a2a');
-  // enemy
-  let ex=W/2-20, ey=48;
-  if(b.shake>0){ ex+=(Math.random()*b.shake-b.shake/2); b.shake--; }
-  X.save(); X.translate(ex,ey); X.scale(2.5,2.5);
-  if(!(b.ehit>0 && (b.ehit%2))) drawEnemy(0,0,e.spr);
-  X.restore(); if(b.ehit>0)b.ehit--;
-  // enemy name + hp bar
-  textCenter(e.name, W/2, 20, C.text, 11);
-  bar(W/2-40, 32, 80, 5, e.hp/e.maxhp, C.red);
-  // flash on player hit
-  if(b.flash>0){ px(0,0,W,H,'#c0392b'+(b.flash>4?'44':'22')); b.flash--; }
-  // bottom windows
-  // status window
-  win(6,124,150,48);
-  textPix(pl.name+'  Lv '+pl.lv, 14,130, C.text,11);
-  textPix('HP '+pl.hp+'/'+pl.maxhp, 14,144, pl.hp<pl.maxhp*0.3?'#ff7a6a':C.text,10);
-  textPix('MP '+pl.mp+'/'+pl.maxmp, 14,158, '#8fd0ff',10);
-  // command or message window
-  if(b.phase==='menu'){
-    win(162,124,152,68);
-    for(let i=0;i<BCMDS.length;i++){
-      const cy=130+i*12;
-      if(i===b.mi){ textPix('▶',168,cy,C.gold,11); }
-      textPix(BCMDS[i],180,cy, i===b.mi?C.gold:C.text,11);
+function pAtk(pow,label){ const b=G.battle,e=b.e;
+  const dmg=Math.max(1,(pow-e.def+(Math.random()*4-2))|0); e.hp-=dmg; b.ehit=10; b.shake=8;
+  bmsg(label+' '+e.name+'에게 '+dmg+' 피해!');
+  b._after=()=>{ if(e.hp<=0){e.hp=0; bmsg(e.name+'을(를) 쓰러뜨렸다!'); b._after=()=>{b.phase='win';b._end=b.onWin;};} else eTurn(); }; }
+function eTurn(){ const b=G.battle,pl=G.player,e=b.e;
+  let dmg=Math.max(1,(e.atk-pl.def+(Math.random()*4-2))|0); if(b.defending)dmg=Math.max(1,(dmg/2)|0);
+  pl.hp-=dmg; b.flash=8; bmsg(e.name+'의 공격! '+dmg+' 피해를 입었다.');
+  b._after=()=>{ if(pl.hp<=0){pl.hp=0; bmsg('에드몽은 쓰러졌다...'); b._after=()=>{b.phase='lose';b._end=b.onLose||(()=>{G.mode='gameover';});};} else b.phase='menu'; }; }
+
+/* ---------- tap handling ---------- */
+function handleTap(t){
+  if(G.fadeDir!==0) return;
+  if(G.mode==='title'){
+    if(G.title.showHelp){ G.title.showHelp=false; return; }
+    for(const r of G.title.rects){ if(t.x>=r.x&&t.x<=r.x+r.w&&t.y>=r.y&&t.y<=r.y+r.h){ G.title.sel=r.i; if(r.i===0) startGame(); else G.title.showHelp=true; return; } }
+    return;
+  }
+  if(G.mode==='gameover'){ G.mode='title'; G.title.sel=0; return; }
+  if(G.mode==='ending'){ G.mode='title'; G.title.sel=0; return; }
+  if(G.mode==='battle'){ const b=G.battle;
+    if(b.phase==='menu'){ for(const r of b.btns){ if(t.x>=r.x&&t.x<=r.x+r.w&&t.y>=r.y&&t.y<=r.y+r.h){ chooseCmd(r.i); return; } } }
+    else if(b.phase==='win'||b.phase==='lose'){ G.mode='field'; const f=b._end; G.battle=null; f&&f(); }
+    else { nextMsg(); }
+    return;
+  }
+  if(G.mode==='field'){
+    if(G.dialog){ dialogAdvance(); return; }
+    if(G.cut) return;
+    if(t.confirm){ return; }
+    if(G.moving||G.path) { return; }
+    // world tile
+    const wx=Math.floor((t.x+G.cam.x)/TS), wy=Math.floor((t.y+G.cam.y)/TS);
+    if(wx<0||wy<0||wx>=cols()||wy>=rows()) return;
+    if(interactable(wx,wy)){
+      // path to nearest adjacent walkable, then interact
+      let best=null,bl=1e9;
+      for(const [dx,dy] of [[0,1],[0,-1],[1,0],[-1,0]]){ const ax=wx+dx,ay=wy+dy;
+        if(ax<0||ay<0||ax>=cols()||ay>=rows()) continue; if(solid(ax,ay)) continue;
+        const p=bfs(G.px,G.py,ax,ay,false); if(p&&p.length<bl){bl=p.length;best={path:p,ax,ay};} }
+      if((wx===G.px&&Math.abs(wy-G.py)===1)||(wy===G.py&&Math.abs(wx-G.px)===1)){
+        G.dir=wx<G.px?'left':wx>G.px?'right':wy<G.py?'up':'down'; doInteract(wx,wy); return; }
+      if(best){ G.path=best.path; G.pend={tx:wx,ty:wy,interact:true}; }
+      return;
     }
-  } else {
-    win(162,124,152,68);
-    wrapText(b.msg||'', 170,132, 138, 13, C.text);
-    if(b.phase==='msg'||b.phase==='intro'||b.phase==='win'||b.phase==='lose'){ if((G.anim>>4)%2) textPix('▼',300,180,C.gold,11); }
+    if(!solid(wx,wy)){ const p=bfs(G.px,G.py,wx,wy,false); if(p&&p.length){ G.path=p; G.pend=null; } }
   }
 }
-function bar(x,y,w,h,frac,col){ px(x,y,w,h,'#000'); px(x+1,y+1,w-2,h-2,'#333'); px(x+1,y+1,(w-2)*Math.max(0,frac),h-2,col); }
-function win(x,y,w,h){ px(x,y,w,h,'#0a0f22ee'); X.strokeStyle=C.winB;X.lineWidth=2;X.strokeRect(x+1,y+1,w-2,h-2); X.strokeStyle='#8fa6d8';X.lineWidth=1;X.strokeRect(x+3,y+3,w-6,h-6); }
-function drawEnemy(x,y,spr){
-  // guard: menacing figure
-  px(x+3,y+2,10,6,'#3a2a10'); // helmet
-  px(x+4,y+6,8,5,'#d0a070'); // face
-  px(x+5,y+8,2,1,'#000'); px(x+9,y+8,2,1,'#000');
-  px(x+2,y+11,12,9,'#5a1f1f'); px(x+3,y+11,10,7,'#6a2626'); // armor
-  px(x+13,y+6,2,12,'#888'); px(x+13,y+4,2,3,'#ccc'); // spear
-  px(x,y+18,16,2,'#00000055');
+function doInteract(wx,wy){ const n=npcAt(wx,wy); const t=tileAt(wx,wy);
+  if(n) triggerNPC(n);
+  else if(t==='D') triggerDoor();
+  else if(t==='C') triggerCrack();
+  else if(t==='g') say([{who:'',txt:'눈부신 황금과 보석이 산처럼 쌓여 있다.'}]);
 }
 
-/* ---------- field ---------- */
+/* ---------- field update ---------- */
 function updateField(){
-  if(G.dialog){ updateDialog(); return; }
-  if(G.cut){ return; } // waiting on dialog/cut chain
-  // movement
-  if(G.moving){
-    G.moveT+=0.18;
-    if(G.moveT>=1){ G.px=G.moving.tx; G.py=G.moving.ty; G.moving=null; G.step=(G.step+1)%4; }
-  } else {
+  if(G.dialog){ dialogAnim(); return; }
+  if(G.cut) return;
+  // keyboard step
+  if(!G.moving && !G.path && kq.length){ const k=kq.shift();
     let dx=0,dy=0,nd=G.dir;
-    if(keys.up){dy=-1;nd='up';} else if(keys.down){dy=1;nd='down';}
-    else if(keys.left){dx=-1;nd='left';} else if(keys.right){dx=1;nd='right';}
-    if(dx||dy){ G.dir=nd; const tx=G.px+dx,ty=G.py+dy; if(!solid(tx,ty)){ G.moving={tx,ty,fx:G.px,fy:G.py}; G.moveT=0; } }
-    // interact
-    if(consumeConfirm()){ interact(); }
+    if(k==='ArrowUp'||k==='w'||k==='W'){dy=-1;nd='up';} else if(k==='ArrowDown'||k==='s'||k==='S'){dy=1;nd='down';}
+    else if(k==='ArrowLeft'||k==='a'||k==='A'){dx=-1;nd='left';} else if(k==='ArrowRight'||k==='d'||k==='D'){dx=1;nd='right';}
+    G.dir=nd; const tx=G.px+dx,ty=G.py+dy;
+    if(interactable(tx,ty)) doInteract(tx,ty);
+    else if(!solid(tx,ty)){ G.moving={fx:G.px,fy:G.py,tx,ty}; G.moveT=0; }
   }
+  if(G.moving){ G.moveT+=0.16;
+    if(G.moveT>=1){ G.px=G.moving.tx; G.py=G.moving.ty; G.moving=null;
+      if(G.path&&G.path.length){ stepPath(); }
+      else if(G.pend&&G.pend.interact){ const pn=G.pend; G.pend=null; G.dir=pn.tx<G.px?'left':pn.tx>G.px?'right':pn.ty<G.py?'up':'down'; doInteract(pn.tx,pn.ty); }
+    }
+  } else if(G.path&&G.path.length){ stepPath(); }
 }
-function interact(){
-  const f=npcFacing();
-  if(f.id){ triggerNPC(f); }
-  else if(f.tile==='D'){ triggerDoor(); }
-  else if(f.tile==='C'){ triggerCrack(); }
-  else if(f.tile==='g'){ /* treasure sparkle */ say([{who:'',txt:'눈부신 황금과 보석이 산처럼 쌓여 있다.'}]); }
+function stepPath(){ const [nx,ny]=G.path[0];
+  if(solid(nx,ny)){ G.path=null; G.pend=null; return; }
+  G.path.shift(); G.dir=nx<G.px?'left':nx>G.px?'right':ny<G.py?'up':'down'; G.moving={fx:G.px,fy:G.py,tx:nx,ty:ny}; G.moveT=0;
+  if(!G.path.length && !(G.pend&&G.pend.interact)) G.path=null;
 }
 
 /* ---------- STORY ---------- */
@@ -468,35 +395,31 @@ function triggerNPC(n){
   if(G.roomKey==='marseille'){
     if(n.id==='mercedes'){
       runCut([
-        ['say',[{who:'메르세데스',txt:'에드몽! 무사히 돌아왔군요. 이제 우리 결혼만 남았어요.'},
-                {who:'에드몽',txt:'그래, 메르세데스. 선장 자리도 곧 내 것이 될 거야. 더 바랄 게 없어.'}]],
-        ['fn',()=>{}],
-        ['say',[{who:'',txt:'…그러나 행복을 시기하는 자들이 있었다.'}]],
-        ['spawn',{id:'g1',x:10,y:8,type:'guard',dir:'down',name:'헌병'}],
-        ['spawn',{id:'g2',x:11,y:8,type:'guard',dir:'down',name:'헌병'}],
-        ['pos',10,9,'up'],
+        ['say',[{who:'메르세데스',txt:'에드몽! 무사히 돌아왔군요. 파라옹호의 새 선장이 된다니, 이제 우리 결혼만 남았어요.'},
+                {who:'에드몽',txt:'그래, 메르세데스. 더 바랄 게 없어. 세상 누구보다 행복한 사람이 바로 나야.'},
+                {who:'',txt:'…그러나 그 행복을 시기하는 자들이 항구의 그늘에서 지켜보고 있었다.'}]],
+        ['spawn',{id:'g1',x:8,y:6,type:'guard',dir:'up',name:'헌병'}],
+        ['spawn',{id:'g2',x:9,y:6,type:'guard',dir:'up',name:'헌병'}],
+        ['pos',8,7,'up'],
         ['say',[{who:'헌병',txt:'에드몽 단테스! 나폴레옹파 역모 혐의로 당신을 체포한다!'},
-                {who:'에드몽',txt:'뭐라고?! 난 아무 죄도 없다! 이건 음모야!'},
-                {who:'당글라르',txt:'후후… 잘 가게, 선장 나리.'},
-                {who:'페르낭',txt:'메르세데스는 이제 내 것이다.'}]],
-        ['goto','cell',[9,7,'down']],
+                {who:'에드몽',txt:'뭐라고?! 난 죄가 없다! 이건 누명이야!'},
+                {who:'당글라르',txt:'후후… 선장 자리는 이제 내 것이겠군.'},
+                {who:'페르낭',txt:'그리고 메르세데스는 내 것이 되겠지.'}]],
+        ['goto','cell',[9,8,'down']],
         ['say',[{who:'',txt:'— 이프 성. 육지에서 멀리 떨어진 절해의 감옥. 에드몽은 이곳에 산 채로 묻혔다.'},
-                {who:'에드몽',txt:'…얼마나 지난 거지. 몇 년? 아무도 오지 않아. 난 잊혀졌어…'}]],
+                {who:'에드몽',txt:'…몇 년이 흐른 거지. 아무도 오지 않아. 세상은 나를 잊었어…'}]],
         ['flag','act',2],
-        ['say',[{who:'',txt:'(감옥 벽의 갈라진 틈 C 을 조사해보자. A/확인)'}]]
+        ['say',[{who:'',txt:'(감옥 오른쪽 벽의 갈라진 틈 을 탭해서 조사해보자.)'}]]
       ]);
-    } else {
-      say([{who:n.name,txt: n.id==='danglars'?'(당글라르가 음흉하게 웃으며 당신을 바라본다.)':'(페르낭이 메르세데스를 곁눈질한다.)'}]);
-    }
+    } else say([{who:n.name,txt: n.id==='danglars'?'(당글라르가 장부 뒤에서 음흉하게 웃는다.)':'(페르낭이 메르세데스를 곁눈질하며 이를 간다.)'}]);
   }
   else if(G.roomKey==='corridor' && n.id==='guard'){
     runCut([
       ['say',[{who:'간수',txt:'죄수가 탈출이다! 게 섰거라!'},
-              {who:'에드몽',txt:'14년의 원한… 비켜라!'}]],
+              {who:'에드몽',txt:'14년의 원한이 나를 여기까지 이끌었다. 비켜라!'}]],
       ['battle','guard'],
-      ['say',[{who:'',txt:'간수를 쓰러뜨렸다! 앞의 문 D 로 나아가자.'}]],
-      ['flag','guardDown',1],
-      ['despawn','guard']
+      ['say',[{who:'',txt:'간수를 쓰러뜨렸다! 오른쪽 끝의 문 으로 나아가자.'}]],
+      ['flag','guardDown',1],['despawn','guard']
     ]);
   }
 }
@@ -504,177 +427,228 @@ function triggerCrack(){
   if(G.roomKey==='cell' && !G.flags.faria){
     G.flags.faria=1;
     runCut([
-      ['say',[{who:'',txt:'벽 너머에서 돌을 긁는 소리가 들린다… 이윽고 틈이 무너지고, 한 노인이 나타난다.'},
-              {who:'파리아 신부',txt:'오, 사람이군! 나는 파리아. 탈출로를 파다 방향을 잘못 잡았네만… 어쩌면 운명이야.'},
-              {who:'에드몽',txt:'신부님… 저는 왜 여기 있는지도 모릅니다.'},
-              {who:'파리아 신부',txt:'자네를 모함한 자들을 함께 짚어보세. 당글라르, 페르낭, 그리고 검사 빌포르… 자네는 누명을 썼네.'},
-              {who:'에드몽',txt:'그들이… 내 모든 것을 빼앗았군요.'},
-              {who:'파리아 신부',txt:'분노를 힘으로 바꾸게. 내가 지식과 검술, 그리고 한 가지 비밀을 주지.'},
+      ['say',[{who:'',txt:'벽 너머에서 돌을 긁는 소리… 이윽고 틈이 무너지고 백발의 노인이 흙투성이로 나타난다.'},
+              {who:'파리아 신부',txt:'오, 사람이군! 나는 파리아. 탈출로를 파다 방향을 잘못 잡았네만… 어쩌면 이게 운명일지도.'},
+              {who:'에드몽',txt:'신부님… 저는 왜 여기 있는지조차 모릅니다.'},
+              {who:'파리아 신부',txt:'함께 짚어보세. 자네의 승진을 시기한 당글라르, 약혼자를 탐낸 페르낭, 그리고 제 아비를 숨기려 자네를 묻어버린 검사 빌포르…'},
+              {who:'에드몽',txt:'그들이… 내 모든 것을 빼앗았군요. 이제야 보입니다.'},
+              {who:'파리아 신부',txt:'분노를 힘으로 바꾸게. 내가 지식과 언어, 검술, 그리고 한 가지 비밀을 주지.'},
               {who:'파리아 신부',txt:'몬테크리스토 섬에 잠든 막대한 보물… 그것으로 자네는 새사람이 되어 정의를 세울 수 있네.'}]],
-      ['fn',()=>{ G.player.maxhp=90;G.player.hp=90;G.player.maxmp=20;G.player.mp=20;G.player.atk=22;G.player.def=10;G.player.lv=8; }],
-      ['say',[{who:'',txt:'파리아 신부는 에드몽에게 모든 것을 가르쳤다. 에드몽은 강해졌다! (Lv8)'},
-              {who:'파리아 신부',txt:'콜록… 내 명은 여기까지인 듯하네. 내가 죽거든… 시신 자루에 나 대신 자네가 들어가게. 그것이 유일한 문이야.'},
-              {who:'파리아 신부',txt:'가서… 살아서… 정의를… 부탁하네…'},
-              {who:'',txt:'파리아 신부는 눈을 감았다. 에드몽은 그의 계획대로 시신 자루에 몸을 숨겼다.'},
+      ['fn',()=>{ const p=G.player; p.maxhp=95;p.hp=95;p.maxmp=22;p.mp=22;p.atk=23;p.def=11;p.lv=9; }],
+      ['say',[{who:'',txt:'파리아 신부는 여러 해에 걸쳐 에드몽에게 모든 것을 가르쳤다. 에드몽은 몰라보게 강해졌다! (Lv9)'},
+              {who:'파리아 신부',txt:'콜록… 내 명은 여기까지인 듯하네. 내가 죽거든, 시신 자루에 나 대신 자네가 들어가게. 그것이 이 성을 나가는 유일한 문이야.'},
+              {who:'파리아 신부',txt:'가서… 살아서… 부디 정의를…'},
+              {who:'',txt:'파리아 신부는 조용히 눈을 감았다. 에드몽은 그의 계획대로 시신 자루에 몸을 숨겼다.'},
               {who:'',txt:'간수들이 자루를 성벽 아래 바다로 던졌다 — 그것이 이프 성의 장례였다.'}]],
       ['goto','corridor',[3,9,'up']],
-      ['say',[{who:'',txt:'(사실 에드몽은 바다에 빠지기 전, 자루를 찢고 복도로 숨어들었다. 탈출로를 찾자!)'},
-              {who:'에드몽',txt:'저 앞에 간수가 있다. 여기서 멈출 수는 없어.'}]]
+      ['say',[{who:'',txt:'(에드몽은 바다에 빠지기 직전 자루를 찢고 복도로 숨어들었다. 탈출로를 찾자!)'},
+              {who:'에드몽',txt:'앞을 지키는 간수가 있다. 여기서 멈출 수는 없어.'}]]
     ]);
-  } else if(G.roomKey==='cell'){
-    say([{who:'',txt:'무너진 틈. 파리아 신부가 지나온 길이다.'}]);
-  }
+  } else if(G.roomKey==='cell') say([{who:'',txt:'무너진 틈. 파리아 신부가 지나온 길이다.'}]);
 }
 function triggerDoor(){
-  if(G.roomKey==='cell'){
-    if(!G.flags.faria){ say([{who:'',txt:'굳게 잠긴 감옥 문. 스스로는 나갈 수 없다… 다른 길을 찾아야 한다.'}]); }
-    else { fadeTo(()=>loadRoom('corridor',false)); }
-  }
-  else if(G.roomKey==='corridor'){
-    if(!G.flags.guardDown){ say([{who:'',txt:'간수를 지나치지 않고는 문으로 갈 수 없다.'}]); }
-    else {
-      runCut([
-        ['goto','treasure',[9,8,'up']],
-        ['say',[{who:'',txt:'— 여러 밤을 헤엄쳐, 에드몽은 마침내 몬테크리스토 섬에 닿았다.'},
-                {who:'',txt:'파리아가 남긴 지도를 따라 동굴 깊은 곳으로… 그곳에 전설의 보물이 잠들어 있었다.'},
-                {who:'에드몽',txt:'이것이… 파리아 신부가 남긴 유산. 이 힘으로 나는 다시 태어난다.'},
-                {who:'에드몽',txt:'당글라르, 페르낭, 빌포르… 기다려라. 이제 몬테크리스토 백작이 너희를 심판하러 간다.'}]],
-        ['flag','ending',1],
-        ['mode','ending']
-      ]);
-    }
-  }
-  else if(G.roomKey==='treasure'){
-    say([{who:'',txt:'보물을 손에 넣었다. 복수는 이제부터다.'}]);
-  }
+  if(G.roomKey==='cell'){ if(!G.flags.faria) say([{who:'',txt:'굳게 잠긴 감옥 문. 스스로는 나갈 수 없다… 다른 길을 찾아야 한다.'}]);
+    else fadeTo(()=>loadRoom('corridor')); }
+  else if(G.roomKey==='corridor'){ if(!G.flags.guardDown) say([{who:'',txt:'간수를 지나치지 않고는 문으로 갈 수 없다.'}]);
+    else runCut([
+      ['goto','treasure',[9,8,'up']],
+      ['say',[{who:'',txt:'— 여러 밤을 헤엄쳐, 에드몽은 마침내 몬테크리스토 섬에 닿았다.'},
+              {who:'',txt:'파리아가 남긴 지도를 따라 동굴 깊은 곳으로… 그곳에 전설의 보물이 잠들어 있었다.'},
+              {who:'에드몽',txt:'이것이… 파리아 신부의 유산. 이 힘으로 나는 다시 태어난다.'},
+              {who:'에드몽',txt:'당글라르, 페르낭, 빌포르… 기다려라. 이제 몬테크리스토 백작이 너희를 심판하러 간다.'}]],
+      ['flag','ending',1],['mode','ending']
+    ]); }
+  else if(G.roomKey==='treasure') say([{who:'',txt:'보물을 손에 넣었다. 복수는 이제부터다.'}]);
 }
 
-/* ---------- title ---------- */
+/* ---------- draw: field ---------- */
+function drawField(){
+  const r=G.room, C0=cols(), R0=rows(), worldW=C0*TS, worldH=R0*TS;
+  let ppx=G.px*TS, ppy=G.py*TS;
+  if(G.moving){ ppx=(G.moving.fx+(G.moving.tx-G.moving.fx)*G.moveT)*TS; ppy=(G.moving.fy+(G.moving.ty-G.moving.fy)*G.moveT)*TS; }
+  let camX=ppx+TS/2-VW/2, camY=ppy+TS/2-VH/2;
+  camX = worldW<=VW ? (worldW-VW)/2 : Math.max(0,Math.min(worldW-VW,camX));
+  camY = worldH<=VH ? (worldH-VH)/2 : Math.max(0,Math.min(worldH-VH,camY));
+  G.cam.x=camX; G.cam.y=camY;
+  px(0,0,VW,VH,C.bg);
+  const x0=Math.max(0,Math.floor(camX/TS)), x1=Math.min(C0-1,Math.floor((camX+VW)/TS));
+  const y0=Math.max(0,Math.floor(camY/TS)), y1=Math.min(R0-1,Math.floor((camY+VH)/TS));
+  for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++) tile(r.tiles[y][x], x*TS-camX, y*TS-camY, G.anim);
+  const walk=(G.moving)?(Math.floor(G.moveT*2)%2):0;
+  if(r.npcsLive) for(const n of r.npcsLive) actor(n.x*TS-camX, n.y*TS-camY, n.type, n.dir, 0);
+  actor(ppx-camX, ppy-camY, G.flags.ending?'count':'edmond', G.dir, walk);
+  // top banner
+  const bh=Math.round(TS*0.72);
+  px(0,0,VW,bh,'#0b1020cc'); px(0,bh,VW,2,C.panelE2);
+  txt(r.name, 10, bh*0.28, C.gold, fs(TS*0.34));
+  // hint (before first move)
+  if(!G.flags.act && !G.dialog){ txt('화면을 탭해서 이동 · 사람/사물을 탭해 조사', VW/2, VH-TS*0.9, '#ffffffcc', fs(TS*0.3), 'center'); }
+  if(G.dialog) drawDialog();
+}
+
+/* ---------- draw: dialog ---------- */
+function drawDialog(){
+  const d=G.dialog,cur=d.q[d.i];
+  const m=Math.round(TS*0.28);
+  const h=Math.min(VH*0.3, Math.max(TS*2.6, 130));
+  const y=VH-h-m, w=VW-m*2, x=m;
+  // panel
+  rr(x+3,y+4,w,h,10,C.panelSh);
+  rr(x,y,w,h,10,C.panelE2); rr(x+2,y+2,w-4,h-4,9,C.panelE); rr(x+4,y+4,w-8,h-8,8,C.panel);
+  const ts=fs(TS*0.38), pad=Math.round(TS*0.32);
+  let ty=y+pad;
+  if(cur.who){ txt(cur.who, x+pad, ty, C.panelE2, fs(TS*0.4)); ty+=ts+4; }
+  wrap(d.shown||'', x+pad, ty, w-pad*2, ts+4, C.text, ts);
+  if(d.done && (G.anim>>4)%2) txt('▼', x+w-pad, y+h-ts-6, C.panelE2, ts);
+}
+function wrap(s,x,y,maxw,lh,col,size){
+  X.font=size+"px 'Galmuri11',monospace"; X.fillStyle=col; X.textAlign='left'; X.textBaseline='top';
+  let line='',yy=y;
+  for(const ch of s){ if(ch==='\n'){X.fillText(line,x,yy);line='';yy+=lh;continue;}
+    const test=line+ch; if(X.measureText(test).width>maxw){X.fillText(line,x,yy);line=ch;yy+=lh;} else line=test; }
+  X.fillText(line,x,yy);
+}
+
+/* ---------- draw: battle ---------- */
+function drawBattle(){
+  const b=G.battle,pl=G.player,e=b.e;
+  // bg
+  const g=X.createLinearGradient(0,0,0,VH); g.addColorStop(0,'#241d33'); g.addColorStop(1,'#120c1c');
+  X.fillStyle=g; X.fillRect(0,0,VW,VH);
+  for(let i=0;i<50;i++) px((i*71%VW),(i*53%(VH*0.5)),2,2, i%4?'#2a2340':'#3a3358');
+  // enemy
+  let ex=VW/2, ey=VH*0.30; if(b.shake>0){ex+=(Math.random()*b.shake-b.shake/2);b.shake--;}
+  const es=TS*0.16;
+  if(!(b.ehit>0 && b.ehit%2)) drawGuard(ex,ey,es*16);
+  if(b.ehit>0)b.ehit--;
+  txt(e.name, VW/2, ey-TS*1.6, C.textL, fs(TS*0.4),'center');
+  bar(VW/2-TS*1.8, ey-TS*1.2, TS*3.6, TS*0.28, e.hp/e.maxhp, C.red);
+  if(b.flash>0){ px(0,0,VW,VH,'#e05a4a'+(b.flash>4?'44':'22')); b.flash--; }
+  // bottom UI area
+  const uh=Math.min(VH*0.42, TS*4.6), uy=VH-uh, m=Math.round(TS*0.28);
+  // status panel
+  const sw=(VW-m*3)/2;
+  panel(m,uy,sw,uh-m);
+  const sp=Math.round(TS*0.3);
+  txt(pl.name+'  Lv '+pl.lv, m+sp, uy+sp, C.text, fs(TS*0.36));
+  txt('HP', m+sp, uy+sp+TS*0.72, C.text, fs(TS*0.32));
+  bar(m+sp+TS*0.9, uy+sp+TS*0.74, sw-sp*2-TS*0.9, TS*0.28, pl.hp/pl.maxhp, C.hpg);
+  txt(pl.hp+'/'+pl.maxhp, m+sp, uy+sp+TS*1.16, C.text, fs(TS*0.3));
+  txt('MP', m+sp, uy+sp+TS*1.66, C.text, fs(TS*0.32));
+  bar(m+sp+TS*0.9, uy+sp+TS*1.68, sw-sp*2-TS*0.9, TS*0.28, pl.mp/pl.maxmp, C.mpb);
+  txt(pl.mp+'/'+pl.maxmp, m+sp, uy+sp+TS*2.1, C.text, fs(TS*0.3));
+  // right panel: menu or message
+  const rx=m*2+sw, rw=sw;
+  panel(rx,uy,rw,uh-m);
+  b.btns=[];
+  if(b.phase==='menu'){
+    const n=BCMDS.length, bh=(uh-m-sp*2)/n;
+    for(let i=0;i<n;i++){ const by=uy+sp+i*bh, bx=rx+sp, bw=rw-sp*2;
+      rr(bx,by+2,bw,bh-4,6,'#00000018'); rr(bx,by,bw,bh-6,6,'#fff'); rr(bx,by,bw,bh-6,6,'#ffffff');
+      X.strokeStyle=C.panelE; X.lineWidth=2; X.beginPath(); X.roundRect(bx,by,bw,bh-6,6); X.stroke();
+      txt(BCMDS[i].n, bx+bw/2, by+(bh-6)/2-fs(TS*0.34)/2, C.text, fs(TS*0.34),'center');
+      b.btns.push({x:bx,y:by,w:bw,h:bh-6,i}); }
+  } else {
+    wrap(b.msg||'', rx+sp, uy+sp, rw-sp*2, fs(TS*0.36)+4, C.text, fs(TS*0.36));
+    if((G.anim>>4)%2) txt('▼', rx+rw-sp, uy+uh-m-fs(TS*0.4)-6, C.panelE2, fs(TS*0.4));
+  }
+}
+function drawGuard(cx,cy,s){ const u=s/16;
+  X.fillStyle='#0005'; X.beginPath(); X.ellipse(cx,cy+8*u,8*u,3*u,0,0,7); X.fill();
+  rr(cx-6*u,cy-9*u,12*u,7*u,2*u,C.line); rr(cx-5.2*u,cy-8.4*u,10.4*u,5.6*u,1.6*u,'#4a3a16'); // helmet
+  rr(cx-4.4*u,cy-4*u,8.8*u,6*u,2*u,'#e0aa78'); // face
+  circ(cx-2*u,cy-1*u,1.1*u,C.ink); circ(cx+2*u,cy-1*u,1.1*u,C.ink);
+  rr(cx-6*u,cy+2*u,12*u,9*u,2.4*u,C.line); rr(cx-5.2*u,cy+2.6*u,10.4*u,7.6*u,2*u,'#c0503a'); // armor
+  px(cx+6*u,cy-6*u,1.6*u,14*u,'#8a8a9a'); px(cx+5.6*u,cy-9*u,2.4*u,3*u,'#d8d8e0'); // spear
+}
+function bar(x,y,w,h,frac,col){ rr(x,y,w,h,h/2,'#0007'); rr(x+1,y+1,w-2,h-2,(h-2)/2,'#00000030'); rr(x+1,y+1,Math.max(0,(w-2)*Math.max(0,Math.min(1,frac))),h-2,(h-2)/2,col); }
+function panel(x,y,w,h){ rr(x+2,y+3,w,h,9,C.panelSh); rr(x,y,w,h,9,C.panelE2); rr(x+2,y+2,w-4,h-4,8,C.panelE); rr(x+4,y+4,w-8,h-8,7,C.panel); }
+
+/* ---------- draw: title ---------- */
 function drawTitle(){
   const a=G.anim;
-  // sky
-  px(0,0,W,H,C.night);
-  for(let i=0;i<70;i++){ const sx=(i*53+ (i*i*7))%W, sy=(i*31)%110; if((a>>4 & 15)!==(i&15)) px(sx,sy,1,1, i%7? '#3a4270':C.star); }
+  const g=X.createLinearGradient(0,0,0,VH); g.addColorStop(0,C.sky1); g.addColorStop(0.6,C.sky2); g.addColorStop(1,'#081a30');
+  X.fillStyle=g; X.fillRect(0,0,VW,VH);
+  for(let i=0;i<80;i++){ const sx=(i*57+i*i*3)%VW, sy=(i*37)%(VH*0.55); if(((a>>4)&15)!==(i&15)) px(sx,sy,2,2, i%6?'#8fb0e0':'#fff'); }
   // moon
-  px(238,24,34,34,'#0e1330'); X.beginPath(); X.fillStyle=C.moon; X.arc(255,41,15,0,7); X.fill();
-  X.fillStyle='#0b1024'; X.beginPath(); X.arc(261,37,13,0,7); X.fill();
+  circ(VW*0.76, VH*0.16, TS*0.9, C.moon); circ(VW*0.79, VH*0.145, TS*0.78, C.sky1);
   // sea
-  for(let y=120;y<H;y+=2){ const t=(y-120)/(H-120); px(0,y,W, 2, mix(C.sea1,C.sea2,t)); }
-  for(let i=0;i<W;i+=8){ const yy=124+((Math.sin((i*0.2)+a*0.05)*3)|0); px(i, 128+ (i%16?0:0)+ ((Math.sin(i*0.3+a*0.06)*3)|0), 6,1, C.sea3); }
-  // island fortress silhouette
-  const ix=118, iy=96;
-  px(ix-30,iy+14,120,12,'#0a0d1a'); // rock base
-  px(ix,iy,64,20,'#141a2e'); // wall
-  px(ix-6,iy-12,16,32,'#181f36'); px(ix+54,iy-12,16,32,'#181f36'); // towers
-  px(ix+22,iy-18,20,38,'#1b2340'); // keep
-  // lit windows (flicker)
-  if((a>>5)%2) px(ix+4,iy+4,3,4,'#e9b24a'); px(ix+30,iy-8,3,4, (a>>4)%2?'#e9b24a':'#6a4a10'); px(ix+58,iy+4,3,4,'#e9b24a');
-  // little boat
-  const bx=40+ (a*0.2 % 60);
-  px(bx, 150+ (Math.sin(a*0.1)*2|0), 14,4,'#1a120a'); px(bx+6,146,1,6,'#3a2a16');
+  const seaY=VH*0.52;
+  px(0,seaY,VW,VH-seaY,C.sea2);
+  for(let y=seaY;y<VH;y+=Math.max(3,TS*0.16)){ px(0,y,VW,2, ((y/TS+ (a>>5))|0)%2? C.sea1:C.sea3+'aa'); }
+  // fortress
+  const ix=VW*0.5, iy=seaY-TS*1.2, w=TS*4;
+  px(ix-w*0.75, iy+TS*0.9, w*1.5, TS*0.9, '#0a0f1e');
+  px(ix-w*0.5, iy, w, TS*1.1, '#13203a');
+  px(ix-w*0.6, iy-TS*0.7, TS*0.9, TS*1.8, '#182746'); px(ix+w*0.5-TS*0.9, iy-TS*0.7, TS*0.9, TS*1.8, '#182746');
+  px(ix-TS*0.6, iy-TS*1.1, TS*1.2, TS*2.2, '#1d2c50');
+  if((a>>5)%2) px(ix-w*0.45, iy+TS*0.2, TS*0.24, TS*0.34, C.gold);
+  px(ix-TS*0.35, iy-TS*0.5, TS*0.24, TS*0.34, (a>>4)%2?C.gold:'#6a4a10');
+  px(ix+w*0.3, iy+TS*0.2, TS*0.24, TS*0.34, C.gold);
   // title text
-  X.textAlign='center';
-  textPix('MONTE CRISTO', W/2, 40, '#0a0d1a', 22); // shadow
-  X.fillStyle=C.gold; X.font="22px 'Galmuri11',monospace"; X.fillText('MONTE CRISTO', W/2, 38);
-  textPix('몽테크리스토 — 복수의 서막', W/2, 66, C.text, 12);
-  X.textAlign='left';
-  // menu
-  const items=['새 게임','조작법'];
+  txt('MONTE CRISTO', VW/2+2, VH*0.235+2, '#08122a', fs(TS*1.05),'center');
+  txt('MONTE CRISTO', VW/2, VH*0.235, C.gold, fs(TS*1.05),'center');
+  txt('몽테크리스토 — 복수의 서막', VW/2, VH*0.235+TS*1.1, C.textL, fs(TS*0.42),'center');
+  // menu buttons
+  const items=['새 게임','조작법']; G.title.rects=[];
+  const bw=Math.min(VW*0.6, TS*6), bh=TS*1.1, bx=VW/2-bw/2; let by=VH*0.68;
   for(let i=0;i<items.length;i++){
-    const yy=150+i*16; X.textAlign='center';
-    if(i===G.title.sel){ if((a>>4)%2) textPix('◆', W/2-52, yy, C.gold,12); textPix(items[i],W/2,yy,C.gold,13); }
-    else textPix(items[i],W/2,yy,'#9fb0d8',12);
+    const sel=i===G.title.sel;
+    rr(bx+2,by+3,bw,bh,10,'#0006'); rr(bx,by,bw,bh,10, sel?C.gold:'#e9edf7');
+    X.strokeStyle=sel?'#fff6c8':'#9fb0d8'; X.lineWidth=2; X.beginPath(); X.roundRect(bx,by,bw,bh,10); X.stroke();
+    txt(items[i], VW/2, by+bh/2-fs(TS*0.44)/2, sel?'#5a3a00':'#33436e', fs(TS*0.44),'center');
+    G.title.rects.push({x:bx,y:by,w:bw,h:bh,i}); by+=bh+TS*0.4;
   }
-  X.textAlign='left';
   if(G.title.showHelp){
-    win(30,60,260,90);
-    wrapText('조작법\n이동: 방향키 / WASD / 화면 방향버튼\n확인: Z 또는 A 버튼\n취소: X 또는 B 버튼\n\nNPC·물체를 마주보고 확인을 누르면\n대화·조사할 수 있다.', 40,68, 244, 13, C.text);
+    const w=Math.min(VW*0.86,TS*8), h=TS*5.2, x=VW/2-w/2, y=VH/2-h/2;
+    panel(x,y,w,h);
+    wrap('조작법\n\n· 가고 싶은 곳을 탭하면 이동합니다.\n· 사람이나 사물을 탭하면 대화·조사.\n· 대화 중에는 화면을 탭해 다음으로.\n· 전투는 명령 버튼을 탭.\n\n폰·태블릿 모두 터치로 즐겨요.\n(탭하면 닫기)', x+TS*0.4, y+TS*0.4, w-TS*0.8, fs(TS*0.4)+4, C.text, fs(TS*0.4));
   }
 }
-function updateTitle(){
-  if(G.title.showHelp){ if(consumeConfirm()||consumeCancel()) G.title.showHelp=false; return; }
-  if(keys.up&&!G.title._h){ G.title.sel=(G.title.sel+1)%2; G.title._h=1; }
-  else if(keys.down&&!G.title._h){ G.title.sel=(G.title.sel+1)%2; G.title._h=1; }
-  else if(!keys.up&&!keys.down) G.title._h=0;
-  if(consumeConfirm()){
-    if(G.title.sel===0){ startGame(); }
-    else G.title.showHelp=true;
-  }
-}
-function startGame(){
-  G.flags={}; G.player.hp=60;G.player.maxhp=60;G.player.mp=12;G.player.maxmp=12;G.player.atk=14;G.player.def=6;G.player.lv=1;
-  fadeTo(()=>{ loadRoom('marseille',false); G.mode='field';
-    setTimeout(()=>say([{who:'',txt:'1815년, 프랑스 마르세유. 젊은 선원 에드몽 단테스가 약혼자 메르세데스에게 돌아왔다.'},
-      {who:'',txt:'(메르세데스에게 다가가 확인(A)을 눌러 이야기하자.)'}]), 300);
-  });
-}
-
-/* ---------- game over / ending ---------- */
-function gameOver(){ G.mode='gameover'; }
-function drawGameOver(){ px(0,0,W,H,'#0a0308'); X.textAlign='center'; textPix('쓰러졌다…',W/2,80,'#c0392b',18); textPix('A를 눌러 다시 도전',W/2,120,C.text,12); X.textAlign='left'; }
+function drawGameOver(){ px(0,0,VW,VH,'#180810'); txt('쓰러졌다…',VW/2,VH*0.4,C.red,fs(TS*0.9),'center'); txt('화면을 탭해 타이틀로',VW/2,VH*0.55,C.textL,fs(TS*0.42),'center'); }
 function drawEnding(){
-  px(0,0,W,H,'#07060c');
-  for(let i=0;i<50;i++){ px((i*61%W),(i*37%H),1,1,i%4?'#20202f':C.gold); }
+  const g=X.createLinearGradient(0,0,0,VH); g.addColorStop(0,'#0a0810'); g.addColorStop(1,'#161020'); X.fillStyle=g; X.fillRect(0,0,VW,VH);
+  for(let i=0;i<60;i++) px((i*61%VW),(i*47%VH),2,2,i%4?'#2a2338':C.gold);
+  txt('― 제 1 막  끝 ―', VW/2, VH*0.22, C.gold, fs(TS*0.7),'center');
+  wrap('에드몽 단테스는 죽고,\n몬테크리스토 백작이 태어났다.\n\n그의 복수는 이제\n막 시작되었다…', 0, VH*0.36, VW, fs(TS*0.5)+8, C.textL, fs(TS*0.5));
   X.textAlign='center';
-  textPix('― 제1막 끝 ―', W/2, 40, C.gold, 16);
-  wrapText('에드몽 단테스는 죽고,\n몬테크리스토 백작이 태어났다.\n\n그의 복수는 이제 막 시작되었다…', W/2-120, 74, 240, 16, C.text);
-  X.textAlign='center';
-  textPix('제2막 「백작의 심판」에서 계속', W/2, 158, '#9fb0d8', 11);
-  textPix('A: 타이틀로', W/2, 178, C.gold, 11);
-  X.textAlign='left';
+  txt('제2막 「백작의 심판」에서 계속', VW/2, VH*0.72, '#9fb0d8', fs(TS*0.36),'center');
+  txt('화면을 탭해 타이틀로', VW/2, VH*0.8, C.gold, fs(TS*0.38),'center');
 }
 
-/* ---------- util ---------- */
-function mix(a,b,t){ const pa=hx(a),pb=hx(b); return 'rgb('+((pa[0]+(pb[0]-pa[0])*t)|0)+','+((pa[1]+(pb[1]-pa[1])*t)|0)+','+((pa[2]+(pb[2]-pa[2])*t)|0)+')'; }
-function hx(h){ h=h.replace('#',''); return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; }
-
-/* ---------- draw field ---------- */
-function drawField(){
-  const r=G.room;
-  for(let y=0;y<r.tiles.length;y++) for(let x=0;x<r.tiles[0].length;x++){ drawTile(r.tiles[y][x], x*TS, y*TS, G.anim); }
-  // npcs
-  if(r.npcsLive) for(const n of r.npcsLive){ drawActor(n.x*TS, n.y*TS, n.type, n.dir, 0); }
-  // player (with move tween)
-  let dpx=G.px*TS, dpy=G.py*TS;
-  if(G.moving){ dpx=(G.moving.fx+(G.moving.tx-G.moving.fx)*G.moveT)*TS; dpy=(G.moving.fy+(G.moving.ty-G.moving.fy)*G.moveT)*TS; }
-  drawActor(dpx,dpy, G.flags.ending?'edmondCount':'edmond', G.dir, G.moving?(Math.floor(G.moveT*4)):0);
-  // location banner
-  if(G.anim%1<2 || true){ /* always draw subtle */ }
-  px(0,0,W,14,'#0a0f22cc'); textPix(r.name, 6, 2, C.gold, 11);
-  if(G.dialog) drawDialog();
+/* ---------- start ---------- */
+function startGame(){ const p=G.player;
+  G.flags={}; p.hp=60;p.maxhp=60;p.mp=12;p.maxmp=12;p.atk=14;p.def=6;p.lv=1;
+  fadeTo(()=>{ loadRoom('marseille'); G.mode='field';
+    setTimeout(()=>{ say([{who:'',txt:'1815년, 프랑스 마르세유. 젊은 선원 에드몽 단테스가 약혼자 메르세데스에게 돌아왔다.'},
+      {who:'',txt:'(위쪽의 메르세데스에게 다가가 탭해서 이야기하자.)'}]); },250);
+  });
 }
 
 /* ---------- main loop ---------- */
 function loop(){
   G.anim++;
-  // update
+  const t=tap; tap=null;
   if(G.fadeDir!==0){
     G.fade+=G.fadeDir*0.08;
-    if(G.fadeDir>0 && G.fade>=1){ G.fade=1; const c=G.fadeCb;G.fadeCb=null;c&&c(); }
-    else if(G.fadeDir<0 && G.fade<=0){ G.fade=0; const c=G.fadeCb;G.fadeCb=null;c&&c(); }
+    if(G.fadeDir>0&&G.fade>=1){G.fade=1;const c=G.fadeCb;G.fadeCb=null;c&&c();}
+    else if(G.fadeDir<0&&G.fade<=0){G.fade=0;const c=G.fadeCb;G.fadeCb=null;c&&c();}
   } else {
-    if(G.mode==='title') updateTitle();
-    else if(G.mode==='field'){ updateField(); }
-    else if(G.mode==='battle') battleInput();
-    else if(G.mode==='gameover'){ if(consumeConfirm()){ G.mode='title'; } }
-    else if(G.mode==='ending'){ if(consumeConfirm()){ G.mode='title'; G.title.sel=0; } }
-    // dialog outside cut (field handles its own); ensure dialog updates in non-field story
-    if(G.dialog && G.mode!=='field' && G.mode!=='battle') updateDialog();
+    if(t) handleTap(t);
+    if(G.mode==='field') updateField();
+    if(G.dialog && G.mode!=='field') dialogAnim();
   }
-  // draw
-  X.clearRect(0,0,W,H);
+  X.clearRect(0,0,VW,VH);
   if(G.mode==='title') drawTitle();
   else if(G.mode==='field') drawField();
   else if(G.mode==='battle') drawBattle();
   else if(G.mode==='gameover') drawGameOver();
   else if(G.mode==='ending') drawEnding();
-  // dialog overlay for cutscene while in field already drawn; for goto transitions dialog may show over field
-  if(G.fade>0){ X.fillStyle='rgba(0,0,0,'+G.fade+')'; X.fillRect(0,0,W,H); }
+  if(G.fade>0){ X.fillStyle='rgba(0,0,0,'+G.fade+')'; X.fillRect(0,0,VW,VH); }
   requestAnimationFrame(loop);
 }
-
-/* fit canvas height to width for crispness handled by CSS width; ensure font ready */
-document.fonts && document.fonts.load("12px 'Galmuri11'").then(()=>{}).catch(()=>{});
+if(!X.roundRect){ X.roundRect=function(x,y,w,h,r){ this.moveTo(x+r,y); this.arcTo(x+w,y,x+w,y+h,r); this.arcTo(x+w,y+h,x,y+h,r); this.arcTo(x,y+h,x,y,r); this.arcTo(x,y,x+w,y,r); return this; }; }
+document.fonts && document.fonts.load("16px 'Galmuri11'").catch(()=>{});
 loop();
 </script>
 </body>
