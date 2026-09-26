@@ -8,7 +8,7 @@
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
   html,body{width:100%;height:100%;overflow:hidden;background:#05060c;touch-action:none;overscroll-behavior:none;font-family:'Galmuri11','Galmuri9',monospace;}
-  #screen{display:block;width:100vw;height:100vh;image-rendering:pixelated;background:#05060c;}
+  #screen{display:block;width:100vw;height:100vh;image-rendering:pixelated;background:#05060c;touch-action:none;-webkit-user-select:none;}
 </style>
 </head>
 <body>
@@ -359,9 +359,8 @@ function resolveFaint(){ // lose half mats, wake base full heal
 
 /* ===================== loop ===================== */
 function frame(){ tick++;
-  const t=tapQ; tapQ=null;
   if(G.fadeDir!==0){ G.fade+=G.fadeDir*0.09; if(G.fadeDir>0&&G.fade>=1){G.fade=1;const c=G.fadeCb;G.fadeCb=null;c&&c();} else if(G.fadeDir<0&&G.fade<=0){G.fade=0;const c=G.fadeCb;G.fadeCb=null;c&&c();} }
-  else { if(t) routeTap(t.x,t.y); if(G.screen==='field') updateField(); if(G.dialog&&G.screen!=='field') dlgAnim(); }
+  else { if(G.screen==='field') updateField(); if(G.dialog&&G.screen!=='field') dlgAnim(); }
   X.clearRect(0,0,VW,VH);
   if(G.screen==='title') drawTitle();
   else if(G.screen==='intro') drawIntro();
@@ -376,8 +375,13 @@ function routeTap(x,y){ enableAudio();
   if(G.screen==='field'){ fieldTap(x,y); return; }
   if(G.screen==='battle'){ const b=G.battle; if(b&&b.phase==='faint'){ resolveFaint(); return; } battleTap(x,y); return; }
 }
-let tapQ=null;
-CV.addEventListener('pointerdown',e=>{ e.preventDefault(); const r=CV.getBoundingClientRect(); tapQ={x:(e.clientX-r.left),y:(e.clientY-r.top)}; },{passive:false});
+let lastTap=0;
+function onTap(cx,cy){ const now=(window.performance&&performance.now)?performance.now():Date.now(); if(now-lastTap<160)return; lastTap=now;
+  enableAudio(); if(!G||G.fadeDir!==0) return; const r=CV.getBoundingClientRect(); routeTap(cx-r.left, cy-r.top); }
+CV.addEventListener('touchstart',e=>{ if(e.cancelable)e.preventDefault(); const t=(e.changedTouches&&e.changedTouches[0])||(e.touches&&e.touches[0]); if(t)onTap(t.clientX,t.clientY); },{passive:false});
+CV.addEventListener('pointerdown',e=>{ if(e.pointerType==='touch')return; onTap(e.clientX,e.clientY); },{passive:false});
+CV.addEventListener('mousedown',e=>{ onTap(e.clientX,e.clientY); });
+CV.addEventListener('click',e=>{ onTap(e.clientX,e.clientY); });
 
 resize(); G=newGame(); document.fonts&&document.fonts.load("12px 'Galmuri11'").catch(()=>{}); frame();
 </script>
