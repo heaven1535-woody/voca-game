@@ -132,7 +132,7 @@ function loadMap(key,pos){ const m=DATA.maps[key]; G.mapKey=key;
   // live symbols/chests
   G.map.symbols=(m.symbols||[]).map((s,i)=>({x:s[0],y:s[1],key:s[2],n:s[3],id:key+'_s'+i})).filter(s=>!G.killed[s.id]);
   G.map.chests=(m.chests||[]).map((c,i)=>({x:c[0],y:c[1],item:c[2],id:key+'_c'+i})).filter(c=>!G.chestsOpen[c.id]);
-  const st=pos||m.start; G.px=st[0]; G.py=st[1]; G.moving=null; G.path=null; G.pend=null; }
+  const st=pos||m.start; G.px=st[0]; G.py=st[1]; G.moving=null; G.path=null; G.pend=null; G.hold=null; }
 function tileAt(x,y){ const t=G.map.tiles; if(y<0||y>=t.length||x<0||x>=t[0].length) return '#'; return t[y][x]; }
 function symAt(x,y){ for(const s of G.map.symbols) if(s.x===x&&s.y===y) return s; return null; }
 function chestAt(x,y){ for(const c of G.map.chests) if(c.x===x&&c.y===y) return c; return null; }
@@ -162,11 +162,21 @@ function hit(lx,ly){ for(let i=BTN.length-1;i>=0;i--){ const b=BTN[i]; if(lx>=b.
 
 /* ===================== FIELD ===================== */
 function updateField(){ if(G.dialog){dlgAnim();return;}
-  if(G.moving){ G.moveT+=0.18; if(G.moveT>=1){ G.px=G.moving.tx;G.py=G.moving.ty;G.moving=null;
-    if(G.path&&G.path.length) stepPath(); else if(G.pend){ const pn=G.pend;G.pend=null; faceTo(pn.x,pn.y); interactAt(pn.x,pn.y);} } }
-  else if(G.path&&G.path.length) stepPath();
+  if(G.moving){ G.moveT+=0.16; if(G.moveT>=1){ G.px=G.moving.tx;G.py=G.moving.ty;G.moving=null; } }
+  if(!G.moving && G.hold) holdStep();
 }
-function stepPath(){ const [nx,ny]=G.path[0]; if(solid(nx,ny)){G.path=null;G.pend=null;return;} G.path.shift(); faceTo(nx,ny); G.moving={fx:G.px,fy:G.py,tx:nx,ty:ny};G.moveT=0; }
+/* 화면을 누른 상태에서, 누른 지점 방향으로 한 칸씩 계속 이동 */
+function holdStep(){ const pcx=G.px*TS-G.cam.x+TS/2, pcy=G.py*TS-G.cam.y+TS/2;
+  const dx=G.hold.sx-pcx, dy=G.hold.sy-pcy;
+  if(Math.abs(dx)<TS*0.4 && Math.abs(dy)<TS*0.4) return; // 캐릭터 바로 위 = 정지
+  const h=[dx<0?-1:1,0], v=[0,dy<0?-1:1];
+  const dirs=(Math.abs(dx)>=Math.abs(dy))?[h,v]:[v,h]; // 주 방향 먼저, 막히면 보조 방향(벽 미끄러짐)
+  for(const [mx,my] of dirs){ const nx=G.px+mx,ny=G.py+my;
+    if(nx<0||ny<0||nx>=G.map.cols||ny>=G.map.rows)continue;
+    if(interactableAt(nx,ny)){ faceTo(nx,ny); G.hold=null; interactAt(nx,ny); return; } // 침대·상자·적·출구 등은 부딪히면 상호작용
+    if(solid(nx,ny))continue;
+    faceTo(nx,ny); G.moving={fx:G.px,fy:G.py,tx:nx,ty:ny};G.moveT=0; return; }
+}
 function faceTo(x,y){ G.dir=x<G.px?'left':x>G.px?'right':y<G.py?'up':'down'; }
 function fieldTap(lx,ly){ if(G.dialog){dlgAdvance();return;}
   if(G.moving||G.path)return;
@@ -370,18 +380,27 @@ function frame(){ tick++;
   if(G.fade>0){ X.fillStyle='rgba(0,0,0,'+G.fade+')'; X.fillRect(0,0,VW,VH); }
   requestAnimationFrame(frame);
 }
-function routeTap(x,y){ enableAudio();
-  if(G.screen==='title'||G.screen==='intro'||G.screen==='timecard'){ hit(x,y); return; }
-  if(G.screen==='field'){ fieldTap(x,y); return; }
-  if(G.screen==='battle'){ const b=G.battle; if(b&&b.phase==='faint'){ resolveFaint(); return; } battleTap(x,y); return; }
-}
+function cxy(cx,cy){ const r=CV.getBoundingClientRect(); return [cx-r.left, cy-r.top]; }
 let lastTap=0;
-function onTap(cx,cy){ const now=(window.performance&&performance.now)?performance.now():Date.now(); if(now-lastTap<160)return; lastTap=now;
-  enableAudio(); if(!G||G.fadeDir!==0) return; const r=CV.getBoundingClientRect(); routeTap(cx-r.left, cy-r.top); }
-CV.addEventListener('touchstart',e=>{ if(e.cancelable)e.preventDefault(); const t=(e.changedTouches&&e.changedTouches[0])||(e.touches&&e.touches[0]); if(t)onTap(t.clientX,t.clientY); },{passive:false});
-CV.addEventListener('pointerdown',e=>{ if(e.pointerType==='touch')return; onTap(e.clientX,e.clientY); },{passive:false});
-CV.addEventListener('mousedown',e=>{ onTap(e.clientX,e.clientY); });
-CV.addEventListener('click',e=>{ onTap(e.clientX,e.clientY); });
+// 탭 = 버튼/대사/전투 확정 (필드 이동은 탭이 아니라 '누르고 있기'로 처리)
+function tapAt(cx,cy){ const now=(window.performance&&performance.now)?performance.now():Date.now(); if(now-lastTap<140)return; lastTap=now;
+  enableAudio(); if(!G||G.fadeDir!==0) return; const [x,y]=cxy(cx,cy);
+  if(G.screen==='title'||G.screen==='intro'||G.screen==='timecard'){ hit(x,y); return; }
+  if(G.screen==='battle'){ const b=G.battle; if(b&&b.phase==='faint'){ resolveFaint(); return; } battleTap(x,y); return; }
+  if(G.screen==='field'&&G.dialog){ dlgAdvance(); return; }
+}
+// 필드에서 누르고 있는 동안 그 지점 방향으로 이동
+function holdDown(cx,cy){ enableAudio(); if(!G||G.fadeDir!==0)return; if(G.screen!=='field'||G.dialog)return; const [x,y]=cxy(cx,cy); G.hold={sx:x,sy:y}; }
+function holdMove(cx,cy){ if(!G||!G.hold)return; const [x,y]=cxy(cx,cy); G.hold.sx=x; G.hold.sy=y; }
+function holdUp(){ if(G)G.hold=null; }
+CV.addEventListener('touchstart',e=>{ if(e.cancelable)e.preventDefault(); const t=e.changedTouches&&e.changedTouches[0]; if(!t)return; tapAt(t.clientX,t.clientY); holdDown(t.clientX,t.clientY); },{passive:false});
+CV.addEventListener('touchmove',e=>{ if(e.cancelable)e.preventDefault(); const t=e.changedTouches&&e.changedTouches[0]; if(t)holdMove(t.clientX,t.clientY); },{passive:false});
+CV.addEventListener('touchend',e=>{ if(e.cancelable)e.preventDefault(); holdUp(); },{passive:false});
+CV.addEventListener('touchcancel',()=>holdUp());
+CV.addEventListener('pointerdown',e=>{ if(e.pointerType==='touch')return; tapAt(e.clientX,e.clientY); holdDown(e.clientX,e.clientY); });
+CV.addEventListener('pointermove',e=>{ if(e.pointerType==='touch')return; holdMove(e.clientX,e.clientY); });
+window.addEventListener('pointerup',e=>{ if(e.pointerType==='touch')return; holdUp(); });
+window.addEventListener('mouseup',()=>holdUp());
 
 resize(); G=newGame(); document.fonts&&document.fonts.load("12px 'Galmuri11'").catch(()=>{}); frame();
 </script>
