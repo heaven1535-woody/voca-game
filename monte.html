@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#05060c">
 <meta name="format-detection" content="telephone=no">
-<title>34번의 14년</title>
+<title>N°34</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
 <style>
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#05060c;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;overscroll-behavior:none;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
@@ -31,7 +31,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.2.2-s2n';
+  var VERSION = '0.2.3-s2n';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   var FILES = [
     'src/engine/core.js', 'src/engine/gfx.js', 'src/engine/text.js', 'src/engine/input.js', 'src/engine/scene.js',
@@ -29593,7 +29593,7 @@ MC.addEvents({
 
 </script>
 <script>/* ==== src/ch1/title.js ==== */
-/* title.js — 타이틀 씬 MC.ch1.titleScene(): 밤바다(물결 3층·달 그림자)·샤토 디프 실루엣·달·회전하는 플라니에 등대 빛, 코드로 그린 로고('34'·'14' 커스텀 숫자).
+/* title.js — 타이틀 씬 MC.ch1.titleScene(): 밤바다(물결 3층·달 그림자)·샤토 디프 실루엣·달·회전하는 플라니에 등대 빛, 코드로 그린 로고('N°34' 커스텀 글자).
    1단계 '화면을 눌러 시작하세요'(탭=소리 켬, 파도·갈매기·타이틀 곡 페이드인) → 2단계 [이어하기][처음부터(확인 1초 누르기)][설정] + 소리 켬/끔. 담당: scenes */
 (function (MC) { 'use strict';
   const ch1 = MC.ch1, U = ch1.u, G = () => MC.gfx;
@@ -29604,40 +29604,27 @@ MC.addEvents({
     return { hz, logoY: 50 + Math.round(k * 0.45), moonX: g.X0 + 144, moonY: 34 + Math.round(k * 0.3), X0: g.X0, lampX: g.X0 + 171, lampY: hz - 11 };
   }
 
-  /* ---------- 로고: 7×11 커스텀 숫자(2배) + '번의'·'년'(굵게 2배) ---------- */
+  /* ---------- 로고 'N°34': 7×11 커스텀 글자(3배) — N·°는 은빛, 34는 금빛 ---------- */
   const DIG = {
+    'N': ['##...##', '###..##', '###..##', '####.##', '##.#.##', '##.####', '##..###', '##..###', '##...##', '##...##', '##...##'],
+    'o': ['.##.', '#..#', '#..#', '.##.'],
     '3': ['.#####.', '##...##', '.....##', '.....##', '..####.', '....##.', '.....##', '.....##', '##...##', '##...##', '.#####.'],
-    '4': ['....##.', '...###.', '..####.', '.##.##.', '##..##.', '##..##.', '#######', '....##.', '....##.', '....##.', '...####'],
-    '1': ['...##..', '..###..', '.####..', '...##..', '...##..', '...##..', '...##..', '...##..', '...##..', '...##..', '.######']
+    '4': ['....##.', '...###.', '..####.', '.##.##.', '##..##.', '##..##.', '#######', '....##.', '....##.', '....##.', '...####']
   };
   let logoC = null;
   function bakeLogo() {
     if (logoC) return logoC;
-    const g = G();
-    // 한글 글리프의 실제 위아래 줄
-    const rowsOf = ch => { const gl = MC.text.glyph(ch, 'big'); let top = 99, bot = -1; for (let y = 0; y < gl.h; y++) for (let x = 0; x < gl.w; x++) if (gl.bits[y * gl.w + x]) { if (y < top) top = y; if (y > bot) bot = y; } return [top, bot, gl]; };
-    const parts = [['34', 1], ['번의', 3], [' ', 0], ['14', 2], ['년', 3]];
-    let bot = 23, top = 2;
-    for (const ch of '번의년') { const r = rowsOf(ch); if (r[1] > 0) { bot = Math.max(bot === 23 ? 0 : bot, r[1]); top = Math.min(top, r[0]); } }
-    const DH = 22, dTop = bot - DH + 1;
-    // 폭 계산
-    let w = 2;
+    const g = G(), SC = 3, DH = 11 * SC;
+    // [글자, 색 종류, 뒤 간격] — °는 윗첨자(N 머리에 맞춤)
+    const parts = [['N', 1, 2], ['o', 1, 7], ['3', 2, 3], ['4', 2, 0]];
+    let w = 3;
     const items = [];
-    for (const [str, kind] of parts) {
-      if (kind === 0) { w += 7; continue; }
-      if (kind === 3) { for (const ch of str) { const r = rowsOf(ch); items.push({ x: w, kind, gl: r[2] }); w += r[2].adv + 1; } w += 2; }
-      else { for (const ch of str) { items.push({ x: w, kind, d: DIG[ch] }); w += 16; } w += 2; }
-    }
-    const Wd = w + 1, Hd = bot + 4;
+    for (const [ch, kind, gap] of parts) { const rows = DIG[ch]; items.push({ x: w, kind, rows }); w += rows[0].length * SC + gap; }
+    const Wd = w + 3, Hd = DH + 4;
     const m = new Uint8Array(Wd * Hd);
-    for (const it of items) {
-      if (it.d) {
-        for (let y = 0; y < 11; y++) for (let x = 0; x < 7; x++) if (it.d[y][x] === '#') for (let sy = 0; sy < 2; sy++) for (let sx = 0; sx < 2; sx++) m[(dTop + y * 2 + sy + 1) * Wd + it.x + x * 2 + sx] = it.kind;
-      } else {
-        const gl = it.gl;
-        for (let y = 0; y < gl.h; y++) for (let x = 0; x < gl.w; x++) if (gl.bits[y * gl.w + x]) { const yy = y + 1, xx = it.x + x; if (yy < Hd && xx < Wd) m[yy * Wd + xx] = 3; }
-      }
-    }
+    for (const it of items)
+      for (let y = 0; y < it.rows.length; y++) for (let x = 0; x < it.rows[y].length; x++) if (it.rows[y][x] === '#')
+        for (let sy = 0; sy < SC; sy++) for (let sx = 0; sx < SC; sx++) m[(y * SC + sy + 1) * Wd + it.x + x * SC + sx] = it.kind;
     const PAL = {
       1: ['#c8d4ec', '#ffffff', '#5a6a90'],
       2: ['#ffd98a', '#fff6d8', '#b07830'],
