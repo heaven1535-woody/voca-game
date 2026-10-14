@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.3.0-s3';
+  var VERSION = '0.3.5-arms';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   var FILES = [
@@ -20634,6 +20634,17 @@ MC.addSprites({
 /* data/spr_chars_s3.js — [art-chars-s3] S3 「섬의 이름」 인물·초상·클로즈업: 당테스 5단계(1825~), 파리아 1825~(흰 머리·발작 뒤 마비된 오른쪽), 부축·업기·안기기 짝 그림, 1807 젊은 파리아, 소장, 광기의 왕 초상, 연출 클로즈업(cu_*).
    S1 문법(docs/handoff/art-chars.md): 2등신 16×16, 외곽 #2b1d2a, 좌상 광원, down/up 0=왼손 앞, left 0=모음·1=보폭, 초상 32×32 오른쪽을 봄(감정 = base+over).
    짝 그림(ch_pair_*)은 앞 파일의 인물 행을 겹쳐 로드 때 만들고, 클로즈업은 작은 래스터 생성기로 로드 때 행 문자열을 만든다(DOM·Math.random 없음, 좌표 해시만).
+   손 클로즈업(cu_arm cu_hands_young cu_wrist_* cu_press cu_bread_hands cu_pour cu_grip)은 hands-art가 참고 그림(docs/art_refs/, 번들 밖)을
+   monte/tools/pixelize.html로 도트화·손질한 리터럴 행이다 — 다시 만들 때는 그 페이지의 레시피(PX.make)를 고쳐 행을 붙여 넣는다(docs/handoff/fix-hands-art.md).
+   [0.3.3-hands] fixer-edmond 1회차(QA 두 갈래 반영)가 아래 정본 행을 고쳤다 — 블록마다 '[fixer-edmond 0.3.3-hands]' 주석, 재현 도구 docs/art_wip/edmond/fixE/(fixE.js · touches.js), 인계 docs/handoff/edmond-hands.md §8.
+   [0.3.3-hands r3] fixer-r3(QA 3회차 반영)가 다시 고쳤다 — 블록마다 '[fixer-r3 0.3.3-hands]' 주석, 재현 도구 docs/art_wip/edmond/r3/r3.js(R3.build), 인계 §9.
+   [0.3.2-hands] 단, 에드몽(당테스)의 손(cu_wrist_young cu_press cu_bread_hands 오른쪽 반 cu_pour cu_grip cu_knock cu_knock_hit cu_knock_hold cu_knock_reach cu_pinch cu_pinch_r cu_embrace_l·r)은
+   그림을 형태 그대로 격자·팔레트에만 맞춘 행이 정본이다 — pixelize 레시피로 다시 만들어 덮어쓰지 말 것(docs/handoff/edmond-hands.md).
+   [0.3.4-hands] 그중 12장(cu_embrace_l·r cu_wrist_young cu_press cu_grip cu_pinch cu_pinch_r cu_knock cu_knock_hit cu_knock_hold 새 cu_knock_reach cu_pour)은 사용자 유료 제미나이 계정이 그린
+   큰 셀 음영 그림(docs/art_refs/gemini/, 번들 밖)에서 다시 옮긴 행이다(정본 docs/art_wip/edmond/gemini/final_*.js, 인계 §10).
+   1807 젊은 파리아의 1인칭 손 cu_hands_young(final_paper_young.js — 플레이어가 에드몽의 손으로도 보는 손)도 같은 방식으로 제미나이 원본에서 옮겼다. 에드몽 손 13장 모두 + cu_hands_young.
+   빵 장면은 두 손 모두 제미나이다(사용자 「신부님 손도 바꿔줘」): cu_bread_hands 전체(오른쪽 에드몽 손 + 왼쪽 파리아 손)와 한 손 단계 cu_bread_old(파리아 손)가
+   같은 원본 bread_g1.png에서 옮긴 행이고, 정본은 final_bread_both.js다(인계 §10-10). 파리아의 다른 손(cu_arm cu_wrist_old cu_soot cu_embrace_head)은 pixelize.html이 정본 그대로.
    계약: docs/ARCHITECTURE_S3.md §D-2(art-chars-s3 표). 계약 밖 추가분은 docs/handoff/s3-art-chars-s3.md. */
 (function (MC) { 'use strict';
 if (!MC || !MC.addSprites) return;
@@ -21457,25 +21468,76 @@ SPR.pt_governor = { base: 'pt_jailer', pal: 'pt_governor', over: {
 })();
 
 /* ================================================================ 7. 연출 클로즈업(cu_*) — 글자 없음 */
-// 7-1. cu_arm 96×64: 짚 위에 놓인 파리아의 오른팔·소매(투명 바탕). 어깨 쪽 회전축 = (0, 34)(s3night lift의 piv와 같음), 손목 ≈ (67, 38), 손끝 = (93, 40)
-PALS.cu_arm = { o: O, '1': '#2e2822', '2': '#4a4036', '3': '#645646', '4': '#7e6e5a', '5': '#8a6450', '6': '#b08468', '7': '#d0a488', '8': '#ecc8ac', '9': '#a47c60', v: '#8e86a0', n: '#e6ccbc', C: '#221c18' };
-SPR.cu_arm = { pal: 'cu_arm', rows: (function () {
-  const cv = new Cv(96, 64), SL = '1234', SK = '5678', Y = 11;               // Y: 축을 (0,34)에 맞추는 세로 이동
-  cyl(cv, -6, 22 + Y, 40, 25 + Y, 12, 9, SL);
-  for (let i = 0; i < 5; i++) line(cv, 6 + i * 7, 13 + (i & 1) + Y, 12 + i * 7, 32 - (i & 1) + Y, '2');      // 소매 주름
-  for (let y = 15 + Y; y <= 34 + Y; y++) { cv.p(38, y, 'C'); if (cv.g(39, y) !== '.') cv.p(39, y, '2'); }       // 소맷부리
-  cyl(cv, 41, 25 + Y, 66, 27 + Y, 5.2, 4.2, SK);
-  ell(cv, 67, 27 + Y, 4.6, 4.4, SK);
-  ell(cv, 76, 27.5 + Y, 8.5, 6.4, SK);
-  cyl(cv, 73, 22.5 + Y, 81, 20.5 + Y, 2, 1.7, SK);                           // 엄지
-  const F = [[81, 23.5, 89, 25], [82, 26.5, 91, 28.5], [82, 29.5, 90, 32], [80, 32, 86, 34.5]];
-  for (const f of F) { cyl(cv, f[0], f[1] + Y, f[2], f[3] + Y, 1.9, 1.6, SK); cv.p(f[2] + 0.5, f[3] + Y, 'n'); }
-  for (const f of F) cv.p(f[0] - 1, f[1] + 1 + Y, '5');                    // 손가락 사이
-  line(cv, 70, 25 + Y, 78, 24 + Y, 'v'); line(cv, 71, 29 + Y, 80, 30 + Y, 'v'); line(cv, 48, 25 + Y, 58, 26 + Y, 'v');   // 핏줄
-  for (const s of [[52, 23], [57, 28], [74, 24], [79, 28], [62, 25]]) cv.p(s[0], s[1] + Y, '9');          // 검버섯
-  outline(cv, 'o');
-  return cv.rows();
-})() };
+// 7-1. cu_arm 96×64: 짚 위에 놓인 파리아의 오른팔·소매(투명 바탕). 어깨 쪽 회전축 = (0, 34)(s3night lift의 piv와 같음).
+//      손등에서 아래로 처진 손(손가락 넷이 짚으로 늘어짐) · 손목 = x 60~62의 가장 좁은 칸(10, s3night armWrist가 찾음 ≈ (61,33))
+//      (hands-art · 참고 docs/art_refs/arm_a.png → monte/tools/pixelize.html 'cu_arm' 레시피: 사진 변환(소매·팔뚝) + 손 다시 그림 + 점 고침)
+//      fixer-fix: 엄지 뿌리를 손바닥에 붙임 · 손가락을 붙여 길이를 다르게(끝 말림) · 핏줄 세 토막 · 손목 윗선 둥글게 · 살 창백(SK_O2). s3night lift는 손목에서 갈라 손만 처지게 돈다
+PALS.cu_arm = { '1': '#3e3830', '2': '#5e564a', '3': '#857a68', '4': '#aca08a', '5': '#cfc4ac', o: '#2b1d2a', v: '#a89aa4', t: '#9a7460', n: '#e6ccbc', C: '#221c18', a: '#6c5650', b: '#8e7468', c: '#b49a88', d: '#dcc0ac', e: '#ead2c0' };
+SPR.cu_arm = { pal: 'cu_arm', rows: [
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"........oooooooooooo............................................................................",
+"......oo444444444443oo..........................................................................",
+"..oooo5544333333333333ooo.......................................................................",
+"oo55554433333333333333443oo.....................................................................",
+"554433333333333333333333332o....................................................................",
+"5555333333333333322233333222o...................................................................",
+"55555544433322234433333332222o..................................................................",
+"455554444444433454333333333332o.................................................................",
+"4455544444444444533344343344322oo...............................................................",
+"4455544444444444533444443444423eeooo............................................................",
+"4455444444444445433444444444423eeddcoooooooooooooooooooooooo...oooo.............................",
+"4455444444443445433444444444423edccdddddddddddddddddddddddddoooeeedo............................",
+"44554433444334444334444444443233dcddddddddccccccccccccccccccccceeeddoo..........................",
+"44544433443334444334444444443222cceeddeeeeedddddddddccccccccccceedddddo.........................",
+"44444433333344444334444434443222ccdddddeeeeeeeeeeeeeeddddddddddddvddddto........................",
+"4444433333334444443444443444222cbcdddddddddddedddddddddddeeeeeedddvdddddoo......................",
+"4444333333344444443444443443222cbcccddddddddddddccccccdddddddeedtcccvvddddo.....................",
+"4444333333344444444444433443221bbbccccccccccccccbcccccccccdddddccbbcddvddddo....................",
+"4443333333444444444444433332221aaaaccbbbbbbbbbbbbbbbbbbbbbbbccdcbdcbdddddddco...................",
+"4333333333444344444444432311111ooooaaaaaaaaaaaaaaaaaaaaaaaaabbbcbdcbddddvddcco..................",
+"333333333344434444444422231111o....oooooooooooooooooooooooooooocbdcbddddvddtcco.................",
+"3333333334444444444433222211oo.................................ocddbdddddddcccco................",
+"333333333444444444333221111o....................................oddbdddddcccccco................",
+"344433333443444433322211ooo.....................................oddbdddccccccccco...............",
+"4433333333333444222111oo........................................ocdcbdcccccccbbbco..............",
+"4444332333333311111ooo..........................................ocdcbccccbbbbbbbbo..............",
+"4443322233332211ooo..............................................odcbccebbbbebbddo..............",
+"443322211222oooo.................................................oddboeebebbeebecao.............",
+"2222111ooooo......................................................oddoedbeebedbecao.............",
+"ooooooo............................................................oooedbedbedbdcao.............",
+".....................................................................oedbedbecbdcao.............",
+".....................................................................oecbecbdcbdcao.............",
+".....................................................................odcbdcbdcbcaao.............",
+".....................................................................odcbdcbdcbbao..............",
+"....................................................................odcaodcbcbbbao..............",
+"....................................................................obbaocbbbaobo...............",
+"....................................................................obabbbbbbaoo................",
+"....................................................................obbobaaobao.................",
+".....................................................................ooobbo.oo..................",
+"........................................................................oo......................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................"] };
 
 // 7-2. cu_mouth 64×48: 숟가락 자루로 벌린 입(흰 콧수염·수염 사이). 입 가운데 = (32, 25) — 방울 번짐은 스테이지가
 PALS.cu_mouth = { o: O, a: '#8e6a58', b: '#b48a74', c: '#d4ac94', d: '#ecc8b0', e: '#8e8a84', f: '#b4b0a8', g: '#d8d4cc', h: '#f6f4ee',
@@ -21497,65 +21559,222 @@ SPR.cu_mouth = { pal: 'cu_mouth', rows: (function () {
   return cv.rows();
 })() };
 
-// 7-3. cu_hands_young 96×48(세피아): 1807년, 젊은 파리아의 두 손이 헌 종이를 쥠. 글이 떠오를 빈 자리 = x 18..78, y 8..40
-PALS.cu_hands_young = { o: O, p: '#f0dcae', q: '#e0c690', P: '#c4a672', Q: '#9a7c4e', r: '#7a5a34',
-  '1': '#4a2e18', '2': '#7a5230', '3': '#a87a4c', '4': '#d2a674', '5': '#ecc896', s: '#1c120c', S: '#2e2016', T: '#44321f', n: '#f4d8b0' };
-SPR.cu_hands_young = { pal: 'cu_hands_young', rows: (function () {
-  const cv = new Cv(96, 48), SK = '12345', SV = 'sST';
-  poly(cv, [[13, 5], [83, 3], [85, 44], [11, 45]], (x, y) => { const v = hsh(x >> 2, y >> 2, 5); return v < 0.12 ? 'q' : 'p'; });   // 종이
-  for (let y = 4; y <= 44; y++) { cv.p(48 + ((y >> 3) & 1), y, 'q'); }                  // 접힌 자국
-  for (let x = 12; x <= 84; x++) { if (cv.g(x, 44) !== '.') cv.p(x, 44, 'P'); if (cv.g(x, 43) !== '.' && hsh(x, 1, 2) < 0.4) cv.p(x, 43, 'P'); }
-  for (let y = 4; y <= 44; y++) { if (cv.g(84, y) !== '.') cv.p(84, y, 'P'); if (cv.g(83, y) !== '.') cv.p(83, y, 'q'); }
-  for (let i = 0; i < 9; i++) { const x = 20 + i * 7 + ((i * 5) % 3); cv.p(x, 5 - (i % 2), 'Q'); cv.p(x + 1, 5, 'P'); }   // 가장자리 해짐
-  // 왼손(화면 왼쪽): 손바닥은 종이 뒤, 엄지가 앞면을 누름
-  cyl(cv, -8, 50, 4, 36, 8, 7, SV);
-  ell(cv, 9, 30, 8.5, 11, SK);
-  cyl(cv, 12, 29, 21, 22.5, 2.7, 2.3, SK); cv.p(21, 22, 'n');
-  for (let i = 0; i < 3; i++) cyl(cv, 12, 36 + i * 3, 15, 37 + i * 3, 1.8, 1.6, SK);   // 종이 뒤로 감은 손가락 끝
-  // 오른손(화면 오른쪽)
-  cyl(cv, 104, 50, 92, 36, 8, 7, SV);
-  ell(cv, 87, 30, 8.5, 11, SK);
-  cyl(cv, 84, 29, 75, 22.5, 2.7, 2.3, SK); cv.p(74, 22, 'n');
-  for (let i = 0; i < 3; i++) cyl(cv, 84, 36 + i * 3, 81, 37 + i * 3, 1.8, 1.6, SK);
-  outline(cv, 'o');
-  return cv.rows();
-})() };
+// 7-3. cu_hands_young 96×48(세피아): 1807년, 젊은 파리아의 두 손이 헌 종이 아래 두 귀퉁이를 쥠(1인칭). 엄지가 종이 앞, 손등·검지는 종이 가장자리 뒤.
+//   (0.3.3-hands까지: hands-art pixelize 'cu_hands_young' 레시피(참고 paper_a.png) → fixer-fix 엄지·검지 → fixer-edmond 0.3.3-hands 세피아 사다리·굽은 엄지·오른손 = 왼손 좌우 뒤집기. 사본 docs/art_refs/before_edmond/spr_chars_s3.033hands.js)
+//   [gemini-paper_young] 제미나이(사용자 유료 계정)가 그린 docs/art_refs/gemini/paper_young_g1.png(1568×775, 셀 음영, 화면 캡처)의 실제 두 손을 각각 옮긴 것
+//   (오른손 = 그림의 오른손, 거울 복사 없음 — 원본이 거의 좌우 대칭). 예전 참고 그림 paper_a.png·pixelize 레시피 손을 대체.
+//   변환: docs/art_wip/edmond/gemini/paper_young/pY.js PY.build()(c2p.js = canva2px 사본 위, 방식 A 재질·셀 톤 다수결, 설정 spec.json) — 아래 행과 바이트까지 같다. 형태는 그림 그대로.
+//   ① 초록 배경 빼기 · 오른쪽 아래 ✦ 지움(그림 칸 밖) ② 검은 선으로 갈린 덩어리마다 재질(종이·살·손톱·소매) ③ 배율 15 원본px/칸 · 종이 옆 가장자리 선을 세로로 세우는 회전
+//      (왼손 -6.06° · 오른손 4.63°) · 원본 종이 가장자리 선 ↔ 12열/84열 · 원본 종이 아랫변(y 698) ↔ 43행 · 위상 [−0.25, 0]/[0.25, 0]
+//   ④ 셀 톤 1:1: 살 빛(노랑 테)/바탕/그늘(분홍) → 5/4/3 · 손등 주름 뼈대 → 2 · 엄지 손톱 → n · 외곽선 → o · 소매 빛/바탕/주름 → U/T/S
+//   ⑤ 종이가 손 앞을 지나는 가장자리 칸(손 | 가장자리 | 종이) = E(장면 종이 테 SEP[5]과 같은 색 — 장면 종이 테가 손 위로 이어져 'V자 두 손가락'으로 읽히지 않게)
+//   종이 칸: 0~15행과 24~71열은 예전 행 그대로 → reveal handCrops가 읽는 L 12 · R 84 · B 42 · T 10(엄지 여백 50px)·종이 색 p q 그대로(배치 변화 없음).
+//   손 오림 칸(16~47행 × 0~23열 · 72~95열)만 새로: 종이는 p(예전 p·q 자리 그대로), 종이 아랫변 o·찢긴 귀퉁이 외톨이 종이 칸은 지움(장면 종이가 그린다). 폰(W 187)에서는 8~23열 · 72~88열이 보인다.
+//   손질 2칸: 오른손 엄지 끝 왼쪽 가시 (77,20) o→p · (78,20) 2→o.
+//   수치(살 칸 12345 기준, 왼/오): 살 211/209 · 1px 줄 9.0%/7.2% · 진짜 외톨이 1/0칸 · 가시 0/0 · 5 9.5/10.0% · 4 67.3/65.6% · 3 19.0/19.1% · 2 4.3/5.3% · 손톱 4/5칸
+//   팔레트: 예전 PALS.cu_hands_young 그대로 + U(소매 빛 #6b4a2e) · E(종이 테 #86623a). s 1 r은 이제 행에 없지만 남겨 둠.
+PALS.cu_hands_young = { '1': '#65473a', '2': '#8a654c', '3': '#ae8665', '4': '#d1ad8a', '5': '#ead0b4', o: '#2b1d2a', p: '#f0dcae', q: '#e0c690', P: '#c4a672', Q: '#9a7c4e', r: '#7a5a34', s: '#1c120c', S: '#2e2016', T: '#44321f', U: '#6b4a2e', E: '#86623a', n: '#f1e0cc' };
+SPR.cu_hands_young = { pal: 'cu_hands_young', rows: [
+"................................................................................................",
+"................................................................................................",
+".................................................................oooooooooooooooooo.............",
+".............................ooooooooooooooooooooooooooooooooooooppppppppppppppppppo............",
+".............ooooooooooooooooQpppppppppppQppppppqpppppppQppppppppppppppQpppppppppppo............",
+"............opppppppQppppppppppppppQppppppppppppqpQpppppppppppQppppppppppppppQpppppo............",
+"............opppppppppppppppppppppppppppppppppppqppppppppppppppppppppppppppppppppppo............",
+"............opppppppppppppppppppppppppppppppppppqppppppppppppppppppppppppppppppppppo............",
+"............opppppppppppppppqqqqpppppppppppppppppqpppppppppppppppppppppppppppppppppo............",
+"............opppppppppppppppqqqqpppppppppppppppppqpppppppppppppppppppppppppppppppppo............",
+"............opppppppppppppppqqqqpppppppppppppppppqpppppppppppppppppppppppppppppppppo............",
+"............opppppppppppppppqqqqpppppppppppppppppqpppppppppppppppppppppppppppppppppo............",
+"............opppppppqqqqppppqqqqppppppppppppppppqqqqpppppppppppppppppppppppppppppppo............",
+"............opppppppqqqqppppqqqqppppppppppppppppqqqqpppppppppppppppppppppppppppppppqo...........",
+"............opppppppqqqqppppqqqqppppppppppppppppqqqqpppppppppppppppppppppppppppppppqo...........",
+"...........oppppppppqqqqppppqqqqppppppppppppppppqqqqpppppppppppppppppppppppppppppppqo...........",
+"..........ooppppppppppppppppppppqqqqppppppppppppqpppppppppppqqqqpppppppppppppppppppqpoo.........",
+".........o54EpppppppppppppppppppqqqqppppppppppppqpppppppppppqqqqpppppppppppppppppppqE55o........",
+"........o544EppoooopppppppppppppqqqqppppppppppppqpppppppppppqqqqpppppppppppppppooppqE445o.......",
+".......o5444Epo4nn3oppppppppppppqqqqppppppppppppqpppppppppppqqqqpppppppppppppponnoppE4445o......",
+"......o54443Epo4nn2oppppppppppppppppppppqqqqppppqpppqqqqpppppppppppppppppppppponnnopE34445o.....",
+".....o544433oo4442opppppppppppppppppppppqqqqppppqpppqqqqppppppppppppppppppppppo2244oo334445o....",
+"....o5444433o44443opppppppppppppppppppppqqqqppppqpppqqqqppppppppppppppppppppppo34444o3244445o...",
+"...o54444433244443opppppppppppppppppppppqqqqppppqpppqqqqppppppppppppppppppppppo34444232444445o..",
+"...o5444433254443opppppppppppppppppppppppppppppppqpppppppppppppppppppppppppppppo3444523344445o..",
+"...o544444254443oppppppppppppppppppppppppppppppppqppppppppppppppppppppppppppppppo344452444445o..",
+"...o54444244443opppppppppppppppppppppppppppppppppqpppppppppppppppppppppppppppppppo34444224445o..",
+"...o54444444443opppppppppppppppppppppppppppppppppqppppppppppppppppppppppppppqppppo344444444445o.",
+"...o54444444443oppppppppqqqqppppppppqqqqpppppppppqppppppppppppppppppppppppppqqppppo34444444445o.",
+"..o54444444443opppppppppqqqqppppppppqqqqpppppppppqppppppppppppppppppppppppppqqqpppo34444444445o.",
+"..o54444444443opppppppppqqqqppppppppqqqqpppppppppqppppppppppppppppppppppppppqqqpppo34444444445o.",
+"..o54444444443opppppppppqqqqppppppppqqqqpppppppppqppppppppppppppppppppppppppqqqpppo34444444445o.",
+"..o54444444443opppppqqqqppppppppppppppppppppppppqpppppppqqqqppppppppppppppppppppppo334444444445o",
+"..o54444444433opppppqqqqppppppppppppppppppppppppqpppppppqqqqpppppppppppppppppppppppo34444444445o",
+".o54444444443oppppppqqqqppppppppppppppppppppppppqpppppppqqqqpppppppppppppppppppppppo33444444445o",
+"oUU4444444432oppppppqqqqppppppppppppppppppppppppqpppppppqqqqpppppppppppppppppppppppo334444444oUU",
+"UTTTTo4444332oppppppppppppppppppppppqqqqppppppppqpppqqqqpppppppppppppppppppppppppppo32344444TTTT",
+"TTTTTSS443323oppppppppppppppppppppppqqqqppppppppqpppqqqqpppppppppppppppppppppppppppo332334oTTTTT",
+"TTTTTTTT33333oppppppppppppppppppppppqqqqppppppppqpppqqqqppppppppppppppppppppppppppp.o3333oTTTTTT",
+"TTTTTTTTo333o..pppppppppppppppppppppqqqqppppppppqpppqqqqpppppppppppppppppppppppppp..o3333TTTTTTT",
+"TTTTTTTTS33o....ppppppppppppppppppppppppppppqqqqpqppqqqqppppppppppppppppppppppppp....o33oTTTTTTT",
+"TTTTTTTTSoo.......ppppppppppppppppppppppppppqqqqpqppqqqqpppppppppppppppppppppppp......oooTTTTTTT",
+"STTTSTTTSo..............ppppppppppppppppppppqqqqpqppqqqqpppppppppppppppp...............oSTTTSSTT",
+"SSTTSSTTSo..............PPPppppPpPppPPpppppPqqqqPPppqPPPPPPpppppppppPPPp...............oSTTSSTTS",
+"TSSTTSSSSo..............PPPPPPPPPPPPPPPPPPPPPPPPoPoooooooooooooooooooooo................oSTSSTSS",
+"TSSSTSSSSo..............oooooooooooooooooooooooo.o......................................oSSSTSSS",
+"TTSSSSSoo................................................................................ooSSSSS",
+"SSSSSSSo..................................................................................oSSSSS"] };
 
-// 7-4. cu_wrist_old / cu_wrist_young 64×32: 손바닥을 위로 한 팔목. 맥 짚는 자리 = (41, 17)
-PALS.cu_wrist_old = { o: O, '1': '#3a322a', '2': '#54483c', '3': '#6e6052', '4': '#887a6a', '5': '#8a6a58', '6': '#b48c74', '7': '#d4ae96', '8': '#eecab2', v: '#8a8aa8', V: '#a4a0b8', t: '#a07a64', n: '#ead2c4', C: '#221c18' };
-PALS.cu_wrist_young = { o: O, '1': '#5a5650', '2': '#7e7a72', '3': '#a4a096', '4': '#c8c4b8', '5': '#7a4e32', '6': '#a4704c', '7': '#c8946a', '8': '#e0b088', v: '#8a6048', V: '#b07a56', t: '#8a5a3c', n: '#eccaa8', C: '#3a3630' };
-function wrist(young) {
-  const cv = new Cv(64, 32), SL = '1234', SK = '5678';
-  cyl(cv, -8, 16, 16, 16, young ? 9 : 10, young ? 8.5 : 9, SL);
-  if (young) { for (let y = 7; y <= 25; y++) if (cv.g(16, y) !== '.') { cv.p(16, y, (y & 1) ? '2' : 'C'); if (hsh(y, 3, 4) < 0.5) cv.p(17, y, '3'); } }    // 해진 셔츠 소맷부리
-  else for (let y = 6; y <= 26; y++) if (cv.g(15, y) !== '.') cv.p(15, y, 'C');
-  cyl(cv, 17, 16, 44, 17, young ? 7 : 5.6, young ? 5.4 : 4.3, SK);
-  ell(cv, 52, 17, young ? 8 : 7, young ? 7 : 6, SK);
-  cyl(cv, 48, 11, 55, 7.5, young ? 2.4 : 2, young ? 2.1 : 1.7, SK); cv.p(56, 7, 'n');   // 엄지
-  const F = [[57, 12, 62, 11], [58, 15, 63, 15], [58, 18.5, 63, 19.5], [57, 21.5, 61, 23.5]];
-  for (const f of F) { cyl(cv, f[0], f[1], f[2], f[3], young ? 2 : 1.7, young ? 1.8 : 1.5, SK); cv.p(f[2], f[3], 'n'); }
-  if (young) { line(cv, 40, 19, 47, 20, 't'); }
-  else { line(cv, 24, 15, 42, 16, 'v'); line(cv, 28, 18, 44, 19, 'V'); line(cv, 45, 14, 49, 13, 't'); line(cv, 45, 20, 49, 21, 't');
-    for (const s of [[30, 13], [36, 19], [22, 17]]) cv.p(s[0], s[1], 't'); }
-  outline(cv, 'o');
-  return cv.rows();
-}
-SPR.cu_wrist_old = { pal: 'cu_wrist_old', rows: wrist(false) };
-SPR.cu_wrist_young = { pal: 'cu_wrist_young', rows: wrist(true) };
+// 7-4. cu_wrist_old 64×32(cu_wrist_young은 0.3.4-hands부터 80×32 — 아래 7-4): 손바닥을 위로 한 팔목(엄지가 위). 맥 짚는 자리 = 스테이지 (0.62w, 0.42h/0.40h) ≈ (40,13) — 팔뚝 위(엄지 쪽) 가장자리 2칸 안
+//      (hands-art · 참고 docs/art_refs/wrist_old_b.png · wrist_young_a.png → tools/pixelize.html 레시피: 사진 변환(팔뚝) + 손바닥·엄지 두덩·손가락 다시 그림 + 핏줄·검버섯)
+//      fixer-fix: 손가락을 붙이고(갈래선) 끝을 살짝 말아 줄임 — 늙은 손 2px·마디 혹 / 젊은 손 3px 매끈, 엄지 가늘게. 소매 = 파리아 흰 베이지 / 당테스 회색, 늙은 살 창백
+PALS.cu_wrist_old = { '1': '#5e564a', '2': '#857a68', '3': '#aca08a', '4': '#cfc4ac', o: '#2b1d2a', v: '#8a8aa8', V: '#a4a0b8', t: '#a07a64', n: '#ead2c4', C: '#221c18', a: '#6c5650', b: '#8e7468', c: '#b49a88', d: '#dcc0ac', e: '#ead2c0' };
+SPR.cu_wrist_old = { pal: 'cu_wrist_old', rows: [
+"................................................................",
+"................................................................",
+"................................................................",
+".....................................................ooo........",
+"oooooooooooooooo...................................ooeeeo.......",
+"3333334444444333ooooo.............................oeeeeeo.......",
+"333333344233333333333o..........................ooeeeeoo........",
+"3332333333233333333343ooo......................oeeeeco..........",
+"3333233333323333333343dddoooo................ooeedbbo....oooo...",
+"333332333333233333323cdddedddooooooooo....ooodeebadddooooeecco..",
+"333333333333333333324ceeeddddeeeeeeddeooooeddbbaabddeeddccbco...",
+"333333333333333333224eeeedddddddddddeeeeeeeddebbbdcdccccccbooo..",
+"3333333333333333322233eettedddddddddddddeeeddedddccdceeeeccdcco.",
+"333333333332333332224eddddeeeevvvvveeeeeeeedddddccdddcccccccdo..",
+"333233333333233322224edddddvvvdddddvvVveedddddcccddcccbbeeedco..",
+"333323333333323222223ddcccttccccccccdddvvdddddddddccdddccccddo..",
+"3222222222222222222243cbbbbbbcVVVccccccccccddbbdcccbcccccccoo...",
+"222222222222222222224aaaaaaaaaabbVVccccbcccbccccccbeedddccco....",
+"222222222222222222222ooooooooooaaaaaaaabbbbccbbbbbbbbaaaaeo.....",
+"222222222222222222222o.........ooooooooaaaaooooooboooooooo......",
+"oooooooooo222222ooooo..................oooo......o..............",
+"..........oooooo................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................"] };
+// [0.3.4-hands] 에드몽의 손: 사용자 유료 제미나이 계정이 그린 큰 셀 음영 그림(docs/art_refs/gemini/, 번들 밖)을 형태 그대로 격자·팔레트에만 맞춘 행이 정본이다 — pixelize.html 레시피(PX.make)로 다시 만들어 덮어쓰지 말 것. 인계 docs/handoff/edmond-hands.md §10
+// 맥 짚기(pulse) 묶음 — cu_wrist_young · cu_press. 정본 docs/art_wip/edmond/gemini/final_pulse.js, 비교 docs/art_wip/edmond/gemini/pulse_compare.png. 0.3.3-hands 행·주석은 docs/art_refs/before_edmond/spr_chars_s3.033hands.js
+//   원본 docs/art_refs/gemini/pulse_g1.png(2912×1440) 한 장의 실제 두 손을 각각 옮겼다(거울 복사 없음):
+//     짚히는 제 왼팔(가로로 눕힌 팔뚝, 손바닥 위 — 엄지 들림·검지 뻗음·나머지 말림, 왼쪽 해진 큰 소매) → cu_wrist_young
+//     아래에서 올라온 오른손(검지·중지 끝으로 손목 안쪽을 누름, 약지·새끼 접힘, 엄지 왼쪽 아래, 오른쪽 아래 해진 소맷부리) → cu_press
+//   같은 배율 k 0.024 · 같은 기준점(두 손끝 가운데 = 원본 (1490,560)) — 자기 맥 짚기가 원본 구도 그대로 된다.
+//   변환 docs/art_wip/edmond/gemini/pulse/gP.js GP.build()(설정 pulse/spec.json, 「그 밤」 방식 A 응용) = pulse/rows.js. 형태(손가락·엄지·손바닥 금·자세)는 그림 그대로.
+//   심사 정리: cu_wrist_young (30,13) o→4 · (31,20) o→2(소맷부리 이음에 홀로 박힌 외곽선 점) · cu_press 0칸.
+//   크기·앵커(0.3.4-hands에서 바뀜, s3island.js pulse):
+//     cu_wrist_young 64×32 → 80×32. 맥 자리 식 (0.62w, 0.40h)은 그대로 → 칸 (49.5,13) = 윗변 외곽선(10행)에서 2.5칸 아래 살 위. 배율 s = (폭×3 ≤ W−8 ? 3 : 2)이라 이제 늘 2배(160px).
+//     cu_press 32×24 → 32×30. PRESS_TIP (4,4) 그대로 · PRESS_WRIST (27,21) → (21,24.8) = 소매 관 끝 · 새 PRESS_ARM [153,129] = 손목에서 소매 관 먼 끝까지 화면 px(배율 2 기준).
+//     누르는 팔 소매(U.sleeve)는 원본 팔 방향(손목에서 오른쪽 아래 약 40°)으로 곧게, 관 폭·격자는 그림 배율 s에 맞춤(7.5s → 4.5s, 격자 s).
+//   팔레트: 기준서 §7-1 에드몽 살 사다리 + §7-2 소매(U.SLEEVE.dantes) — 0.3.3-hands와 한 글자도 같다.
+//   수치(살 abcde, gemini/judge/judgeJ.js GJ.stats 셈): wrist 살 579칸 · d 65.1% · c 28% · b 3.8% · e 3.1% · 1px 줄 7.4% / press 살 243칸 · d 67.5% · c 24.7% · a 2.5% · e 5.3% · 1px 줄 3.7% — 둘 다 진짜 외톨이 0 · 가시 0
+//   [0.3.4-hands g2] QA 반영: cu_wrist_young 13칸 — 검지와 손바닥 사이 살 안쪽 o 가로 틈 (70~73,12) → a(입 같은 홈, §9-2 살 안쪽 o 금지) · 소매 아래쪽 홀로 선 1칸 세로 줄 9칸 → 이웃 글자
+//     / cu_press 6칸 — 오른쪽 테 e 아래 절반(15~20행) → d. 인계 §10-9
+//   [0.3.4-hands regen pulse2] cu_wrist_young만 제미나이 재생성 원본 docs/art_refs/gemini/pulse_g2.png로 바꿈 — 1판은 엄지가 서고 검지가 곧게 뻗어 폰에서 '손가락 총'으로 읽혔다(인계 §10-9 재생성 1번).
+//     정본 docs/art_wip/edmond/gemini/regen/final_pulse2.js(변환·심사 기록 전체), 비교 regen/pulse2_compare.png. 맞춤 k 0.047칸/px · 원본 두 손끝 가운데 (774.5,319) → 맥 자리 (49.5,13). 크기·앵커·팔레트·코드 그대로. cu_press는 위 1판 그대로.
+//     살 490칸 · d 70.2% · c 23.7% · b 3.7% · e 1.8% · a 0.6% · 진짜 외톨이 0 · 가시 0
+// 7-4. cu_wrist_young 80×32 — 에드몽 왼팔. 손바닥을 위로 하고 힘을 뺀 손(엄지 들림 · 네 손가락 느슨히 말린 컵 모양, 제미나이 재생성 pulse_g2 그대로). 소매 1~4는 x0~37(selfSleeve가 그림 (1,18)에서 화면 왼쪽 밖까지 잇는다).
+PALS.cu_wrist_young = { '1': '#2e2b28', '2': '#4a4742', '3': '#6e6a62', '4': '#8e8a80', o: '#2b1d2a', a: '#654540', b: '#8e6450', c: '#b58566', d: '#d8ac8c', e: '#f0d6ba', n: '#efe0d2', k: '#cbb492', r: '#a86e64' };
+SPR.cu_wrist_young = { pal: 'cu_wrist_young', rows: [
+"................................................................................",
+"................................................................................",
+"................................................................................",
+"...............................................................ooooooo..........",
+"............................................................ooodddddddo.........",
+"............ooo............................................odddddccdcco.........",
+".........ooo444ooooo......................................oddddcccoooo......oo..",
+".......oo44444444444oooooo..............................ooddddccco........ooddo.",
+"....ooo4444444443444444444oooooooooo...................odddddddccooooooooodcddo.",
+"oooo44444444444443344444444444444444o.................oodddddddcdccddddddcdcado.",
+"44444444444444444434444444444444444oooooooooooooooooooddddddddddddcdddcddccaddo.",
+"44444444444444444444444444444444444cddddeeeeeeeeeddddddddddddddddcddddbcbdabdco.",
+"444444444444444443444444444444444444cddddddddddddddddddddddddddcccddddbdbdddbco.",
+"44444444444444444344444444444444444ccdddddddddddddddddddddccdccdccddddcdddbdbo..",
+"4444444444444444434444444444444444cddddddddddddddddddddddddccdddcdddddcccdbddo..",
+"44444444444433344443444444444444ccddddddddddddddddddddddddddddddddcdddbcdbcco...",
+"444444433333333333223333333333333cdddddddddddddddddddddddddddddddccddddbdbbco...",
+"3333333333333333333233332333333333ccddddddddddddddddddddddddccccccdddbdbddco....",
+"333333333333333333323333233333333333cdddddddddddddcddddddddddddddddddbdbcco.....",
+"333333333333333323233323233333333333cddddddddddccccccccccccccccccccdcddcco......",
+"333333333323333112122322222222222222cdddcccccccccoooooooooooooooooooccooo.......",
+"222222222222222112111111212222222222cccccccoooooo...................oo..........",
+"22222222222222211111111121211111111cccooooo.....................................",
+"11122222222222211111111111111111111122o.........................................",
+"1111111111111111111111111111111111112o..........................................",
+"1111111111111111111111111111111111111o..........................................",
+"ooooo111111111111111111oooooooooooooo...........................................",
+".....oooooo1111oooooooo.........................................................",
+"...........oooo.................................................................",
+"................................................................................",
+"................................................................................",
+"................................................................................"] };
+// 7-4b. cu_press 32×30 — 맥을 짚는 에드몽 오른손: 검지·중지 끝(V홈)이 손목 안쪽에 얹히고 약지·새끼는 접히고 엄지는 왼쪽 아래. 오른쪽 아래 해진 소맷부리(관 끝 (21,24.8)).
+//   파리아 cu_wrist_old 위에도 그대로 쓴다. 빛: 원본 그대로(오른쪽 가장자리 테 e — 장면 등잔은 위 가운데, 남은 약점).
+PALS.cu_press = { '1': '#2e2b28', '2': '#4a4742', '3': '#6e6a62', '4': '#8e8a80', o: '#2b1d2a', a: '#654540', b: '#8e6450', c: '#b58566', d: '#d8ac8c', e: '#f0d6ba', n: '#efe0d2', k: '#cbb492', r: '#a86e64' };
+SPR.cu_press = { pal: 'cu_press', rows: [
+"..oooo..................",
+".oddadoo................",
+".oddadddo...............",
+"..oddaddooo.............",
+"..odddaddddooo..........",
+"...odddaddddado.........",
+"...odddaddaadado........",
+"...oddddaddddaddo.......",
+"....odddadddddddo.......",
+"....ocddddddddddo.......",
+"....ocddddddddddo.......",
+"....ocdddddddddddo......",
+".oooocdddddddddddo......",
+"occccddddddddddddo......",
+"occddddddddddddddo......",
+".occdddddddddddddo......",
+"..occddddddddddddoo.....",
+"...ooccccdddddd3322o....",
+".....ooccccddd333322o...",
+".......oooccc33333321o..",
+"..........occ333333221o.",
+".........o3oc3333333221o",
+".........o33o3333333322o",
+".........o3333333333322.",
+".........o333333333333..",
+"........o33333333333....",
+"........o3333333333.....",
+"........o23333333.......",
+"........o2333333........",
+".......o2223333.........",
+".......o22223...........",
+".......o2222............",
+"........oo.............."] };
 
 // 7-5. 그림자극 cu_shadow_1~7 · 3b 96×64: 한 손 그림자 실루엣(k 속그늘 · K 반그늘), 투명 바탕. 3장 사자 아래턱 자리 = (68, 41)
 PALS.cu_shadow = { k: '#140c0a', K: '#2c1e18', m: '#20150f' };
 function shadow(fn) { const cv = new Cv(96, 64); fn(cv); rimEdge(cv, 'k', 'K'); return cv.rows(); }
 const SH = {
-  hand(cv, x, y, s, open) {                 // 손바닥이 앞을 향한 한 손(아래에서 올라온 팔뚝 포함)
-    poly(cv, [[x - 7 * s, 64], [x + 7 * s, 64], [x + 6 * s, y + 8 * s], [x - 5 * s, y + 8 * s]], 'k');
-    ell(cv, x, y, 9 * s, 10 * s, 'k');
-    const sp = open ? 1.3 : 0.7;
-    cyl(cv, x - 6 * s, y - 6 * s, x - 9 * s * sp, y - 21 * s, 2.4 * s, 2 * s, 'k');
-    cyl(cv, x - 2 * s, y - 8 * s, x - 3 * s * sp, y - 25 * s, 2.5 * s, 2.1 * s, 'k');
-    cyl(cv, x + 2.5 * s, y - 8 * s, x + 3 * s * sp, y - 24 * s, 2.5 * s, 2.1 * s, 'k');
-    cyl(cv, x + 6.5 * s, y - 6 * s, x + 9 * s * sp, y - 18 * s, 2.2 * s, 1.9 * s, 'k');
-    cyl(cv, x - 8 * s, y + 3 * s, x - 18 * s, y - 4 * s, 2.6 * s, 2.2 * s, 'k');
+  // hands-art: 손바닥이 벽을 향한 한 손(아래에서 올라온 팔뚝 포함). 예전 타원 손바닥 + 굵기가 같은 원기둥 손가락(벙어리장갑처럼 읽힘) 대신
+  //   손목에서 넓어지는 손바닥 다각형 · 뿌리에서 끝으로 가늘어지는 두 마디 손가락(가운데가 가장 김) · 손바닥 아래쪽에서 갈라져 나온 엄지 · 모은 손은 손가락 사이에 1칸 빛 틈
+  hand(cv, x, y, s, open) {
+    const P = (dx, dy) => [x + dx * s, y + dy * s];
+    poly(cv, [[x - 6.8 * s, 64], [x + 6.8 * s, 64], [x + 5.6 * s, y + 9 * s], [x - 5.4 * s, y + 9 * s]], 'k');                       // 팔뚝
+    poly(cv, [P(-5.6, 10), P(-8.0, 3), P(-8.6, -5), P(-7.0, -9.2), P(-2.2, -10.6), P(2.8, -10.4), P(6.8, -8.6), P(8.8, -5.2), P(8.6, 2), P(5.8, 10)], 'k');   // 손바닥
+    const F = open ? [[-6.0, -8.4, -10.2, -25.5, 2.45, 1.75], [-2.0, -9.8, -3.2, -30, 2.55, 1.85], [2.6, -9.6, 4.6, -28, 2.5, 1.8], [6.6, -7.4, 11.2, -20.5, 2.15, 1.55]]
+                     : [[-5.8, -8.4, -6.2, -25.0, 2.35, 1.7], [-1.9, -9.8, -2.0, -29, 2.45, 1.8], [2.3, -9.6, 2.7, -27.4, 2.4, 1.75], [6.2, -7.4, 7.0, -21, 2.1, 1.5]];
+    for (const [bx, by, tx, ty, r0, r1] of F) {                                                                                // 뿌리 → 둘째 마디(조금 굵게) → 끝
+      const mx = bx + (tx - bx) * 0.55, my = by + (ty - by) * 0.55, rm = (r0 + r1) / 2 + 0.15;
+      cyl(cv, x + bx * s, y + by * s, x + mx * s, y + my * s, r0 * s, rm * s, 'k'); cyl(cv, x + mx * s, y + my * s, x + tx * s, y + ty * s, rm * s, r1 * s, 'k');
+    }
+    if (!open) for (let i = 0; i < 3; i++) {                                                                                    // 모은 손가락 사이 빛 틈(끝 쪽 60%)
+      const a = F[i], b = F[i + 1], gx0 = (a[0] + b[0]) / 2, gy0 = (a[1] + b[1]) / 2, gx1 = (a[2] + b[2]) / 2, gy1 = (a[3] + b[3]) / 2;
+      line(cv, x + (gx0 + (gx1 - gx0) * 0.4) * s, y + (gy0 + (gy1 - gy0) * 0.4) * s, x + gx1 * s, y + gy1 * s, '.');
+    }
+    const T = open ? [[-7.4, 2.4], [-12.6, -1.4], [-17.6, -6.6]] : [[-7.4, 2.4], [-10.6, -2.8], [-12.2, -8.6]];                // 엄지(두 마디)
+    cyl(cv, x + T[0][0] * s, y + T[0][1] * s, x + T[1][0] * s, y + T[1][1] * s, 2.9 * s, 2.45 * s, 'k'); cyl(cv, x + T[1][0] * s, y + T[1][1] * s, x + T[2][0] * s, y + T[2][1] * s, 2.45 * s, 1.95 * s, 'k');
   },
   hat(cv, x, y) {                            // 추기경 모자: 넓은 챙 + 낮은 머리 + 술
     ell(cv, x, y, 15, 3.2, 'k'); ell(cv, x, y - 4, 7, 5, 'k');
@@ -21611,6 +21830,11 @@ SPR.cu_shadow_5 = { pal: 'cu_shadow', rows: shadow(cv => {
   poly(cv, [[44, 52], [56, 50], [58, 64], [44, 64]], 'k');                            // 받친 팔
 }) };
 SPR.cu_shadow_6 = { pal: 'cu_shadow', rows: shadow(cv => SH.hand(cv, 48, 40, 1.05, false)) };
+// fixer-fix(QA): 펼친 손·모은 손 그림자의 테두리에 한 칸 튀어나온 돌기 정리
+(function () {
+  const fix = (id, pts) => { const r = SPR[id].rows.map(s => s.split('')); for (const [x, y] of pts) if (r[y] && r[y][x] === 'K') r[y][x] = '.'; SPR[id].rows = r.map(a => a.join('')); };
+  fix('cu_shadow_1', [[32, 27], [30, 29], [41, 31]]); fix('cu_shadow_6', [[50, 9], [55, 16]]);
+})();
 SPR.cu_shadow_7 = { pal: 'cu_shadow', rows: shadow(cv => {
   ell(cv, 30, 58, 10, 2.6, 'k'); cyl(cv, 30, 56, 30, 44, 2, 2, 'k'); ell(cv, 30, 44, 6, 1.6, 'k');   // 촛대
   poly(cv, [[27, 44], [33, 44], [33, 30], [27, 30]], 'k');                           // 초
@@ -21620,27 +21844,743 @@ SPR.cu_shadow_7 = { pal: 'cu_shadow', rows: shadow(cv => {
   poly(cv, [[62, 38], [74, 40], [78, 64], [60, 64]], 'k');                           // 종이 쥔 팔
 }) };
 
-// 7-6. cu_bread_hands 64×40: 한 덩이 빵을 늙은 왼손(화면 왼쪽)과 젊은 손(오른쪽)이 쥠 · (추가) cu_bread_l / cu_bread_r 찢긴 반쪽 32×40
-PALS.cu_bread = { o: O, '1': '#6a3a1a', '2': '#9a5c2a', '3': '#c4843e', '4': '#e0aa62', w: '#f0dcb4', W: '#d4bc90',
-  a: '#8a6a58', b: '#b48c74', c: '#d4ae96', d: '#eecab2', e: '#7a4e32', f: '#a4704c', g: '#c8946a', h: '#e0b088', n: '#ead2c4', s: '#3a322a', S: '#6e6052', t: '#7e7a72', T: '#a4a096' };
-function bread(part) {
-  const cv = new Cv(64, 40), CR = '1234';
-  const L = part !== 'r', R = part !== 'l';
-  ell(cv, 32, 22, 17, 12, CR, { mask: (x) => (x < 32 ? L : R) });
-  for (let y = 11; y <= 33; y++) { const x = 32 + ((y * 7) % 3) - 1; if (cv.g(x, y) !== '.') { cv.p(x, y, 'w'); if (cv.g(x + 1, y) !== '.') cv.p(x + 1, y, 'W'); } }   // 찢는 자리(속살)
-  for (const s of [[22, 15], [27, 13], [38, 14], [43, 17]]) if (cv.g(s[0], s[1]) !== '.') { cv.p(s[0], s[1], '2'); cv.p(s[0] + 1, s[1] + 1, '2'); }
-  if (L) { cyl(cv, -8, 38, 8, 30, 7, 6, 'sS'); ell(cv, 13, 25, 6, 7, 'abcd');
-    for (let i = 0; i < 4; i++) cyl(cv, 12, 17 + i * 2.5, 20, 14 + i * 2.8, 1.6, 1.4, 'abcd'); cyl(cv, 11, 30, 18, 31, 1.8, 1.6, 'abcd'); }
-  if (R) { cyl(cv, 72, 38, 56, 30, 7, 6, 'tT'); ell(cv, 51, 25, 6, 7, 'efgh');
-    for (let i = 0; i < 4; i++) cyl(cv, 52, 17 + i * 2.5, 44, 14 + i * 2.8, 1.7, 1.5, 'efgh'); cyl(cv, 53, 30, 46, 31, 1.9, 1.7, 'efgh'); }
-  outline(cv, 'o');
-  const rows = cv.rows();
-  return part === 'l' ? rows.map(r => r.slice(0, 32)) : part === 'r' ? rows.map(r => r.slice(32)) : rows;
-}
-SPR.cu_bread_hands = { pal: 'cu_bread', rows: bread() };
-SPR.cu_bread_l = { pal: 'cu_bread', rows: bread('l') };
-SPR.cu_bread_r = { pal: 'cu_bread', rows: bread('r') };
+// [0.3.4-hands · gemini-bread 두 손] 7-6 cu_bread_hands(두 손)와 7-6b cu_bread_old는 제미나이 원본에서 다시 옮긴 행이 정본이다(docs/art_wip/edmond/gemini/final_bread_both.js).
+//   pixelize.html 레시피(PX.make)로 다시 만들어 덮어쓰지 말 것. 인계 docs/handoff/edmond-hands.md §10(두 손 통합은 §10-10)
+//   통합 때 이 블록(주석 + PALS.cu_bread · cu_bread_hands · _l · _r · cu_bread_loaf · cu_bread_old)을 final_bread_both.js 블록으로 통째로 바꿨다. 오른쪽 반(x ≥ 30)은 바로 앞 게임 행과 0칸 차이.
+//   바로 앞(에드몽 반만 제미나이) 주석·행 = docs/art_refs/before_edmond/spr_chars_s3.breadpre.js, 캔바 시절(0.3.3-hands까지) = spr_chars_s3.033hands.js.
+// 7-6. cu_bread_hands 64×40(2배, as) — 사용자 유료 제미나이 계정이 그린 docs/art_refs/gemini/bread_g1.png(1332×830, 셀 음영, 번들 밖)에서 두 손을 각각 옮김
+//   (가운데 둥근 빵을 왼쪽 파리아의 늙고 마른 손·오른쪽 에드몽의 젊은 오른손이 쥔 그림). 형태는 그림 그대로이고 새로 그리지 않았다.
+//   오른쪽 반(에드몽): docs/art_wip/edmond/gemini/bread/gB.js — 손목 가운데 (1100,470) → 칸 (58.33,30.33) · 0.055칸/px · 시계 방향 25° · 소매 이음 2칸 (63,35)(62,36) → T.
+//   왼쪽 반(파리아): docs/art_wip/edmond/gemini/bread_faria/gF.js — 소맷부리 가운데 (245,565) → 칸 (5.547,34.55) · 0.055칸/px · 반시계 12° · 손질 5칸(가시·홈) · 소매를 이음점 너머 반 칸까지 덮음(관 이음 구멍 0).
+//   손이 덮지 않는 빵 칸은 예전 행 그대로이고, 예전 손이 덮던 자리는 cu_bread_loaf 값. cu_bread_l/_r(아래)는 이 행을 반으로 자른 것이라 자동으로 따라간다.
+//   앵커·크기·코드: 파리아 칸 x 0~24 · 소매 이음점 (3,37)·관 (−0.66,0.75) / 에드몽 칸 x ≥ 35 · breadSleeve (61,37) 반지름 5칸 / halfImg 찢는 선 32±2 밖.
+//   글자: 파리아 살 j a b c d(SK_O2 계열 — j = cu_wrist_old·cu_arm의 a) · 소매 v s S V(= U.SLEEVE.faria) / 에드몽 살 i f g h · 소매 t T / 빵 1~4 w W / 외곽 o, sel-out 없음(e·n 안 씀).
+//   수치(judgeB 정의): 파리아 살 221칸 · 1px 줄 5.9% · 외톨이 0 · 가시 0 / 에드몽 살 238칸 · 1px 줄 5.5% · 외톨이 0 · 가시 0.
+//   [breadfix · 빵 QA 반영, 같은 0.3.4-hands] 28칸(손 형태·외곽은 그대로): cu_bread_hands 에드몽 오른쪽 테 h → g 3칸 (58,24)(59,25)(60,26)(장면 빛 반대쪽 테 아래 절반) ·
+//     파리아 소맷부리 안쪽 V → S 3칸 (4,31)(4,32)(4,33)(cu_bread_old도 같은 칸 — 손목 살과 소매를 밝기로도 가름) · cu_bread_loaf 빵 19칸을 cu_bread_hands 빵 칸과 같게(try → ready에서 빵 밝은 띠가 바뀌지 않게).
+//     위 '관 이음 구멍 0'은 좁은 범위로 센 값이었다(실제는 홀수 시작점에서 1~2px 틈). 지금은 s3island.js bread [breadfix](2px 격자 · 관 끝 1.25칸 안으로)로 틈 0. 인계 §10-11.
+PALS.cu_bread = { '1': '#6a3a1a', '2': '#9a5c2a', '3': '#c4843e', '4': '#e0aa62', o: '#2b1d2a', w: '#f0dcb4', W: '#d4bc90', a: '#8e7468', b: '#b49a88', c: '#d4b8a4', d: '#e6ccba', e: '#8e6450', f: '#b58566', g: '#d8ac8c', h: '#f0d6ba', i: '#654540', n: '#ead2c4', s: '#857a68', S: '#aca08a', t: '#4a4742', T: '#6e6a62', j: '#6c5650', v: '#5e564a', V: '#cfc4ac' };
+SPR.cu_bread_hands = { pal: 'cu_bread', rows: [
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"..........................oooooooooooo..........................",
+"................oooooooooo442444wW4444oo........................",
+".............ooocjjccjjo444442444wW44233oo......................",
+"............occjjcccaao42444444wW4444oo333o.....................",
+"...........ojcjjccaaoo4442444444wW33oggo323o....................",
+"...........ojcjccaao4444444443333wWogggo3323ooo.................",
+"..........occcjccao444444443333wW3ofgggo3333oggo................",
+"..........occcjcco44444444333333wWofggio3333oggio...............",
+"..........occjccao444444433333333wofggio3333oggigo..............",
+".........occcjccao4444443333333wW3ofggio333ogggigo..............",
+".........occcccco444444433333333wWofgggooooggggigo..............",
+"........occccccco4444443333333333woggggggggggggigo..............",
+"........occccccao44443333333333wW3ogggggggggggigigo.............",
+"........occccccao333333333333333wWogggggggggggigigo.............",
+"........occcccdco3333333333333333ogggggggggggggggio.............",
+".......ocbccccdcao3333333333333wWogggggggggggggigio.............",
+".......ocbcccbdcao33333333333333ofggggggggggggggigo.............",
+".......occccbbdbcaooooooo3333333ofggggggggggggggio..............",
+".......occccbbbbbcccccaao333333wofgggggggggggggio...............",
+".......occccbbbbcdddcaao33333333ofggggggggggggggo...............",
+"......odccbbbbccdcdaaoo333333332ofgggggTTggggggo................",
+".ooooocdccbbbccaaaaao.oo3222232wofggggTTTTffffo.................",
+"oVVVSoccccccaaaaaooo....oo222222offgggTTTTTfoo..................",
+"VVVVSocccccaaaaao.........oooooooffgggTTTTTTo...................",
+"VVVVSoccccccjooo................offggTTTTTTTo...................",
+"VVVVSocccccjo....................offTTTTTTTTTooo................",
+"VVVVSSocaaao.....................offTTTTTTTTTTTto...............",
+".VVSSsoaaao.......................ofTTTTTTTTTTTt................",
+"..SSssooaao.......................ofTTTTTTTTT...................",
+"...sssvvoo........................ooTTTTTTT.....................",
+"....svvoo........................oTTTTTTT......................."] };
+SPR.cu_bread_l = { pal: 'cu_bread', rows: SPR.cu_bread_hands.rows.map(r => r.slice(0, 32)) };
+SPR.cu_bread_r = { pal: 'cu_bread', rows: SPR.cu_bread_hands.rows.map(r => r.slice(32)) };
+// 7-6b. (추가) 한 손 단계(bread 'try': 파리아 늙은 손 혼자 찢으려다 못 함) — cu_bread_loaf 빵만 · cu_bread_old 파리아 손만(빵 칸 비움, 손 칸은 cu_bread_hands와 한 글자도 같음 — try → ready에서 손이 바뀌지 않는다). 둘 다 64×40, cu_bread_hands와 같은 자리
+//   [breadfix] cu_bread_loaf의 빵 칸(1~4 w W)은 cu_bread_hands의 빵 칸과 같다(손 밑으로 이어지는 x 47~49 그늘 '2'만 hands에). 그래서 ready 첫 0.56초 동안
+//     cu_bread_loaf + cu_bread_old + 에드몽 손(런타임 마스크)으로 그린 화면이, 다 쥔 뒤 cu_bread_hands 통째 그림과 픽셀이 같다(s3island.js breadEdHand).
+SPR.cu_bread_loaf = { pal: 'cu_bread', rows: [
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"..........................oooooooooooo..........................",
+"........................oo442444wW4444oo........................",
+"......................oo444442444wW44233oo......................",
+".....................o442444444wW444432333o.....................",
+"....................o44442444444wW333333323o....................",
+"...................o4444444443333wW333333323o...................",
+"..................o444444443333wW333333333333o..................",
+".................o44444444333333wW333333333333o.................",
+".................o444444433333333wW33333333333o.................",
+"................o44444443333333wW33333333333333o................",
+"................o444444433333333wW3333333333332o................",
+"................o4444443333333333wW333333333322o................",
+"................o44443333333333wW33333333333222o................",
+"................o333333333333333wW3333333332222o................",
+"................o3333333333333333wW333333322222o................",
+".................o3333333333333wW3333333322222o.................",
+".................o33333333333333wW333333222222o.................",
+"..................o33333333333333wW3333222222o..................",
+"...................o33333333333wW32333222222o...................",
+"....................o33333333333wW222222222o....................",
+".....................o33333333322wW2222222o.....................",
+"......................oo3222232wW2222222oo......................",
+"........................oo222222wW2222oo........................",
+"..........................oooooooooooo..........................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................"] };
+SPR.cu_bread_old = { pal: 'cu_bread', rows: [
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................................................................",
+"................oooooooo........................................",
+".............ooocjjccjjo........................................",
+"............occjjcccaao.........................................",
+"...........ojcjjccaaoo..........................................",
+"...........ojcjccaao............................................",
+"..........occcjccao.............................................",
+"..........occcjcco..............................................",
+"..........occjccao..............................................",
+".........occcjccao..............................................",
+".........occcccco...............................................",
+"........occccccco...............................................",
+"........occccccao...............................................",
+"........occccccao...............................................",
+"........occcccdco...............................................",
+".......ocbccccdcao..............................................",
+".......ocbcccbdcao..............................................",
+".......occccbbdbcaooooooo.......................................",
+".......occccbbbbbcccccaao.......................................",
+".......occccbbbbcdddcaao........................................",
+"......odccbbbbccdcdaaoo.........................................",
+".ooooocdccbbbccaaaaao...........................................",
+"oVVVSoccccccaaaaaooo............................................",
+"VVVVSocccccaaaaao...............................................",
+"VVVVSoccccccjooo................................................",
+"VVVVSocccccjo...................................................",
+"VVVVSSocaaao....................................................",
+".VVSSsoaaao.....................................................",
+"..SSssooaao.....................................................",
+"...sssvvoo......................................................",
+"....svvoo......................................................."] };
 
+// [0.3.4-hands] 에드몽의 손: 제미나이 그림(docs/art_refs/gemini/, 번들 밖)을 형태 그대로 옮긴 행이 정본이다 — pixelize.html 레시피로 다시 만들어 덮어쓰지 말 것. 인계 docs/handoff/edmond-hands.md §10
+// fist 묶음(cu_pour · cu_knock · cu_knock_hit · cu_knock_hold · 새 cu_knock_reach) — 원본 docs/art_refs/gemini/fist_g1.png(2528×1696): 같은 오른손의 세 자세를 각각 옮김(거울 복사·좌우 뒤집기 없음).
+//   변환 docs/art_wip/edmond/gemini/fist/gF.js + fistS.js(FS.build, 설정 fist/spec.json) = fist/rows.js. 정본 docs/art_wip/edmond/gemini/final_fist.js, 비교 docs/art_wip/edmond/gemini/fist_compare.png.
+// 7-7. cu_pour 22×34(2배) — 열 방울: 위에서 본 오른손 손등이 약병을 거의 세워 거꾸로 쥠(제미나이 재생성 pour_g2.png 그대로 — 손가락 넷이 병 몸통을 감고 엄지는 오른쪽, 병 입이 맨 아래).
+//   [0.3.4-hands regen pour2] 1판(fist_g1 오른쪽)은 병이 약 40° 기울고 손에 가려 '붉은 사선(칼에 피)'로 읽혀 바꿈(인계 §10-9 재생성 4번).
+//     정본 docs/art_wip/edmond/gemini/regen/final_pour2.js(변환·심사 기록 전체), 비교 regen/pour2_compare.png. 1판 행은 docs/art_refs/before_edmond/spr_chars_s3.regen4pre.js
+//   크기·앵커·코드 그대로: 병 입 = 코드 lip = 그림 (10.0,33.0) · 소맷부리 = U.sleeve 관 끝 (15.5,4)(r 13→11). 맞춤: 원본 병 입 (329.5,692) → (10,33) · 0.072칸/px · 12° 돌림 · 위상 (0,1/6).
+//   빛: 원본 그대로(아래가 밝음 = 장면 빛, 병 입 아래 등잔과 같은 쪽). 팔레트: 빈 유리(병 몸통 위쪽)에 새 글자 v #7d6656만 더함(나머지 값 그대로).
+//   살 247칸 · a 10.9% · c 18.6% · d 43.7% · e 26.7% · 1px 줄 3.2% · 진짜 외톨이 0 · 가시 0
+PALS.cu_pour = { '1': '#2e2b28', '2': '#4a4742', '3': '#6e6a62', '4': '#8e8a80', o: '#2b1d2a', a: '#654540', b: '#8e6450', c: '#b58566', d: '#d8ac8c', e: '#f0d6ba', n: '#efe0d2',
+  g: '#6a7a88', G: '#aebccb', x: '#1c2230', r: '#9a1c26', R: '#d8323a', q: '#5a0e18', v: '#7d6656' };
+SPR.cu_pour = { pal: 'cu_pour', rows: [
+"......................",
+"......................",
+"......................",
+".........oooo443......",
+".........occcooooo211.",
+"........oddddcddddoo..",
+".......odddddddddddo..",
+".......odddddddddddco.",
+"......oddddddddddddco.",
+".....ocddddddadddddco.",
+".....ocdddddcaddddddo.",
+"....occccccccaddddddco",
+"....occaacccceddddddco",
+"...oaaaddacooeedddddco",
+"...odddddaovvoedddcdco",
+"...oddaaaccovvoedccdco",
+"...odccccccovvvoeeddco",
+"...occeeeeovvvvoaeddco",
+"...oeeeeddovvGvoaeeeco",
+"...oeeeaaeorvGvoaeeeo.",
+"...oeaaeeeoqrGvoeeedo.",
+"...oadeeeooqqGoeeeedo.",
+"...odeeoooqqqGoeeedo..",
+"...oeeaoqqqqqGoeeeeo..",
+"...oeeaorrrrrGoeaeo...",
+"....oeaorrrrrooaeo....",
+"....oeeeorrrrroao.....",
+"....oeeeorrrrGoo......",
+"....oeeeorrrGo........",
+".....ooooGRGo.........",
+"........oGRGo.........",
+".......oGGgGo.........",
+".......oGGrGo.........",
+"......................"] };
+// [0.3.4-hands] 에드몽의 손: 제미나이 그림(docs/art_refs/gemini/, 번들 밖)을 형태 그대로 옮긴 행이 정본이다 — pixelize.html 레시피로 다시 만들어 덮어쓰지 말 것. 인계 docs/handoff/edmond-hands.md §10
+// 7-8. cu_grip 20×28(2배, 팔과 함께 ctx.rotate) — 팔 들기: 위에서 본 파리아의 마른 손목을 아래에서 올라온 에드몽 오른손이 감아쥠(손가락 넷이 팔뚝 위로 넘어가고 손목이 잘록하게 소매로).
+//   [0.3.4-hands regen grip2] 원본 docs/art_refs/gemini/grip_g2.png(제미나이 재생성)의 그 오른손만(파리아 팔·손은 cu_arm) → regen/grip2/gG2.js GG2.build() = grip2/rows.js.
+//     1판(grip_g1)은 손가락이 곧게 서 '감아쥔 손'보다 '팔 위에 얹은 손바닥'으로 읽혀 바꿈(인계 §10-9 재생성 3번). 1판 행은 docs/art_refs/before_edmond/spr_chars_s3.regen4pre.js
+//   정본 docs/art_wip/edmond/gemini/regen/final_grip2.js(변환·심사 기록 전체), 비교 regen/grip2_compare.png. 맞춤: 원본 (595.7,312.1) → (12,9) · 0.077칸/px · 8° 돌림 · 위상 (−0.1,−0.3).
+//   앵커·크기·코드 그대로: 쥔 손목 가운데 GRIP (12,9) · 소맷부리 GRIP_CUFF (13,27)(s3night.js). 팔레트 그대로.
+//   빛: 원본 그대로(손가락 면 위가 밝고 오른쪽 테가 그늘 c — 장면 빛 왼쪽 위와 같은 쪽). 살 329칸 · d 69.9% · e 14.9% · c 11.6% · a 3.6% · 1px 줄 1.5% · 진짜 외톨이 0 · 가시 0
+PALS.cu_grip = { '1': '#2e2b28', '2': '#4a4742', '3': '#6e6a62', '4': '#8e8a80', o: '#2b1d2a', a: '#654540', b: '#8e6450', c: '#b58566', d: '#d8ac8c', e: '#f0d6ba', n: '#efe0d2', k: '#cbb492', r: '#a86e64' };
+SPR.cu_grip = { pal: 'cu_grip', rows: [
+"....oooooo.........................",
+"...oddddddooo......................",
+"..oddddaddaddooo...................",
+"..oddddadddadaddo..................",
+"...oddddaddaddado..................",
+"...oddddadddadaddo.................",
+"....ocdddadddddddo.................",
+"....ocdddadddddddo.................",
+"....ocdddddddddddeo................",
+"....ocdddddddddddeo................",
+"....ocddddddddddddo................",
+".oooocddddddddddddo................",
+"occccdddddddddddddo................",
+"occdddddddddddddddo................",
+"occddddddddddddddddo...............",
+".ooddddddddddddddddo...............",
+"...occdddddddddda33oo..............",
+"....occccccddddad3333o.............",
+".....oooccccddda333333o............",
+"........oooccd333333332o...........",
+"...........occ3333333332o..........",
+"...........occ33333333332o.........",
+"...........o3c33333333332o.........",
+"..........o33333333333333oo........",
+"..........o3333333333333322o.......",
+"..........o33333333333333322o......",
+".........o3333333333333333322oo....",
+".........o333333333333333332221o...",
+".........o2333333333333333332221o..",
+".........o2333333333333333333221o..",
+"........o222333333333333333332221o.",
+"........o2222333333333333333332221o",
+"........o2222333333333333333333221.",
+".........o2222333333333333333332...",
+"..........o22223333333333333333....",
+"...........o22233333333333333......",
+"............o222333333333333.......",
+"............o2222333333333.........",
+".............oo2233333333..........",
+"...............o2233333............",
+"................oo2333.............",
+".................oo3...............",
+"..................o................"] };
+// [0.3.4-hands] 에드몽의 손: 제미나이 그림(docs/art_refs/gemini/, 번들 밖)을 형태 그대로 옮긴 행이 정본이다 — pixelize.html 레시피로 다시 만들어 덮어쓰지 말 것. 인계 docs/handoff/edmond-hands.md §10
+// 7-9. cu_knock 29×23(2배, 0.3.4-hands 첫 판 21×28 · 0.3.3-hands 20×18) — 침대 다리를 두드리는 오른손 주먹, 옆모습(제미나이 재생성 knock_g2.png): 말아 쥔 네 손가락 가운데 마디 면이 왼쪽 = 다리 쪽,
+//   엄지가 위에서 검지를 감음(엄지 왼쪽 테 = 5열 세로 a, 엄지 밑 그늘 c), 손가락 사이 골 a 가로 셋, 손끝·손톱 쪽 테 = 9열 a, 팔뚝은 오른쪽 아래로 소맷부리까지. 다리가 오른쪽이면 좌우 뒤집어 그린다.
+//   [0.3.4-hands regen knock2] 첫 판(fist_g1 왼쪽, 앞에서 본 주먹)은 '두드리는 주먹'보다 '치켜든 주먹'으로 읽혀 바꿈(인계 §10-9 재생성 2번). 정본 docs/art_wip/edmond/gemini/regen/final_knock2.js, 비교 regen/knock2_compare.png.
+//   앵커: KNOCK (1,8) 그대로(가장 왼쪽 면 7·8행 바깥선) · KNOCK_CUFF (24.5,18) = 팔뚝 축 위 소맷부리 · KNOCK_ARM (7.2,3.4) = 소맷부리 → 팔꿈치(s3night.js — U.sleeve 13→9를 화면 밖 → 팔꿈치 → 소맷부리 세 점으로).
+//   소매 칸은 그림에 없다(코드 U.sleeve가 손 그림 다음에 그림 — 뒤집혀도 소매 빛이 맞게). 팔뚝은 소맷부리 너머 1.5칸까지만 남기고 잘랐다(관 반지름 4.5칸 + 테 1칸 밑).
+//   맞춤: 원본 (171,355) → (0.5,8.5) + 위상 (2/3,2/3) · 배율 0.05칸/px · 돌림 없음. 잡티 3칸(소매 관 밑): (27,14) e→d · (23,22) c→o · (23,23) o→비움.
+//   빛: 원본 그대로(윗변·오른쪽 위 테 e — 뒤집히면 왼쪽 위). 살 327칸 · a 10.4% c 8.9% d 74.6% e 6.1% · 진짜 외톨이 0 · 가시 0
+// 팔레트 PALS.cu_knock: cu_knock · _hit · _hold · _reach 공유. 살 = 기준서 §7-1 사다리, 소매 1~4 = U.SLEEVE.dantes, 약병 글자 g G x r R q u U = 게임 cu_phial(spr_world_s3.js PAL.ph) 색
+PALS.cu_knock = { '1': '#2e2b28', '2': '#4a4742', '3': '#6e6a62', '4': '#8e8a80', o: '#2b1d2a', a: '#654540', b: '#8e6450', c: '#b58566', d: '#d8ac8c', e: '#f0d6ba', n: '#efe0d2',
+  g: '#6a7a88', G: '#aebccb', x: '#1c2230', r: '#9a1c26', R: '#d8323a', q: '#5a0e18', u: '#7a5234', U: '#a8743e', p: '#4e331f' };
+SPR.cu_knock = { pal: 'cu_knock', rows: [
+".oooooooooo..............................",
+".odddddddddooo...........................",
+"..oddaddddddddo..........................",
+".ooddadddadddddo.........................",
+".oddadaddaddddddo........................",
+".odaddaddaccddddo........................",
+".oddaddaaaccddddo........................",
+".oaddaaccacdddddo........................",
+".odaaddcaccddddddo.......................",
+"oddddaaaaacddddddo.......................",
+"oddddddcaccdddddddo......................",
+"odaaddccaccdddddddo......................",
+"odddaaaaaccdddddddo......................",
+"oddddddaaacdddddddeo.....................",
+".odddddaddaddddddddeo....................",
+"..ooaaaddddaddddddddeo...................",
+"....occdddddddddddddeeo..................",
+".....occdddddddddddddddoo................",
+"......occddddddddddddd333o...............",
+".......occcddddddddddd333do..............",
+"........ooccccdddddddd3333doo............",
+"..........ooccddddddd33333334o...........",
+"............ooddddddd33333333o...........",
+"..............oddddc333333333ooo.........",
+"...............ocddc333333333334o........",
+"...............occdc3333333333334oo......",
+"................occc333333333333324o.....",
+".................oc33333333333333344o....",
+".................oo333333333333333444o...",
+"................o223333333333333333424o..",
+"................o2223333333333333333224oo",
+"................o222333333333333333332244",
+"................o22223333333333333333322.",
+"................22222233333333333333333..",
+"................o222222333333333333333...",
+"................o22222223333333333333....",
+".................oo22222233333333333.....",
+"...................o222222333333333......",
+"....................o222222333333........",
+".....................oo222233333.........",
+".......................o2222333..........",
+"........................oooo23...........",
+"...........................o2............",
+"...........................o............."] };
+// [0.3.4-hands] 에드몽의 손: 제미나이 그림(docs/art_refs/gemini/, 번들 밖)을 형태 그대로 옮긴 행이 정본이다 — pixelize.html 레시피로 다시 만들어 덮어쓰지 말 것. 인계 docs/handoff/edmond-hands.md §10
+// 태우기(burn) 두 손 — 원본 docs/art_refs/gemini/pinch_g1.png(2528×1696): 위에서 내려온 두 손이 종이 윗변을 쥠, 아래 촛불 빛(손끝 e·n이 가장 밝고 손등은 위로 갈수록 b → a로 어둠에 녹음, 엄지는 종이 뒤라 안 보임).
+//   그림의 실제 왼쪽 손 → cu_pinch(에드몽 오른손), 오른쪽 손 → cu_pinch_r(에드몽 왼손). 0.3.3-hands까지의 cu_pinch_r(= cu_pinch 좌우 뒤집기 행) 대신 실제 두 손이다 — 코드는 예전부터 뒤집지 않고 각 그림을 그대로 그린다.
+//   변환 docs/art_wip/edmond/gemini/pinch/gP.js GP.build()(설정 pinch/spec.json) = pinch/rows.js. 정본 docs/art_wip/edmond/gemini/final_pinch.js, 비교 docs/art_wip/edmond/gemini/pinch_compare.png.
+//   심사 정리 1칸: cu_pinch_r (13,5) o→.(손목 외곽선과 소맷자락 아랫선이 겹친 2×2 외곽선 덩어리의 귀퉁이).
+//   크기 13×16 → 14×22(두 그림 모두). 그리는 코드(s3island.js burn)는 그대로: x.drawImage(pin, fx2 + 2 − (right ? 14 : 12), Gm.py − 20, pin.width·2, pin.height·2) — 크기는 pin.width·height를 따라간다.
+//   앵커: 소매 축(fx2+2) = cu_pinch 그림 x 6.0(원본 손목 가운데 x 575) / cu_pinch_r x 7.0(원본 x 1956) · 종이 윗변 Gm.py = 9·10행 사이(원본 y 642/641). 손가락은 10~20행(종이 위 약 20px).
+//   팔레트: 살 o a b c d e n = PALS.cu_embrace와 같은 값(같은 사람), 소매 '1'~'4' = U.SLEEVE.dantes(그림 안 소맷자락 칸).
+//   수치(왼/오, 살 abcde): 살 168/163칸 · a 33.9/35.6% · b 12.5/6.7% · c 4.2/5.5% · d 44/44.2% · e 5.4/8% · 1px 줄 9.5/11.7% · 진짜 외톨이 0/1((1,16) e = 검지 손톱 위 등잔 빛, 의도) · 가시 0 · 손톱 4/4
+//   [0.3.4-hands g2] QA 반영(명암만): 손등 a 판 아래(손가락 뿌리 쪽) 경계를 한 줄 위로 올려 b로 잇기(cu_pinch 8칸 · _r 7칸 — 크게 보면 '손가락 없는 장갑' 기미) ·
+//     cu_pinch_r 가운데 틈 (6,10~12) a → b(같은 굵기 틈 셋의 빗 리듬). 사라지는 때는 s3island.js burn이 타 올라오는 종이 끝에 맞춘다. 인계 §10-9
+PALS.cu_pinch = { o: '#2b1d2a', a: '#654540', b: '#8e6450', c: '#b58566', d: '#d8ac8c', e: '#f0d6ba', n: '#efe0d2', '1': '#2e2b28', '2': '#4a4742', '3': '#6e6a62', '4': '#8e8a80' };
+// [pinch3] 아래 7-10·7-10b 설명은 14×22 시절 기록이다. 지금 행은 제미나이 점검 1순위(원기둥 팔·잘려 붙은 손목)로 다시 그린 docs/art_refs/gemini/pinch_g3.png를 옮긴 것이다
+//   (cu_pinch 24×55 · cu_pinch_r 24×56: 손 + 맨살 손목 + 해진 소맷부리 + 소매. k 0.07칸/px(1111px 기준), 종이 색 픽셀은 지우고 변환).
+//   소매 칸은 s3island.js burn의 소매 관과 같은 음영(GF.tubeCol, 위→아래 관 · 반지름 11.5칸)으로 다시 칠해 그림 위로 이어지는 관과 이음매가 없다.
+//   앵커는 s3island.js PIN_A: [손 가운데 x(종이 윗변 줄), 종이 윗변 줄 44.8, 그림 맨 위 소매 가운데 x]. 변환 작업 docs/art_wip/edmond/gemini/regen/pinch3/
+// 7-10. cu_pinch 14×22(2배, 화면 28×44): 원본 왼쪽 손 = 에드몽 오른손(화면 왼쪽 자리, 종이 px+14). 손가락 순서 새끼(왼쪽)·약지·중지·검지(오른쪽, 가운데 쪽). 왼쪽 위 소맷자락(3·4)은 원본 해진 소맷부리.
+SPR.cu_pinch = { pal: 'cu_pinch', rows: [
+".oo44444443333333222211o",
+".o444444443333333222211o",
+".o444444443333333222211o",
+".o44444444333333322221o.",
+"o444444444333333322221o.",
+"o444444444333333322221o.",
+"o444444444333333322221o.",
+".o44444444333333322221o.",
+".o4444444433333332222o..",
+"..o44444443333333222o...",
+"..o444444433333332222o..",
+"..o444444433333332222o..",
+"..o444444433333332222o..",
+"..o444444433333332222o..",
+"..o44444443333333222o...",
+"..o44444443333333222o...",
+"..o44444443333333222o...",
+"...o4444443333333222o...",
+"...o4444443333333222o...",
+"...o4444443333333222o...",
+"...o4444443333333222o...",
+"...o444444333333322o....",
+"....o444o43333o33222o...",
+"....o44444333333o222o...",
+"....od44cddddcccc222o...",
+"....oaaacdddddccc222o...",
+"....o44eddddddcdo22o....",
+"....o44eddddddcdo22o....",
+".....o4oddddddcco2o.....",
+"......ooedddddccoo......",
+".......oedddddcco.......",
+".......oeddddddco.......",
+".......oeddddddco.......",
+".......oeddddddco.......",
+".......oeddddddco.......",
+".......odddddddddo......",
+"......oedddddddddo......",
+"......oedddddddddo......",
+"......oddddddddddco.....",
+"......odddddddddcco.....",
+"......odddddddddco......",
+".....odddddaddddco......",
+".....oddddddadddco......",
+".....oddddddadddco......",
+".....oddddaaaddddo......",
+"....oeddddddaddddo......",
+"....oeddddddaddddco.....",
+".....odddddadddddco.....",
+".....oedddddoodddco.....",
+".....odaddddo.oddco.....",
+"......oaddddo..ooo......",
+".......oadddo...........",
+"........oddco...........",
+".........occo...........",
+"..........oo............"] };
+// 7-10b. cu_pinch_r 14×22: 원본 오른쪽 손 = 에드몽 왼손(화면 오른쪽 자리, 종이 px+pw−18). 손가락 순서 검지(왼쪽, 가운데 쪽)·중지·약지·새끼(오른쪽). 오른쪽 위 소맷자락(1)은 원본 소매가 손목 바깥으로 늘어진 자리.
+SPR.cu_pinch_r = { pal: 'cu_pinch', rows: [
+"o44444444333333322221oo.",
+"o444444443333333222211o.",
+"o444444443333333222211o.",
+".o44444443333333222211o.",
+".o44444443333333222211o.",
+".o444444433333332222111o",
+".o444444433333332222111o",
+".o44444443333333222211o.",
+"..o4444443333333222211o.",
+"..o444444333333322221o..",
+"..o444444333333322221o..",
+"..o444444333333322221o..",
+"..o444444333333322221o..",
+"..o444444333333322221o..",
+"...o44444333333322221o..",
+"...o44444333333322221o..",
+"...o4444433333332222o...",
+"...o4444433333332222o...",
+"...o4444433333332222o...",
+"...o4444433333332222o...",
+"...o4444433333332222o...",
+"....o44443333333222o....",
+"....o4444o333333222o....",
+"...o444o43333333222o....",
+"...o44occccddddcc2do....",
+"...o444cccdddddccoo.....",
+"...o444cdcddddddc2o.....",
+"....o44cdcddddddo2o.....",
+".....o4odcdddddeo2o.....",
+"......ooccdddddeoo......",
+".......ocddddddeo.......",
+".......ocddddddeo.......",
+".......ocddddddeo.......",
+".......ocddddddeo.......",
+".......odddddddeo.......",
+"......odddddddddo.......",
+"......odddddddddeo......",
+"......odddddddddeo......",
+".....ocdddddddddeo......",
+".....ocdddddddddeo......",
+".....occddddddddeo......",
+"......ocdddddddddo......",
+"......ocdddadddddeo.....",
+"......ocdddadddddeo.....",
+"......oddddcaaddddo.....",
+".....ocdddaccdddddeo....",
+".....ocdddcacdddddeo....",
+".....ocdddccadddddo.....",
+".....odddddodddddao.....",
+".....odddoooddddado.....",
+"......ooo.odddddao......",
+"...........odddoo.......",
+"...........occco........",
+"...........occo.........",
+"...........occo.........",
+"............oo.........."] };
+// 7-11. (추가 · fixer-fix로 다시 그림) cu_soot 22×16: 섬 지도(island)에 ×를 긋는 파리아의 늙은 왼손 — 그을음 막대를 엄지(아래)·검지(위)로 집고 세 손가락은 말아 쥠(1배). 막대 끝 = (0,0), 소매(흰 베이지)는 오른쪽 아래로 짧게 이어 어둠에 녹음
+PALS.cu_soot = { '1': '#5e564a', '2': '#857a68', '3': '#aca08a', o: '#2b1d2a', k: '#0a0808', K: '#2a2420', a: '#6c5650', b: '#8e7468', c: '#b49a88', d: '#dcc0ac', e: '#ead2c0' };
+SPR.cu_soot = { pal: 'cu_soot', rows: [
+"KKoo..................",
+"kKKKo.................",
+"ookKKoooo.............",
+"..okKKKddooo..........",
+"...ookKdddddoo........",
+".....okKddbdddooo.....",
+"......odkKdbdbeddo....",
+"......ocdbddbedddoo...",
+".......ocdbdddddda2oo.",
+".......oacdbdddcca222o",
+"........oacdbdccca3222",
+".........oabcccca33322",
+"..........obbbbaa33332",
+"..........oddcb2223333",
+"...........ocb22222333",
+"............ooo2222223"] };
+
+// [0.3.4-hands] 에드몽의 손: 제미나이 그림을 형태 그대로 옮긴 행이 정본이다(pixelize 레시피로 덮어쓰지 말 것). 정본 docs/art_wip/edmond/gemini/final_fist.js, 인계 docs/handoff/edmond-hands.md §10
+// 7-9b. cu_knock_hit 29×23 — cu_knock의 '닿는' 한 프레임(fist/fistS.js makeHit과 같은 식, 정본 regen/final_knock2.js):
+//   둥근 면 꼭대기 7·8행만 바깥선이 1칸 안으로 눌려(0열 → 1열) 면이 평평해지고, 7·8·10·11·12행 면 쪽 살 2칸이 한 단 밝다(d → e). 9·13행은 골 선 a라 그대로.
+//   나머지 칸은 cu_knock과 같다(바뀐 칸 14). 살 325칸 · e 9.2% · 진짜 외톨이 0 · 가시 0
+SPR.cu_knock_hit = { pal: 'cu_knock', rows: [
+".oooooooooo..............................",
+".odddddddddooo...........................",
+"..oddaddddddddo..........................",
+".ooddadddadddddo.........................",
+".oddadaddaddddddo........................",
+".odaddaddaccddddo........................",
+".oddaddaaaccddddo........................",
+".oaddaaccacdddddo........................",
+".odaaddcaccddddddo.......................",
+".oeedaaaaacddddddo.......................",
+".oeedddcaccdddddddo......................",
+".oaaddccaccdddddddo......................",
+".oeeaaaaaccdddddddo......................",
+".oeedddaaacdddddddeo.....................",
+".odddddaddaddddddddeo....................",
+"..ooaaaddddaddddddddeo...................",
+"....occdddddddddddddeeo..................",
+".....occdddddddddddddddoo................",
+"......occddddddddddddd333o...............",
+".......occcddddddddddd333do..............",
+"........ooccccdddddddd3333doo............",
+"..........ooccddddddd33333334o...........",
+"............ooddddddd33333333o...........",
+"..............oddddc333333333ooo.........",
+"...............ocddc333333333334o........",
+"...............occdc3333333333334oo......",
+"................occc333333333333324o.....",
+".................oc33333333333333344o....",
+".................oo333333333333333444o...",
+"................o223333333333333333424o..",
+"................o2223333333333333333224oo",
+"................o222333333333333333332244",
+"................o22223333333333333333322.",
+"................22222233333333333333333..",
+"................o222222333333333333333...",
+"................o22222223333333333333....",
+".................oo22222233333333333.....",
+"...................o222222333333333......",
+"....................o222222333333........",
+".....................oo222233333.........",
+".......................o2222333..........",
+"........................oooo23...........",
+"...........................o2............",
+"...........................o............."] };
+// [0.3.4-hands] 에드몽의 손: 제미나이 그림을 형태 그대로 옮긴 행이 정본이다(pixelize 레시피로 덮어쓰지 말 것). 정본 docs/art_wip/edmond/gemini/final_fist.js, 인계 docs/handoff/edmond-hands.md §10
+// 7-9c. cu_knock_hold 20×32(2배, 0.3.3-hands 20×20) — 찾은 약병을 세워 쥔 오른손(원본 fist_g1.png 가운데 그림): 검지가 코르크 위로 감고, 엄지는 병 오른쪽으로 서고, 가운뎃·약·새끼손가락이 병 아래쪽을 앞에서 감는다.
+//   약병이 그림 안에 있다(유리 g G x · 약 r q · 코르크 U u = 게임 cu_phial 색). 쥔 동안(T_LIFT부터) s3night.js ST.vial은 게임 약병(cu_phial)을 그리지 않고, 약병을 2배로 키우지도 않는다.
+//   앵커: HOLD_V (8,9.5) → (9,17) = 그림 속 약병 밑 가운데(= foundPose grip − 1) · HOLD_CUFF (13.5,19.5) → (13.5,28) = 손목 아래 가운데(U.sleeve 13→9 끝). 소매 칸 없음(뒤집혀도 맞게).
+//   맞춤: 원본 (947,205) → (0,0) + 위상 (1/3,0) · 0.028칸/px(cu_knock과 같은 손 크기). 살 287칸 · d 79.4% · c 9.8% · a 8.7% · e 2.1% · 1px 줄 2.1% · 진짜 외톨이 0 · 가시 0
+//   [0.3.4-hands g2] QA 반영 8칸: 붉은 약이 손가락 살에 바로 닿아 '손바닥의 붉은 얼룩(피)'으로 보이던 것 → 약과 살 사이 약 칸을 o(약병 테, 원본에도 검은 선).
+//     (5,8)(6,9)(6,10)(7,11)(8,12) · (10,12)(10,13)(10,14) — cu_knock_reach의 빈자리 둘레 o와 같은 칸이라 뻗는 손 → 쥔 손으로 바뀔 때 손 실루엣이 튀지 않는다. 인계 §10-9
+SPR.cu_knock_hold = { pal: 'cu_knock', rows: [
+"........ooo..............................",
+".......oUupo.............................",
+".......oUuupo............................",
+"......oUuupo.............................",
+"......oGgGxxo............................",
+"......oGggxxo............................",
+".....oGGGGxxo............................",
+".....oGRrrqxo............................",
+"...oooGoorRxxo...........................",
+"..odddadddddo............................",
+"..odddaddddddoo..........................",
+".odddadddadddddo.........................",
+".oddadaddadddddo.........................",
+".odaddaddaccddddo........................",
+".oddaddaaaocddddo........................",
+".oaddaadaccdddddo........................",
+".odaadddaccddddddo.......................",
+"oddddaaaaccddddddo.......................",
+"oddddddcaccddddddo.......................",
+"odaaddccaccdddddddo......................",
+"odddaaaaaacdddddddo......................",
+"odddddcccccddddddddo.....................",
+".oddddccrroddddddddo.....................",
+"..oodoorrrxdddddddddoo...................",
+"....oocoodddddddddddddoo.................",
+".....occddddddddddddddd3o................",
+"......occddddddddddddd33do...............",
+".......occcddddddddddd333do..............",
+"........ooccccdddddddd3333doo............",
+"..........ooccddddddd33333334o...........",
+"............ooddddddd33333333oo..........",
+"..............oddddc33333333332o.........",
+"...............ocddc333333333334o........",
+"...............occdc3333333333334oo......",
+"................occc333333333333324o.....",
+".................oc33333333333333344o....",
+".................oo333333333333333444o...",
+"................o223333333333333333424o..",
+"................o2223333333333333333324oo",
+"................o222233333333333333332244",
+"................o22223333333333333333322.",
+"................22222233333333333333333..",
+"................o222222333333333333333...",
+"................o22222223333333333333....",
+".................oo22222233333333333.....",
+"...................o22222233333333.......",
+"....................o222222333333........",
+".....................oo222233333.........",
+".......................o2222333..........",
+"........................oooo23...........",
+"...........................o2............",
+"...........................o............."] };
+// 7-9d. (새) cu_knock_reach 20×32 — cu_knock_hold와 같은 손에서 약병 칸만 비운 '빈 손'(약병으로 손을 뻗는 T_REACH~T_LIFT, 860~1200ms). 같은 크기·같은 앵커(HOLD_V (9,17) · HOLD_CUFF (13.5,28)).
+//   바닥의 1배 약병이 손가락 사이 빈자리로 보이다가, 손이 약병 밑에 닿는 T_LIFT부터 cu_knock_hold(약병을 쥔 그림)로 바뀐다(변환 설정 vialMode 'hole' — 손 칸은 cu_knock_hold와 같고 빈자리 둘레 o).
+SPR.cu_knock_reach = { pal: 'cu_knock', rows: [
+".........................................",
+".........................................",
+".........................................",
+".........................................",
+".........................................",
+".........................................",
+".........................................",
+".........................................",
+"...ooo.oo................................",
+"..odddoddoooo............................",
+"..odddaddddddoo..........................",
+".odddadddadddddo.........................",
+".oddadaddadddddo.........................",
+".odaddaddaccddddo........................",
+".oddaddaaaocddddo........................",
+".oaddaadaccdddddo........................",
+".odaadddaccddddddo.......................",
+"oddddaaaaccddddddo.......................",
+"oddddddcaccddddddo.......................",
+"odaaddccaccdddddddo......................",
+"odddaaaaaacdddddddo......................",
+"odddddccoocddddddddo.....................",
+".oddddco..oddddddddo.....................",
+"..oodoo....oddddddddoo...................",
+"....oocoooodddddddddddoo.................",
+".....occddddddddddddddd3o................",
+"......occddddddddddddd33do...............",
+".......occcddddddddddd333do..............",
+"........ooccccdddddddd3333doo............",
+"..........ooccddddddd33333334o...........",
+"............ooddddddd33333333oo..........",
+"..............oddddc33333333332o.........",
+"...............ocddc333333333334o........",
+"...............occdc3333333333334oo......",
+"................occc333333333333324o.....",
+".................oc33333333333333344o....",
+".................oo333333333333333444o...",
+"................o223333333333333333424o..",
+"................o2223333333333333333324oo",
+"................o222233333333333333332244",
+"................o22223333333333333333322.",
+"................22222233333333333333333..",
+"................o222222333333333333333...",
+"................o22222223333333333333....",
+".................oo22222233333333333.....",
+"...................o22222233333333.......",
+"....................o222222333333........",
+".....................oo222233333.........",
+".......................o2222333..........",
+"........................oooo23...........",
+"...........................o2............",
+"...........................o............."] };
+// [0.3.4-hands] 에드몽의 손: 제미나이 그림(docs/art_refs/gemini/, 번들 밖)을 형태 그대로 옮긴 행이 정본이다 — pixelize.html 레시피로 다시 만들어 덮어쓰지 말 것. 인계 docs/handoff/edmond-hands.md §10
+// 7-12. 「그 밤」 끌어안기(breath blanket): 담요 주름을 움켜쥔 당테스의 두 손(36×48, 2배) — 원본 docs/art_refs/gemini/embrace_g1.png(2528×1696)의 실제 왼손·오른손을 각각 옮김(거울 복사 없음).
+//   변환 docs/art_wip/edmond/gemini/embrace/A/gA.js GA.build()(설정 embrace/A/spec.json) = embrace/A/rows.js(방식 A: 재질 나누기 → 손가락 사이 선 뼈대 → 그늘 c 붓질 → 셀 톤 1:1 사다리 → 쥔 천 칸
+//   → U.sleeve 식 소매 다시 칠하기 → 잡티 정리 → 격자 위상 훑기). 형태(손가락 갈래·엄지·마디)는 그림 그대로. 정본 docs/art_wip/edmond/gemini/final_embrace.js, 비교 docs/art_refs/gemini/embrace_compare.png.
+//   심사 정리(형태 변화 없음 — 잡티·외곽 계단·구멍만): 왼손 10칸 · 오른손 8칸(목록은 final_embrace.js 머리 주석).
+//   앵커·크기·코드 그대로: 36×48 · 2배 · 주먹 가운데 (20,23)/(16,23)(minigames.js fcx·23) · 손목 (14,31)/(22,31) · 소매 이음점 (5.3,42)/(30.7,42). 팔레트 PALS.cu_embrace 그대로(cu_embrace_head 공유).
+//   쓰는 글자: o a c d e w W 1~4(b n k r x 안 씀). 쥔 천 w·W = 엄지·검지 사이 + 손끝 위 2칸, 나머지 담요는 투명(게임 담요가 보임).
+//   수치(왼/오, 살 abcde): 살 237/237칸 · d 66.2/67.9% · c 24.1/22.8% · a 6.8/6.3% · e 3/3% · 1px 줄 6.3/8.4% · 진짜 외톨이 0/0 · 가시 0/0
+//   [0.3.4-hands g2] QA 반영(명암만, 왼 10 · 오 13칸): 바깥쪽 테 e → d(장면 빛은 두 손 사이 위 — 왼손 (12,22~24), 오른손 (23,22~26)(24,28)(25,29)) ·
+//     손가락 사이 a 선 셋의 손등 쪽 아래 끝 2~3칸씩 → b(크게 보면 '할퀸 자국·발톱'). 안쪽 마디 꼭대기 e는 그대로. 인계 §10-9
+PALS.cu_embrace = { '1': '#2e2b28', '2': '#4a4742', '3': '#6e6a62', '4': '#8e8a80', o: '#2b1d2a', n: '#efe0d2', x: '#24170e', w: '#4a3222', W: '#664630', g: '#8a8680', H: '#bdb8ae', h: '#ece8e0', t: '#8e7468', S: '#b49a88', s: '#dcc0ac', a: '#654540', b: '#8e6450', c: '#b58566', d: '#d8ac8c', e: '#f0d6ba', k: '#cbb492', r: '#a86e64' };
+SPR.cu_embrace_l = { pal: 'cu_embrace', rows: [
+"...................................ooo...",
+"...............................oooodaao..",
+"............................oooddddadddo.",
+"...........................odddddddadddo.",
+"..........................odddddadddadao.",
+".........................odddddcaddddado.",
+".........................odddcccaddddaddo",
+"........................oddddcccaaaaadddo",
+"........................oddddddcaccccdado",
+"........................oddddddcaccdaaddo",
+"........................oddddddcaaaaddddo",
+".......................odddddddadacdddddo",
+".......................odddddddaaacccaaao",
+".......................odddddddadaaaadddo",
+"......................oddddddddcaaadddddo",
+"......................odddddddccddacccco.",
+"...................oooddddddddddddcaaoo..",
+"..................odddddddddddddddcco....",
+".................o4dddddddddddddddco.....",
+"................o44dddddddddddddcco......",
+"...............o4444ddddddddddccco.......",
+"..............o4444oddddddddcccoo........",
+".............o444444dddddddccoo..........",
+"...........oo44444444dddddcco............",
+"..........o44444444443dddcco.............",
+".........oo44444444433ddcco..............",
+".......oo4444444444433ccco...............",
+"......o44444444444433ccco................",
+"....ooo4444444444433333o.................",
+"...o344444444444433333o2o................",
+"..oo44444444444433333222o................",
+"ooo4444444444443333322211................",
+"333444444444443333322211o................",
+"..44444444444433332221111o...............",
+"...4444444444333322211111o...............",
+"....444444443333322111111o...............",
+".....4444443333322211111o................",
+"......4444333332221111oo.................",
+"........4333332221111o...................",
+".........33332221111o....................",
+"..........332221111o.....................",
+"...........322111oo......................",
+"............211oo........................",
+".............oo.........................."] };
+SPR.cu_embrace_r = { pal: 'cu_embrace', rows: [
+"...ooo...................................",
+"..oaadoooo...............................",
+".odddaddddooo............................",
+".odddadddddddo...........................",
+".oadadddadddddo..........................",
+".odaddddacdddddo.........................",
+"oddaddddacccdddo.........................",
+"odddaaaaacccddddo........................",
+"odadccccacddddddo........................",
+"oddaadccacddddddo........................",
+"oddddaaaacddddddo........................",
+"odddddcadadddddddo.......................",
+"oaaacccaaadddddddo.......................",
+"odddaaaadadddddddo.......................",
+"odddddaaacddddddddo......................",
+".occccaddccdddddddo......................",
+"..ooaacddddddddddddooo...................",
+"....occdddddddddddddddo..................",
+".....ocddddddddddddddd4o.................",
+"......occddddddddddddd44o................",
+".......occcdddddddddd4444o...............",
+"........oocccddddddddo4444o..............",
+"..........ooccddddddd444444o.............",
+"............occddddd44444444oo...........",
+".............occddd34444444444o..........",
+"..............occdd33444444444oo.........",
+"...............occc3344444444444oo.......",
+"................occc33444444444444o......",
+".................o3333344444444444ooo....",
+"................o2o333334444444444443o...",
+"................o22233333444444444444oo..",
+"................1122233333444444444444ooo",
+"................o112223333344444444444333",
+"...............o11112223333444444444444..",
+"...............o1111122233334444444444...",
+"...............o111111223333344444444....",
+"................o1111122233333444444.....",
+".................oo1111222333334444......",
+"...................o1111222333334........",
+"....................o11112223333.........",
+".....................o111122233..........",
+"......................oo111223...........",
+"........................oo112............",
+"..........................oo............."] };
+// 7-13. (추가 fixer-fix) cu_embrace_head 30×20: 담요 위로 비져나온 파리아의 정수리(숱 빠진 자리)·흰 머리칼·오른쪽 귀 — 누구를 안았는지. 아래 가장자리는 담요 자락(외곽선 없음)
+SPR.cu_embrace_head = { pal: 'cu_embrace', rows: [
+"..............................",
+".......o...ooooooo..o.........",
+"........hoohhhhhhhoHo.........",
+".......oohhhhhhhhgHHHo........",
+"......ohhhhhhhhhhgHHHHo.......",
+"..o..ohhhhhhHhHHgHHHHggo......",
+"...H.oHhhhHhhhHHHHHggHHHo.....",
+"....ohhhhhhssssSHHgHHHHHo.....",
+"....ohhhhHHssSSSHHHHHHHHHo....",
+"...ohhhhhhhSStttgggggHHHgo....",
+"...oHHhhHHHHHHgggHHHHgHggo....",
+"...ohhhHHHHHHHgHHgHHHHggtso...",
+"...ohHHHHggHHHHgHggHHHgtssSo..",
+"...oHHHggHHHgHHgHHHggggtSSto..",
+"....oHHgHHHHgHHgHHHHgggtStt...",
+".....ggHHHHggHHgHHggggggtt....",
+"......ggggg..ggggg...ggg......",
+"..............................",
+"..............................",
+".............................."] };
 MC.addSprites({ pals: PALS, spr: SPR });
 })(window.MC);
 
@@ -34726,6 +35666,7 @@ MC.addEvents({
       call("s3k.t2_count"),
       { "op": "say", "who": "dantes", "t": "열둘." },
       { "op": "say", "who": "faria", "t": "돌아서는 동안 숨 세 번.{p:200}\n그때 움직이면 되네." },
+      { "op": "say", "who": "faria", "t": "발소리가 멀어지면 세우게.{p:200}\n바로 위일 땐 숨만 쉬고." },   // fix beats-clarity: 규칙 한 줄(무엇을 언제 누르는지)
       { "op": "custom", "id": "s3", "args": { "stage": "beam", "mode": "set", "n": 12, "pause": 3 } },
       { "op": "set", "flag": "s3k.t2" },
       { "op": "fx", "kind": "dust", "at": "beam", "n": 3 },
@@ -35199,6 +36140,7 @@ MC.addEvents({
       GLOW_OFF,
       { "op": "letterbox", "on": true, "ms": 300 },
       { "op": "face", "id": "player", "dir": "up" },
+      { "op": "say", "who": "think", "t": "……멀어질 때." },          // fix beats-clarity: 스승에게 배운 셈을 혼자 떠올린다(규칙 한 줄)
       { "op": "custom", "id": "s3", "args": { "stage": "beam", "mode": "pull", "n": 12, "pause": 3 } },
       { "op": "set", "flag": "s3k.t2_fill" },
       { "op": "fx", "kind": "dust", "at": [ 3, 2 ], "n": 5 },
@@ -35600,11 +36542,12 @@ MC.addEvents({
       { "op": "letterbox", "on": true, "ms": 400 }
     ].concat(DUSK(2600), [
       { "op": "wait", "ms": 900 },
-      { "op": "sfx", "id": "knock", "gain": 0.28, "pitch": 0.8 },
+      // [fixer-fix] 소리를 꺼도 무엇을 셌는지 보이게: 두드릴 때마다 바닥 구멍 자리(hole_pull = 7,6)에 흙먼지 + 작은 흔들림
+      { "op": "sfx", "id": "knock", "gain": 0.28, "pitch": 0.8 }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
       { "op": "wait", "ms": 750 },
-      { "op": "sfx", "id": "knock", "gain": 0.26, "pitch": 0.8 },
+      { "op": "sfx", "id": "knock", "gain": 0.26, "pitch": 0.8 }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
       { "op": "wait", "ms": 2100 },
-      { "op": "sfx", "id": "knock", "gain": 0.18, "pitch": 0.76 },
+      { "op": "sfx", "id": "knock", "gain": 0.18, "pitch": 0.76 }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
       { "op": "wait", "ms": 800 },
       { "op": "say", "who": "think", "t": "……세 번." },
       { "op": "face", "id": "player", "dir": "down" },
@@ -35652,11 +36595,12 @@ MC.addEvents({
     "s3t.knock_late": [
       when({ "any": [ F("s3t.drag"), V("s3tlift", 1) ] }, [ END ]),
       when({ "not": { "var": "s3_knock" } }, [ { "op": "set", "var": "s3_knock", "v": "late" } ]),
-      { "op": "sfx", "id": "drag", "gain": 0.45 },
+      // [fixer-fix] 긁는 소리에도 구멍 자리 흙먼지 + 작은 흔들림(소리를 꺼도 무슨 소리인지)
+      { "op": "sfx", "id": "drag", "gain": 0.45 }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
       { "op": "wait", "ms": 1100 },
       { "op": "sfx", "id": "breath", "gain": 0.22, "pitch": 0.85 },
       { "op": "wait", "ms": 900 },
-      { "op": "sfx", "id": "drag", "gain": 0.4, "pitch": 0.9 },
+      { "op": "sfx", "id": "drag", "gain": 0.4, "pitch": 0.9 }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
       { "op": "wait", "ms": 500 },
       { "op": "say", "who": "think", "t": "……이 소리." },
       { "op": "glow", "id": "hole_pull" },
@@ -37787,7 +38731,12 @@ MC.addLang('ko', {
     "mg.notYet": "아직!",
     "mg.pressAgain": "다시 눌러 버틴다",
     "mg.holdHintBlanket": "떨림이 오면 손을 떼지 말 것",
-    "mg.blanketGauge": "힘"
+    "mg.blanketGauge": "힘",
+    "mg.patrolGuide": "머리 위 발소리를 센다.",
+    "mg.beamGuide": "발소리가 멀 때 누른다.",
+    "story.patrolHush": "……쉿.",
+    "story.beamNearFaria": "……쉿. 바로 위일세.",
+    "story.beamNearSelf": "……아직. 바로 위다."
   },
   "uiInfo": {
     "dlg.nameLabel": { "w": 40, "font": "small", "note": "이름칸 연출(34번 → 에드몽) 왼쪽 위 작은 제목" },
@@ -38039,7 +38988,12 @@ MC.addLang('ko', {
     "mg.notYet": { "w": 150, "font": "big", "lines": 1, "note": "손을 떼면 크게 흔들리는 외침(아직 떼면 안 된다) — 매우 짧게" },
     "mg.pressAgain": { "w": 170, "font": "small", "lines": 1, "note": "손을 뗀 뒤 안내(다시 눌러 버티라)" },
     "mg.holdHintBlanket": { "w": 170, "font": "small", "lines": 1, "note": "발작 끌어안기 보조 안내(프롤로그 mg.holdHint 자리) — 스승의 경련이 오면 손을 떼지 말라" },
-    "mg.blanketGauge": { "w": 20, "font": "small", "note": "끌어안기 게이지 왼쪽 한 낱말(버티는 팔의 힘)" }
+    "mg.blanketGauge": { "w": 20, "font": "small", "note": "끌어안기 게이지 왼쪽 한 낱말(버티는 팔의 힘)" },
+    "mg.patrolGuide": { "w": 170, "font": "small", "lines": 2, "note": "S3 굴 끝 방: 머리 위 회랑 단면 아래 안내(누를 것 없음 — 보초 발소리를 듣고 세는 장면, 빗금이 쌓인다)" },
+    "mg.beamGuide": { "w": 170, "font": "small", "lines": 2, "note": "S3 들보 세우기·빼기 안내: 보초 발소리가 멀 때(들보 자리가 빛날 때) 화면을 누른다" },
+    "story.patrolHush": { "w": 170, "font": "small", "lines": 1, "note": "발소리를 세는 동안 화면을 누르면 파리아의 속삭임(조용히 하라는 말) — 아주 짧게" },
+    "story.beamNearFaria": { "w": 170, "font": "small", "lines": 2, "note": "들보 세우기에서 보초가 바로 위일 때 눌렀을 때 한 번, 파리아(하게체 노학자)의 속삭임: 쉿, 지금 바로 머리 위다" },
+    "story.beamNearSelf": { "w": 170, "font": "small", "lines": 2, "note": "들보 빼기(혼자, 발작 뒤 밤)에서 같은 실수 때 에드몽의 속마음: 아직이다, 바로 위다" }
   }
 });
 })(window.MC);
@@ -38317,7 +39271,12 @@ MC.addLang('en', {
     "mg.holdHint": ["Don’t let go. Hold your breath.", "md2r7p"],
     "mg.breath": ["Air", "ce6cd3"],
     "mg.notYet": ["Not yet!", "1516v4l"],
-    "mg.pressAgain": ["Press again to endure.", "1reispf"]
+    "mg.pressAgain": ["Press again to endure.", "1reispf"],
+    "mg.patrolGuide": ["Count the footsteps overhead.", "b1hnch"],
+    "mg.beamGuide": ["Tap when the footsteps are far off.", "14da4c9"],
+    "story.patrolHush": ["...Shh.", "wz39m0"],
+    "story.beamNearFaria": ["...Shh. He’s right above us.", "1kxi46i"],
+    "story.beamNearSelf": ["...Not yet. He’s right overhead.", "1wgmyvm"]
   },
   "strings": {
     "에드몽": "Edmond",
@@ -38788,6 +39747,96 @@ MC.addLang('en', {
     return x;
   };
   U.lvl = (t, t0, ms) => (t < t0 ? 0 : MC.clamp((t - t0) / Math.max(1, ms), 0, 1) * 16);   // 시각 → 디더 단계
+
+  /* ---------- [fixer-fix] 손 연출 공용: 소매(팔) · 안내 손가락 ----------
+     원을 이어 그린 '곧은 관' 대신: 화면 밖에서 소맷부리로 가늘어지는 소매를 손 그림과 같은 2배 격자에 그린다(원통 명암·비스듬한 주름·소맷부리 단).
+     같은 사람의 팔은 늘 같은 색 — 당테스 = 회색 죄수복(필드 dantes5·초상 pt_dantes_d5 계열), 파리아 = 흰 베이지(cu_arm 사다리). */
+  U.SLEEVE = {
+    dantes: ['#2e2b28', '#4a4742', '#6e6a62', '#8e8a80'],          // 밤 클로즈업이라 필드 회색(#8e8a80)이 가장 밝은 단
+    faria: ['#5e564a', '#857a68', '#aca08a', '#cfc4ac']
+  };
+  const SLV_L = (function () { const a = [-0.55, -0.65, 0.52], l = Math.hypot(a[0], a[1], a[2]); return [a[0] / l, a[1] / l, a[2] / l]; })();   // 왼쪽 위 빛(손 그림 레시피와 같음)
+  // pts: 화면 좌표 [화면 밖 쪽, (팔꿈치…), 소맷부리] · r0 → r1: 반지름(화면 px) · o: { col: U.SLEEVE.*, s: 격자(기본 2), fold: 주름 간격(칸), cuff: false면 소맷부리 단 없음,
+  //     fade: [d0, d1] 소맷부리에서 d0~d1 px 사이에 어둠으로 녹아 사라짐(짧은 소매),
+  //     light: [x, y, z] 빛 방향(없으면 SLV_L 왼쪽 위) — [fixer-edmond] 「그 밤」 두 팔이 같은 빛(두 손 사이 위)을 받게(좌우 팔 명암이 달라 다른 옷처럼 보이던 것) }
+  U.sleeve = function (pts, r0, r1, o) {
+    o = o || {};
+    const g = G(), ctx = g.ctx, s = o.s || 2, col = o.col || U.SLEEVE.dantes, oc = o.outline || '#2b1d2a', n = col.length;
+    const LV = o.light ? (function (a) { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; })(o.light) : SLV_L;
+    const Q = pts.map(p => [p[0] / s, p[1] / s]), segs = [];
+    let L = 0;
+    for (let i = 0; i + 1 < Q.length; i++) { const a = Q[i], b = Q[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1e-6; segs.push({ a, dx, dy, l, l0: L }); L += l; }
+    if (!segs.length) return;
+    const R0 = r0 / s, R1 = r1 / s, RM = Math.max(R0, R1) + 1.5, last = segs[segs.length - 1];
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of Q) { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); }
+    const gx0 = Math.max(Math.floor(x0 - RM), -1), gy0 = Math.max(Math.floor(y0 - RM), -1);
+    const gx1 = Math.min(Math.ceil(x1 + RM), Math.ceil(g.W / s) + 1), gy1 = Math.min(Math.ceil(y1 + RM), Math.ceil(g.H / s) + 1);
+    const fold = o.fold || 7, fade = o.fade ? [o.fade[0] / s, o.fade[1] / s] : null;
+    for (let gy = gy0; gy <= gy1; gy++) {
+      let runC = null, runX = 0;
+      for (let gx = gx0; gx <= gx1 + 1; gx++) {
+        let c = null;
+        if (gx <= gx1) {
+          const cx = gx + 0.5, cy = gy + 0.5;
+          let best = Infinity, bu = 0, bt = 0, bs = null;
+          for (const sg of segs) {
+            let u = ((cx - sg.a[0]) * sg.dx + (cy - sg.a[1]) * sg.dy) / (sg.l * sg.l);
+            if (sg === last && u > 1) continue;               // 소맷부리 쪽은 막지 않는다(손 그림이 덮는다)
+            u = u < 0 ? 0 : u > 1 ? 1 : u;
+            const px = sg.a[0] + sg.dx * u, py = sg.a[1] + sg.dy * u, d = Math.hypot(cx - px, cy - py);
+            if (d < best) { best = d; bs = sg; bu = (sg.l0 + u * sg.l) / L; bt = ((cx - px) * -sg.dy + (cy - py) * sg.dx) / sg.l; }
+          }
+          const R = R0 + (R1 - R0) * bu, toCuff = (1 - bu) * L;
+          let vis = best <= R + 1;
+          if (vis && fade && toCuff > fade[0]) { const q = (toCuff - fade[0]) / Math.max(0.5, fade[1] - fade[0]); vis = q < 1 && q * 16 <= BAYER[((gy & 3) << 2) | (gx & 3)]; }
+          if (vis && best <= R) {
+            const t = Math.max(-1, Math.min(1, bt / R)), nx = -bs.dy / bs.l * t, ny = bs.dx / bs.l * t, nz = Math.sqrt(Math.max(0, 1 - t * t));
+            const I = nx * LV[0] + ny * LV[1] + nz * LV[2];
+            let k = Math.floor(Math.max(0, Math.min(0.999, (I + 0.4) / 1.35)) * n);
+            const fl = bu * L + t * 2.0, fi = Math.floor(fl / fold), fr = fl - fi * fold;
+            if (fr < 0.85 && U.hash(fi, 3, 77) < 0.55 && t > -0.7 && t < 0.5 && k > 0 && toCuff > 2) k--;   // 비스듬한 주름 골(간격·유무를 조금씩 달리 — 사다리처럼 보이지 않게)
+            if (o.cuff !== false && toCuff < 1.3) k = Math.min(n - 1, k + 1);                  // 접힌 소맷부리 단
+            c = col[k];
+          } else if (vis) c = oc;
+        }
+        if (c !== runC) { if (runC) { ctx.fillStyle = runC; ctx.fillRect(runX * s, gy * s, (gx - runX) * s, s); } runC = c; runX = gx; }
+      }
+    }
+  };
+  // 안내 손가락(글자 없음): 디더 대신 불투명하게 — 들고 날 때는 바탕색 쪽으로 4단계 색만 바꾼다(폰에서 체크무늬 덩어리로 깨지지 않게).
+  // kind 'hold' = 길게 누르기: 손가락이 살짝 눌린 채 손끝 위 고리가 차오른다(1.4초 주기) — 탭 손가락과 구별
+  const tintMemo = new Map();
+  function tintedSpr(name, step, bg) {
+    const k = name + '|' + step + '|' + bg;
+    let c = tintMemo.get(k);
+    if (c) return c;
+    const src = U.spr(name); if (!src) return null;
+    c = G().makeCanvas(src.width, src.height);
+    const x = c.getContext('2d'); x.drawImage(src, 0, 0);
+    if (step < 4) {
+      const id = x.getImageData(0, 0, c.width, c.height), d = id.data, B = G().rgb(bg), q = step / 4;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3]) { d[i] = Math.round(B[0] + (d[i] - B[0]) * q); d[i + 1] = Math.round(B[1] + (d[i + 1] - B[1]) * q); d[i + 2] = Math.round(B[2] + (d[i + 2] - B[2]) * q); d[i + 3] = 255; }
+      x.putImageData(id, 0, 0);
+    }
+    tintMemo.set(k, c); if (tintMemo.size > 48) tintMemo.delete(tintMemo.keys().next().value);
+    return c;
+  }
+  U.hintHand = function (x, y, lv, kind, bg) {
+    if (!(lv > 0)) return;
+    const g = G(), step = MC.clamp(Math.ceil(lv / 16 * 4 - 0.01), 1, 4), hold = kind === 'hold', T = performance.now();
+    bg = bg || '#05060c';
+    x = Math.round(x); y = Math.round(y);
+    const ph = (T % 1400) / 1400, press = hold && ph > 0.08 && ph < 0.86 ? 1 : 0;
+    const by = hold ? press : Math.round(Math.sin(T * 0.008) * 2);
+    const img = tintedSpr('ic_hand_tap', step, bg);
+    if (img) g.ctx.drawImage(img, x - 8, y + by);
+    else g.rect(x - 2, y + 2 + by, 5, 5, g.mix(bg, '#e8e0c8', step / 4));
+    if (hold) {                                          // 차오르는 고리(손끝 위) — 다 차면 잠깐 밝게
+      const N = 32, R = 7, fill = Math.round(MC.clamp((ph - 0.08) / 0.7, 0, 1) * N), on = g.mix(bg, ph > 0.78 && ph < 0.86 ? '#fff6d8' : '#f0e8c8', step / 4), off = g.mix(bg, '#4a4740', step / 4);
+      for (let i = 0; i < N; i++) { const an = -Math.PI / 2 + i / N * Math.PI * 2; g.px(Math.round(x + Math.cos(an) * R), Math.round(y - 4 + Math.sin(an) * R), i < fill ? on : off); }   // 끊김 없는 고리(차오른 만큼 밝게)
+    }
+  };
 
   /* ---------- 덮개 페이드 ----------
      페이드(검정 덮개)는 모든 씬 위에 그려진다. 우리 불투명 씬이 떠 있는 동안에는 페이드를 '월드 층'으로 내려
@@ -39384,7 +40433,7 @@ MC.addLang('en', {
     x.putImageData(id, 0, 0);
     maskC = c; return c;
   }
-  let litC = null;
+  let litC = null, armBuf = null;                         // armBuf: fixer-fix 담요를 움켜쥔 두 팔(소매+손 그림)을 한 장에 그려 어둡게 얹는 판
   function litCanvas(W, H) {
     if (!litC || litC.width !== W || litC.height !== H) litC = G().makeCanvas(W, H);
     return litC;
@@ -39559,7 +40608,14 @@ MC.addLang('en', {
         if (S.pulse > 0.05) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.4 * S.pulse; ctx.drawImage(lc, 0, 0); ctx.globalCompositeOperation = 'source-over'; }   // 박동마다 결이 살짝 밝아짐
         ctx.globalAlpha = 1;
         // fixer-s3 담요: 결 위쪽에 흰 머리칼 몇 올(누구를 안았는지) + 화면 아래에서 담요 위로 교차해 들어온 젊은 두 팔뚝(누르면 조이고, 떼면 미끄러진다)
-        if (blanket) {
+        // fixer-fix: 점 몇 개(「……」처럼 읽힘) 대신 담요 위로 비져나온 파리아의 정수리·흰 머리칼·귀 그림(cu_embrace_head, 2배) — 그림이 없을 때만 예전 머리칼
+        const head = blanket ? U.spr('cu_embrace_head') : null;
+        if (head) {
+          const hy = ly - Math.round(r * 0.6) + oy, hs = 2;
+          ctx.globalAlpha = 0.86;                                       // 천 결(0.8)과 같은 어둠 속 — 등잔빛에 살짝 묻힘
+          ctx.drawImage(head, ((lx - head.width) >> 1) << 1, ((hy - Math.round(head.height * 1.3)) >> 1) << 1, head.width * hs, head.height * hs);
+          ctx.globalAlpha = 1;
+        } else if (blanket) {
           const hy = ly - Math.round(r * 0.6) + oy;                     // 흰 머리칼 한 움큼(담요 위로 비져나옴)
           for (let i = 0; i < 11; i++) {
             const hx = lx - 16 + i * 3, sw = Math.round(Math.sin(i * 1.3 + t * 0.0015) * 1.2), len = 4 + ((i * 7) % 4);
@@ -39569,7 +40625,31 @@ MC.addLang('en', {
         const drawArms = () => {                                          // (비네트 뒤에 — 카메라 바로 앞의 제 팔이라 어둠에 묻히지 않게)
           if (!blanket || S.phase === 'intro') return;
           const gk = S.gripK, slide = Math.round((1 - gk) * 18), sq = Math.round(gk * 10);
-          const chain = (x0, y0, x1, y1, rad, col) => { const n = Math.max(2, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 3)); for (let i = 0; i <= n; i++) { const q = i / n; g.circle(Math.round(x0 + (x1 - x0) * q), Math.round(y0 + (y1 - y0) * q), rad, col); } };
+          // fixer-fix: 원을 이어 그린 두 팔(X자로 교차한 막대) 대신 — 담요 자락을 양쪽에서 움켜쥔 두 손 그림(cu_embrace_l·r, 2배)과 화면 아래 바깥까지 굵어지는 회색 소매(U.sleeve).
+          //   누르면 두 손이 안으로 조이고(sq), 떼면 아래로 미끄러진다(slide) — 예전 gripK 그대로. 그림이 없을 때만 아래 예전 그리기
+          const AL = U.spr('cu_embrace_l'), AR = U.spr('cu_embrace_r');
+          if (AL && AR) {
+            // [embrace3] 제미나이 점검 2순위(얇고 곧은 파이프 팔·손목 관절 없음) → embrace_g3.png(오른팔 하나: 주먹 + 짧은 맨살 손목 + 해진 소맷부리 + 소매, 아래로 넓어지는 원근).
+            //   cu_embrace_r 41×44 = 그 그림, cu_embrace_l = 좌우 뒤집기(끌어안는 두 팔은 좌우 대칭 — 왼손은 오른손의 거울상). 소매 칸은 아래 관과 같은 음영(빛 위쪽·주름 9)으로 칠함.
+            //   EMB_G = 주먹 가운데(오른팔 그림 칸), EMB_B = 그림 속 소매가 끝나는 곳(관 끝), 소매 축 49.7°. 관은 반지름 16px → 화면 밖 30px로 넓어진다
+            const EMB_G = [11.5, 11], EMB_B = [33.09, 38.14];
+            const s = 2, hy = ly + oy + Math.round(r * 0.3) + slide, FX = 0.647, FY = 0.763;
+            if (!armBuf || armBuf.width !== W || armBuf.height !== H) armBuf = g.makeCanvas(W, H);
+            g.withCtx(armBuf, () => {                                    // 한 장에 그린 뒤 얹는다(이음매 없이)
+              g.ctx.imageSmoothingEnabled = false;                       // [0.3.2-hands] makeCanvas 판은 보간이 기본으로 켜져 있어 2배 손이 번졌다 — 끈다
+              g.ctx.clearRect(0, 0, W, H);
+              for (const side of [-1, 1]) {
+                const img = side < 0 ? AL : AR, iw = img.width, fcx = side < 0 ? iw - EMB_G[0] : EMB_G[0], hx = lx + side * (44 - Math.round(sq * 0.6));   // [embrace3] 34 → 44: 주먹(폭 40px)이 붙어 '주먹 맞대기'로 읽히지 않게 — 두 주먹 사이에 파리아의 몸
+                const x0 = (Math.round(hx - fcx * s) >> 1) << 1, y0 = (Math.round(hy - EMB_G[1] * s) >> 1) << 1;
+                const bx = x0 + (side < 0 ? iw - EMB_B[0] : EMB_B[0]) * s, by = y0 + EMB_B[1] * s;   // [embrace3] 그림 속 소매 끝(관 끝)
+                g.ctx.drawImage(img, x0, y0, iw * s, img.height * s);
+                U.sleeve([[bx + side * FX * 240, by + FY * 240], [bx, by]], 30, 16, { col: U.SLEEVE.dantes, cuff: false, fold: 9, light: [0, -0.7, 0.7] });   // [fixer-edmond] 두 팔 같은 빛(두 손 사이 위 — 그림 속 소매 칸도 같은 식)
+              }
+            });
+            ctx.globalAlpha = 1; ctx.drawImage(armBuf, 0, 0);            // [0.3.2-hands] 알파 0.8 → 1(손에 담요 결이 비치지 않게)
+            return;
+          }
+          const chain =(x0, y0, x1, y1, rad, col) => { const n = Math.max(2, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 3)); for (let i = 0; i <= n; i++) { const q = i / n; g.circle(Math.round(x0 + (x1 - x0) * q), Math.round(y0 + (y1 - y0) * q), rad, col); } };
           const arm = (bx, by, ex, ey, fl) => {                           // 소매(화면 밖) → 팔뚝 → 담요 자락을 움켜쥔 주먹
             const mx = Math.round(bx + (ex - bx) * 0.42), my = Math.round(by + (ey - by) * 0.42);
             chain(bx, by, mx, my, 15, '#050508'); chain(bx, by, mx, my, 14, '#3a4050'); chain(bx, by - 5, mx, my - 5, 4, '#4c5366');   // 소매·윗면 빛
@@ -41851,6 +42931,9 @@ MC.addLang('en', {
     softCache.set(img, out);
     return out;
   }
+  // [fix beats-clarity] 글자 없는 손가락(swim·breaths와 같은 ic_hand_tap) — 처음 할 일을 모를 때만 잠깐
+  // [fixer-fix] 디더(폰에서 체크무늬 덩어리) 대신 불투명 손가락 — 들고 날 때는 색 4단계만(U.hintHand)
+  function tapHint(x, y, lv) { U.hintHand(x, y, Math.min(16, lv), 'tap'); }
   // 덧판에서 글자를 흐리게 그리기(구운 캔버스 캐시)
   const bakeCache = new Map();
   function baked(key, make) {
@@ -41906,8 +42989,8 @@ MC.addLang('en', {
         drawPuff(S.bits, lv);
         // 첫 탭 전: 손가락 표시만(글자 없음)
         if (S.taps === 0 && t > 1400 && p) {
-          const k = Math.min(1, (t - 1400) / 400) * 10, bob = Math.round(Math.sin(t * 0.008) * 2);
-          if (!U.drawSpr('ic_hand_tap', p.x - 4, p.y + 18 + bob, Math.min(lv, k), 1)) g.ditherRect(p.x + 6, p.y + 22 + bob, 4, 4, '#c8c4d8', Math.min(lv, k));
+          const k = Math.min(1, (t - 1400) / 400) * 10;
+          U.hintHand(p.x + 4, p.y + 18, Math.min(lv, k), 'tap');   // [fixer-fix] 불투명 손가락(위아래 흔들림은 hintHand가)
         }
         // 너무 빠르면 파리아 머리 위 말풍선 한 번(1.4초)
         if (S.bubbleT >= 0 && t - S.bubbleT < 1400 && p) {
@@ -42001,6 +43084,25 @@ MC.addLang('en', {
     });
     phialFb = c; return c;
   }
+  // [fixer-fix] cu_knock(20×18 옆모습 주먹)의 닿는 점(마디 면 가운데) · 소맷부리 — spr_chars_s3.js 7-9
+  // [0.3.2-hands] cu_knock_hold(20×20, 찾은 약병 밑을 감아쥔 주먹)의 약병 밑 가운데 HOLD_V · 손목 아래 가운데(U.sleeve 끝) HOLD_CUFF — spr_chars_s3.js 7-9c
+  //   [fixer-edmond] HOLD_V x 6.5 → 8: 2배 약병 몸통(붉은 약 14칸 폭)이 주먹 윗변 가운데에 오게 — 마디 쪽 바깥으로 붉은 칸이 'ㄱ'자로 삐져나와 피처럼 보이던 것
+  // [0.3.4-hands] 제미나이 fist_g1에서 다시 옮긴 그림(spr_chars_s3.js 7-9·7-9c·7-9d): cu_knock 21×28 — KNOCK (1,8) 그대로 · KNOCK_CUFF (16,16) → (15,23.5)(손목 아래, 관 끝이 손목 살 밑),
+  //   cu_knock_hold / cu_knock_reach 20×32 — HOLD_V (9,17) = 그림 속 약병 밑 가운데(foundPose grip − 1) · HOLD_CUFF (13.5,28) = 손목 아래 가운데
+  // [0.3.4-hands g2] KNOCK_CUFF (15,23.5) → (13.5,24) = 손목 아랫부분 가운데. 두드리는 주먹은 소매를 손 그림 '뒤'가 아니라 '위'에 그려(소맷부리가 손목을 덮음)
+  //   손목이 V자로 뾰족하게 좁아져 소매에 꽂힌 '막대 위 주먹'·긴 맨살 팔뚝으로 보이던 것을 고쳤다(QA). 찾은 약병을 쥔 손(cu_knock_hold·_reach)은 그대로(소매가 뒤)
+  // [0.3.4-hands regen knock2] cu_knock·_hit 21×28 → 29×23 옆모습 주먹(제미나이 재생성 knock_g2, 정본 docs/art_wip/edmond/gemini/regen/final_knock2.js): KNOCK (1,8) 그대로 ·
+  //   KNOCK_CUFF (13.5,24) → (24.5,18) = 팔뚝 축 위 소맷부리 가운데 · 새 KNOCK_ARM (7.2,3.4) = 소맷부리 → 팔꿈치(그림 칸, 팔뚝 방향 25.5° × 8칸).
+  //   소매 관을 화면 밖 → 팔꿈치 → 소맷부리 세 점으로 그려 마지막 토막이 그림 속 팔뚝과 같은 방향(맥 짚기 PRESS_ARM과 같은 방식). 쥔 손 HOLD_V · HOLD_CUFF는 그대로
+  // [0.3.4-hands regen knock3] 사용자 「관절부가 이상하다」 → 제미나이 점검(팔뚝이 주먹의 0.5배도 안 되고 주먹 바로 옆에서 직각으로 꺾여 'L자 파이프',
+  //   소매가 주먹 폭의 0.5배로 가늘다) → 제미나이가 세로 화면용 구도로 다시 그림(knock_g3.png: 팔이 오른쪽 아래에서 약 55° 대각선으로 곧게, 팔꿈치는 화면 밖).
+  //   cu_knock·_hit 29×23 → 46×45 = 주먹 + 맨살 팔뚝 + 해진 소맷부리까지 원본 그대로. KNOCK (1,11) = 가장 왼쪽 면 가운데 ·
+  //   KNOCK_CUFF (36,40.3) = 그림 속 소매가 끝나는 곳(소매 축 위, 축에 수직으로 자름) · KNOCK_DIR = 소매 축 방향(54.8°). 소매 관은 여기서 같은 방향으로 화면 밖까지 곧게(꺾임 없음).
+  //   쥔 손(cu_knock_hold · _reach 46×52)도 같은 채팅에서 같은 구도로 다시 그림(hold_g3.png — 팔·소매가 knock_g3과 같은 자리) → HOLD_V (7.8,24.5) = 약병 밑 가운데 ·
+  //   HOLD_CUFF (36,47.3) = 그림 속 소매 끝(knock과 같은 소매 축, 6.9칸 아래). 두드리다 쥘 때 팔 방향·굵기가 그대로라 바뀌는 순간 팔이 튀지 않는다
+  // [knock4] 사용자 「팔이 좀 길지 않나?」 → 제미나이가 원근(단축법)으로 다시 그림(knock_g4 · hold_g4): 맨살 팔뚝은 주먹의 약 0.5배, 소매가 아래로 갈수록 넓어짐.
+  //   cu_knock·_hit 41×44 · cu_knock_hold·_reach 41×52(같은 팔 자리 — 소매 축 49.2°, 쥔 손이 8칸 아래). 소매 관도 원근대로 소맷부리 15px → 화면 밖 30px로 넓어진다
+  const KNOCK = [1, 11], KNOCK_CUFF = [33.9, 37.4], KNOCK_DIR = [0.653, 0.757], HOLD_V = [8, 23.5], HOLD_CUFF = [33.9, 45.3], ARM_R = [30, 15];
   ST.vial = function (a) {
     const sec = Math.max(0.5, num(a.sec, 3)), hollow = MC.clamp(a.hollow != null ? a.hollow | 0 : 2, 0, 3);
     if (isAuto()) return later(300, () => { setVar(a.var, 0); return { ms: Math.round(sec * 500), slow: false }; });
@@ -42030,9 +43132,14 @@ MC.addLang('en', {
       if (k >= T_OUT) {
         if (k < T_REACH) { const e = ease((k - T_OUT) / (T_REACH - T_OUT)); p = { cx: leg.x + (out[0] - leg.x) * e, cy: out[1], s: 1 }; }
         else if (k < T_LIFT) p = { cx: out[0], cy: out[1], s: 1 };
-        else { const e = ease((k - T_LIFT) / (T_HOLD - T_LIFT)); p = { cx: out[0] + (mid[0] - out[0]) * e, cy: out[1] + (mid[1] - out[1]) * e, s: e > 0.5 ? 2 : 1 }; glow = MC.clamp((e - 0.6) / 0.4, 0, 1); }
+        // [0.3.4-hands] 약병을 2배로 키우지 않는다(s 1) — 쥔 동안은 손 그림(cu_knock_hold) 안의 약병이 보인다. 빛 무리(glow)는 그대로
+        else { const e = ease((k - T_LIFT) / (T_HOLD - T_LIFT)); p = { cx: out[0] + (mid[0] - out[0]) * e, cy: out[1] + (mid[1] - out[1]) * e, s: 1 }; glow = MC.clamp((e - 0.6) / 0.4, 0, 1);
+          // [0.3.4-hands g2] 쥔 순간 0.45초 짧은 빛 무리(찾았다는 단서 순간 — 약병이 손 그림 안에 작게 쥐어져 예전 '2배 약병' 강조가 없어진 것을 연출로 보탬, QA)
+          glow = Math.max(glow, Math.sin(MC.clamp((k - T_LIFT) / 450, 0, 1) * Math.PI) * 2); }
       }
-      const back = [kp[0] - dir * 4, kp[1] + 14];                       // 두드린 뒤 조금 물러남
+      // 두드린 뒤 물러남 — [fixer-edmond] 아래로 14 → 42px, 안쪽으로 4px: 굴러 나오는 1배 약병이 주먹에 닿아 '주먹 위에 얹힌 약병'으로 보이지 않게
+      //   (주먹 윗변 hy−16이 약병 밑 leg.bot보다 약 10px 아래 — 약병이 바닥에 따로 서 있다가 손이 뻗어 와 쥔다)
+      const back = [kp[0] + dir * 4, kp[1] + 42];
       if (k < T_REACH) { const e = ease(k / 400); hand = [kp[0] + (back[0] - kp[0]) * e, kp[1] + (back[1] - kp[1]) * e]; }
       else {
         const grip = p ? [p.cx, p.cy + ph.height * p.s / 2 + 1] : back;   // 약병 밑을 쥠
@@ -42138,24 +43245,67 @@ MC.addLang('en', {
           }
         }
         drawPuff(S.dust, 16);
-        // 약병: 빈 다리 끝에서 굴러 나와 → 손이 쥐어 가운데로(2배)
+        // 약병: 빈 다리 끝에서 굴러 나와 → 손이 쥐어 가운데로([0.3.4-hands] 1배 그대로 — 쥔 뒤는 손 그림 속 약병)
         const fp = S.found >= 0 ? foundPose(L, t - S.found) : null;
+        // [0.3.4-hands] 손이 약병 밑에 닿는 T_LIFT부터는 약병을 쥔 손 그림(cu_knock_hold — 제미나이 fist_g1 가운데 그림) 안의 약병이 보이므로
+        //   게임 약병(cu_phial)은 그리지 않는다(빛 무리는 그대로). 약병은 늘 1배라, 0.3.3-hands finisher의 '2배 약병을 주먹 윗변까지만 그리기'(holdTop 가리기)는 걷었다.
+        const held = !!(fp && fp.ph && t - S.found >= T_LIFT && U.spr('cu_knock_hold'));
         if (fp && fp.ph) {
           const ph = phialArt(), s2 = fp.ph.s, x = Math.round(fp.ph.cx - ph.width * s2 / 2), y = Math.round(fp.ph.cy - ph.height * s2 / 2);
           if (fp.glow > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35 * fp.glow; const gg = U.glow(26, '#5a1018', 10, 1.4); ctx.drawImage(gg, Math.round(fp.ph.cx) - 26, Math.round(fp.ph.cy) - 26); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
-          U.drawDither(ph, x, y, 16, s2);
+          if (!held) U.drawDither(ph, x, y, 16, s2);
         }
         // 손(아래에서 뻗어 옴, 떨림). 찾은 뒤엔 물러났다가 약병을 쥐고 올라감
         let hx = S.hand ? S.hand[0] : L.rest[0], hy = S.hand ? S.hand[1] : L.rest[1];
         if (fp) { hx = fp.hand[0]; hy = fp.hand[1]; }
         hx = Math.round(hx + S.jx); hy = Math.round(hy + S.jy);
         const bx = (W >> 1) + 26, by = H + 8;                // 소매 → 손
-        const n = Math.max(2, Math.ceil(Math.hypot(hx - bx, hy - by) / 3));
-        for (let i = 0; i <= n; i++) { const q = i / n, x = bx + (hx + 2 - bx) * q, y = by + (hy + 7 - by) * q; g.circle(Math.round(x), Math.round(y), 6, '#08080c'); }
-        for (let i = 0; i <= n; i++) { const q = i / n, x = bx + (hx + 2 - bx) * q, y = by + (hy + 7 - by) * q; g.circle(Math.round(x), Math.round(y), 5, '#262a34'); }
+        const kn = U.spr('cu_knock'), knH = U.spr('cu_knock_hit');
+        // [0.3.2-hands] 약병을 쥔 뒤(쥐고 가운데로 옮길 때)는 약병 밑을 감아쥔 주먹(cu_knock_hold). 약병이 먼저 그려지므로 주먹이 약병 아래를 덮는다.
+        //   hx·hy = foundPose의 grip(약병 밑 가운데 + 1). 두드린 뒤 물러나는 동안(T_REACH 전)은 아래 cu_knock 그대로.
+        //   [fixer-edmond] 약병이 2배가 될 때(T_LIFT+350ms)가 아니라 약병으로 손을 뻗기 시작할 때(T_REACH)부터 — 두드리던 주먹의 마디가 약병 밑에 닿아
+        //     1배 약병이 주먹 위에 얹혀 떠 보이던 약 0.7초(QA k900~1550)와, 약병이 커지는 순간 손이 바뀌며 튀던 것을 없앰(바꾸는 순간 손은 아직 멈춰 있음)
+        //   [0.3.4-hands] 뻗는 동안(T_REACH~T_LIFT)은 약병 칸이 빈 손(cu_knock_reach — 바닥의 1배 약병이 손가락 사이로 보임), 닿은 뒤(held)는 약병을 쥔 손(cu_knock_hold)
+        const kh = fp && fp.ph && t - S.found >= T_REACH ? U.spr(held ? 'cu_knock_hold' : 'cu_knock_reach') : null;
+        if (kh) {
+          const f = S.face || (L.legs[hollow].x < hx ? -1 : 1), ox = hx + f * HOLD_V[0] * 2, oy = hy - 1 - HOLD_V[1] * 2;
+          const scx = ox - f * HOLD_CUFF[0] * 2, scy = oy + HOLD_CUFF[1] * 2;
+          ctx.save(); ctx.translate(ox, oy); if (f > 0) ctx.scale(-1, 1); ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(kh, 0, 0, kh.width * 2, kh.height * 2);
+          ctx.restore();
+          U.sleeve([[scx - f * KNOCK_DIR[0] * 400, scy + KNOCK_DIR[1] * 400], [scx, scy]], ARM_R[0], ARM_R[1], { col: U.SLEEVE.dantes, cuff: false });   // [knock3] 두드리는 주먹과 같은 소매 축
+        } else if (kn && kn.width >= 20) {
+          // [fixer-fix] 옆모습 주먹(cu_knock 20×18, 2배): 마디 면 KNOCK (1,8)이 다리 쪽을 향함(다리가 오른쪽이면 뒤집음), 두드리는 순간 한 프레임 '마디가 닿는' 그림.
+          //   소매는 화면 아래 밖에서 소맷부리 KNOCK_CUFF까지 굵어지는 회색 소매(U.sleeve) — 예전 원 사슬 관 대신
+          //   [0.3.4-hands] cu_knock·_hit 21×28(제미나이 앞에서 본 주먹), KNOCK_CUFF (15,23.5) — 관 끝(r 9px)이 손목 살 밑에 숨는다
+          //   [0.3.4-hands g2] 소매를 손 그림 뒤에 그리고 V자 손목 끝을 드러내던 것 → 손 그림 다음에 그려 소맷부리(13.5,24)가 손목 아랫부분을 덮는다
+          //   [0.3.4-hands regen knock3] cu_knock·_hit 46×45(knock_g3 — 주먹·팔뚝·소맷부리까지 그림) — 소매 관은 KNOCK_CUFF에서 KNOCK_DIR로 곧게 화면 밖까지
+          const tgt = S.knock ? L.legs[S.knock.i] : L.legs[fp ? hollow : S.cur];
+          if (!fp || !S.face) S.face = tgt.x < hx ? -1 : 1;
+          const f = S.face, ox = hx + (f < 0 ? -4 : 4), hit = S.knock && S.knock.hit && S.knock.t < 160;
+          const cx = ox - f * (KNOCK_CUFF[0] - KNOCK[0]) * 2, cy = hy + (KNOCK_CUFF[1] - KNOCK[1]) * 2;
+          ctx.save(); ctx.translate(ox, hy); if (f > 0) ctx.scale(-1, 1); ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(hit && knH ? knH : kn, -KNOCK[0] * 2, -KNOCK[1] * 2, kn.width * 2, kn.height * 2);
+          ctx.restore();
+          U.sleeve([[cx - f * KNOCK_DIR[0] * 400, cy + KNOCK_DIR[1] * 400], [cx, cy]], ARM_R[0], ARM_R[1], { col: U.SLEEVE.dantes, cuff: false });   // [knock3] 그림 속 소매에 이어 곧게 화면 밖으로(소맷부리는 그림에 있음)
+        } else if (kn) {
+          const n = Math.max(2, Math.ceil(Math.hypot(hx - bx, hy - by) / 3));
+          for (let i = 0; i <= n; i++) { const q = i / n, x = bx + (hx + 2 - bx) * q, y = by + (hy + 7 - by) * q; g.circle(Math.round(x), Math.round(y), 6, '#08080c'); }
+          for (let i = 0; i <= n; i++) { const q = i / n, x = bx + (hx + 2 - bx) * q, y = by + (hy + 7 - by) * q; g.circle(Math.round(x), Math.round(y), 5, '#262a34'); }
+          ctx.drawImage(kn, hx - 12, hy - 9, kn.width * 2, kn.height * 2);
+        } else {
+          const n = Math.max(2, Math.ceil(Math.hypot(hx - bx, hy - by) / 3));
+          for (let i = 0; i <= n; i++) { const q = i / n, x = bx + (hx + 2 - bx) * q, y = by + (hy + 7 - by) * q; g.circle(Math.round(x), Math.round(y), 6, '#08080c'); }
+          for (let i = 0; i <= n; i++) { const q = i / n, x = bx + (hx + 2 - bx) * q, y = by + (hy + 7 - by) * q; g.circle(Math.round(x), Math.round(y), 5, '#262a34'); }
         g.circle(hx, hy, 6, '#2b1d2a'); g.circle(hx, hy, 5, '#c89a78');
         g.hline(hx - 3, hy - 3, 6, '#e0b890'); g.px(hx - 3, hy - 1, '#9a7050'); g.px(hx, hy - 1, '#9a7050'); g.px(hx + 3, hy - 1, '#9a7050');   // 마디
         g.rect(hx + 3, hy + 1, 3, 3, '#b08060');            // 엄지
+        }
+        // [fix beats-clarity] 아직 한 번도 두드리지 않았으면 손가락이 다리를 차례로 짚는다(무엇을 누를지 — 글자 없음)
+        if (S.found < 0 && !S.knock && !S.tapped.some(Boolean) && t > 1500) {
+          const i = (((t - 1500) / 850) | 0) % 4, kp = knockAt(L, i);
+          tapHint(kp[0], kp[1] - 4, Math.min(11, U.lvl(t, 1500, 400) * 0.7));
+        }
         // 심장 맥동 비네트(3초를 넘기면 붉게)
         const over = t - FADE > sec * 1000 && S.found < 0;
         U.drawVig(3 + S.pulse * (over ? 4 : 2.5), '#000000');
@@ -42198,6 +43348,7 @@ MC.addLang('en', {
   }
   let pourFb = null;
   function pourArt() {                                   // 거꾸로 기운 약병을 쥔 젊은 손(22×34, 약병 입이 아래 가운데)
+    const art = U.spr('cu_pour'); if (art) return art;   // hands-art: 참고 그림을 도트화한 주먹(spr_chars_s3.js cu_pour — 0.3.4-hands regen pour2, 병 입 (10,33) 같음) — 없을 때만 아래처럼 그림
     if (pourFb) return pourFb;
     const c = G().makeCanvas(22, 34);
     G().withCtx(c, () => {
@@ -42287,10 +43438,15 @@ MC.addLang('en', {
         if (S.ret) { const k = S.ret.t, r = k < 220 ? k / 220 : k < 420 ? 1 : 1 - (k - 420) / 200; const hh = Math.round(MC.clamp(r, 0, 1) * 3); if (hh > 0) { g.rect(L.lip[0] - 1, L.lip[1], 2, hh, '#c01830'); g.px(L.lip[0] - 1, L.lip[1], '#ff7080'); } }
         // 기운 약병을 쥔 손(떨림 — 열 뒤엔 굳는다)
         const pa = pourArt(), px = L.lip[0] - 11 * 2 + S.jx, py = L.lip[1] - 33 * 2 + S.jy;
+        // [fixer-fix] 그림 맨 위에서 잘려 허공에 뜬 소매 → 소맷부리(그림 x10~21, y0)에서 화면 위 바깥까지 살짝 오른쪽으로 기운 회색 소매
+        // [pour3] 제미나이 점검 3순위(가는 관) — 제미나이가 약병 그림 요청을 안전 필터로 거절해 그림은 그대로 두고 소매만 원근으로(소맷부리 11px → 화면 밖 30px)
+        if (U.spr('cu_pour')) { const sx = px + 2 + 31, sy = py + 8; U.sleeve([[sx + 34 * 1.6, sy - (sy + 70) * 1.6], [sx, sy]], 30, 11, { col: U.SLEEVE.dantes, cuff: false }); }
         ctx.drawImage(pa, px + 2, py, pa.width * 2, pa.height * 2);
         // 첫 방울 전: 병 입이 한 번씩 반짝(탭 표시 — 글자 없음)
         if (S.count === 0 && t > 1300 && ((t / 900) | 0) % 2 === 0) g.px(L.lip[0], L.lip[1] + 1, '#ffd0d8');
         U.drawVig(7, '#000000');
+        // [fix beats-clarity] 1px 반짝임만으로는 폰에서 안 보였다 — 첫 방울 전엔 병 입 옆에 손가락(누르면 한 방울)
+        if (S.count === 0 && t > 1500) tapHint(L.lip[0] + 18, L.lip[1] - 30,Math.min(11, U.lvl(t, 1500, 400) * 0.7));
       }
     });
   };
@@ -42343,11 +43499,14 @@ MC.addLang('en', {
           ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
         } else if (p && S.taps < lines.length && t - Math.max(S.touch, FADE) > 3000) {   // 손을 기다리는 온기(2.4초마다 한 번, 아주 옅게)
           const k = ((t - Math.max(S.touch, FADE) - 3000) % 2400) / 2400, a2 = Math.sin(Math.min(1, k / 0.6) * Math.PI);
-          if (a2 > 0.02) {
-            ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.2 * a2 * lv / 16;
+          if (a2 > 0.02) {                                                // [fixer-fix] 0.2 → 0.38(폰에서 거의 안 보였다)
+            ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.38 * a2 * lv / 16;
             const gl = U.glow(12, '#3a3020', 9, 1.4); ctx.drawImage(gl, p.x + 8 - 12, p.y + 9 - 12);
             ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
           }
+          // [fixer-fix] 아직 한 번도 잡지 않았으면 3초 뒤 스승 손 자리에 손가락이 한 번(약 2.4초, 글자 없음) — 할 수 있는 건 손을 잡는 것뿐
+          const hk = t - FADE - 3000;
+          if (S.taps === 0 && hk > 0 && hk < 2400) tapHint(p.x + 8, p.y + 10, Math.min(lv, 10) * Math.min(1, hk / 300, (2400 - hk) / 300));
         }
         if (S.band && S.band.text) {
           const k = t - S.band.t0;
@@ -42363,7 +43522,7 @@ MC.addLang('en', {
 
   /* ================================================================ lift — F5 팔 들기(「하나.」에서 멈추는 셈) */
   // 인자: {n:3, toast:"하나.", idle:3} → {lifts}. 끌면 손가락의 0.6배로 무겁게 오르고(최대 60%), 놓으면 제 무게로 떨어짐(튀지 않음)
-  let armFb = null, armSh = null;
+  let armFb = null, armSh = null, gripBuf = null;           // gripBuf: [fixer-fix] 놓는 순간 쥔 손·소매를 함께 디더로 지우는 판
   function armArt() {                                    // 늘어진 오른팔(96×64, 배경 투명): 소매(0~54) · 앙상한 팔뚝 · 늘어진 손(오른쪽 끝). 축은 (0,34)
     const s = U.spr('cu_arm'); if (s) return s;
     if (armFb) return armFb;
@@ -42393,6 +43552,11 @@ MC.addLang('en', {
     armFb = c; return c;
   }
   // 손목 자리: 소매·팔뚝 오른쪽(가로 45~85%)에서 불투명한 세로 폭이 가장 좁은 칸(같으면 오른쪽) — 그림마다 손목이 달라도 쥐는 손이 맞게
+  // hands-art: cu_grip(20×28)에서 쥔 손목 가운데 = GRIP, 소맷부리(소매 관이 닿는 곳) = GRIP_CUFF
+  // [grip3] 제미나이 점검 2순위(소매가 얇고 기계적인 직선) → grip_g3.png: 파리아 손목을 위에서 감아쥔 오른손 + 짧은 맨살 손목 + 해진 소맷부리 + 소매(오른쪽 아래로, 원근).
+  //   cu_grip 20×28 → 35×43(파리아 팔은 흰 실루엣으로 받아 지움, 9.4° 돌려 쉬는 팔과 수평). GRIP = 파리아 손목 가운데, GRIP_CUFF = 그림 속 소매 끝(관 끝),
+  //   GRIP_DIR = 소매 축(56.4°, 그림 칸). 소매 칸은 관과 같은 음영으로 칠함. 관은 팔꿈치 없이 같은 방향으로 곧게, 반지름 그림 속 8.7칸 → 화면 밖 30px
+  const GRIP = [10, 9], GRIP_CUFF = [26.1, 37.1], GRIP_DIR = [0.553, 0.833], GRIP_R = 8.74;
   const wristCache = new Map();
   function armWrist(img) {
     if (wristCache.has(img)) return wristCache.get(img);
@@ -42438,7 +43602,8 @@ MC.addLang('en', {
   ST.lift = function (a) {
     const n = Math.max(1, (a.n | 0) || 3), tt = a.toast != null ? String(a.toast) : '', idle = num(a.idle, 3) * 1000;
     if (isAuto()) return later(300, () => { toast(tt, 1100); return { lifts: 1 }; });
-    const MAXP = 0.6, ANG = 0.95, S = { p: 0, v: 0, held: false, y0: 0, py: 0, p0: 0, lifts: 0, counted: false, lastEnd: -1, dust: [], trem: 0, tT: 0, thud: -1e9 };
+    const MAXP = 0.6, ANG = 0.95, S = { p: 0, v: 0, held: false, y0: 0, py: 0, p0: 0, lifts: 0, counted: false, lastEnd: -1, dust: [], trem: 0, tT: 0, thud: -1e9,
+      ha: 0, hv: 0, gripVis: false, gripOffT: -1e9, gripOff: null, gripPose: null };   // fixer-fix: ha·hv 처진 손 상대 각·속도, gripOff 놓는 순간의 쥔 손 자세
     let lay = null;
     function layout() {
       const g = G();
@@ -42474,6 +43639,14 @@ MC.addLang('en', {
         }
         // 무게에 떠는 팔
         S.tT -= dt; if (S.tT <= 0) { S.tT = 60; S.trem = grip && S.p > 0.05 ? (U.vr() - 0.5) * 0.012 : 0; }
+        // [fixer-fix] 처진 손: 팔을 들수록 손목에서 반대로 꺾여 손가락이 늘 아래로 늘어진다(팔 각도의 -0.75배, 짧은 스프링 지연 — 떨어질 때 한 번 출렁)
+        const tgtH = 0.75 * S.p * ANG, accH = (tgtH - S.ha) * 60 - S.hv * 9;
+        S.hv += accH * s; S.ha += S.hv * s;
+        if (S.thud === sc.t) S.hv -= 1.6;                    // 바닥에 떨어진 순간 손이 한 번 튄다
+        // 쥔 손이 사라지는 순간(놓음)을 기억 — 120ms 동안 아래로 빠지며 사라진다
+        const gripVis = (S.held || S.p > 0.02) && S.v === 0 && S.p > 0;
+        if (S.gripVis && !gripVis) { S.gripOffT = sc.t; S.gripOff = S.gripPose; }
+        S.gripVis = gripVis;
         stepPuff(S.dust, dt);
         if (!grip && S.p === 0 && S.lastEnd >= 0) {
           if (S.lifts >= n && sc.t - S.lastEnd > 900) sc.end({ lifts: S.lifts });
@@ -42495,11 +43668,42 @@ MC.addLang('en', {
         ctx.save();
         ctx.translate(L.px, L.py); ctx.rotate(-S.p * ANG + S.trem);
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(L.img, -L.piv[0] * L.s, -L.piv[1] * L.s, L.img.width * L.s, L.img.height * L.s);
+        if (U.spr('cu_arm') === L.img) {
+          // [fixer-fix] 한 장 그림이라 들면 처진 손이 팔과 함께 통째로 돌아 굳어 보였다 — 손목(armWrist)에서 갈라 손을 먼저(팔 밑에), 팔 각도의 반대로 꺾어 그린다
+          const W0 = L.wr[0], hx0 = W0 - 3, ax1 = W0 + 1, wx = (W0 - L.piv[0]) * L.s, wy = (L.wr[1] - L.piv[1]) * L.s;
+          ctx.save(); ctx.translate(wx, wy); ctx.rotate(S.ha);
+          ctx.drawImage(L.img, hx0, 0, L.img.width - hx0, L.img.height, (hx0 - W0) * L.s, -L.wr[1] * L.s, (L.img.width - hx0) * L.s, L.img.height * L.s);
+          ctx.restore();
+          ctx.drawImage(L.img, 0, 0, ax1, L.img.height, -L.piv[0] * L.s, -L.piv[1] * L.s, ax1 * L.s, L.img.height * L.s);
+        } else ctx.drawImage(L.img, -L.piv[0] * L.s, -L.piv[1] * L.s, L.img.width * L.s, L.img.height * L.s);
         ctx.restore();
-        // 쥔 손(젊은 손이 아래에서 올라와 손목을 감싸 쥠 — 약병의 손과 같은 소매·살색)
+        // 쥔 손(당테스의 오른손이 손목을 위에서 감싸 쥠 — 약병의 손과 같은 회색 소매·살색)
         const w = wrist(L, S.p);
-        if ((S.held || S.p > 0.02) && S.v === 0 && S.p > 0) {
+        const gs = U.spr('cu_grip');
+        const gripPose = (ang, wx, wy, dy0, lv) => {
+          // hands-art → fixer-fix: 손목을 감아쥔 손(cu_grip, 팔과 같은 배율) — 팔과 함께 기울고, 소매는 소맷부리에서 약 70px 아래 팔꿈치로 꺾여 오른쪽 아래 화면 밖으로(굵어짐)
+          const draw = () => {
+            const c = g.ctx, ca = Math.cos(ang), sa = Math.sin(ang);
+            const dx = (GRIP_CUFF[0] - GRIP[0]) * L.s, dy = (GRIP_CUFF[1] - GRIP[1]) * L.s, ex = wx + dx * ca - dy * sa, ey = wy + dx * sa + dy * ca + dy0;
+            c.save(); c.translate(wx, wy + dy0); c.rotate(ang); c.imageSmoothingEnabled = false;
+            c.drawImage(gs, -GRIP[0] * L.s, -GRIP[1] * L.s, gs.width * L.s, gs.height * L.s);
+            c.restore();
+            const ux = GRIP_DIR[0] * ca - GRIP_DIR[1] * sa, uy = GRIP_DIR[0] * sa + GRIP_DIR[1] * ca;   // [grip3] 그림 속 소매 축(팔과 함께 돎)
+            U.sleeve([[ex + ux * 400, ey + uy * 400], [ex, ey]], 30, GRIP_R * L.s, { col: U.SLEEVE.dantes, cuff: false });
+          };
+          if (lv >= 16) { draw(); return; }
+          if (!gripBuf || gripBuf.width !== g.W || gripBuf.height !== g.H) gripBuf = g.makeCanvas(g.W, g.H);
+          g.withCtx(gripBuf, () => { g.ctx.clearRect(0, 0, g.W, g.H); draw(); });
+          U.drawDither(gripBuf, 0, 0, lv);
+        };
+        if (S.gripVis && gs) {
+          const ang = -S.p * ANG + S.trem, wx = Math.round(w[0]), wy = Math.round(w[1]);
+          S.gripPose = [ang, wx, wy];
+          gripPose(ang, wx, wy, 0, 16);
+        } else if (gs && S.gripOff && t - S.gripOffT < 120) {                // [fixer-fix] 놓는 순간 한 프레임에 사라지지 않고 120ms 동안 6px 아래로 빠지며 사라진다
+          const k = (t - S.gripOffT) / 120;
+          gripPose(S.gripOff[0], S.gripOff[1], S.gripOff[2], Math.round(k * 6), Math.max(1, Math.round((1 - k) * 16)));
+        } else if ((S.held || S.p > 0.02) && S.v === 0 && S.p > 0 && !gs) {
           const wx = Math.round(w[0]), wy = Math.round(w[1]), K = '#2b1d2a';
           const bx = wx + 34, by = g.H + 10, ex = wx + 2, ey = wy + 9;
           const n = Math.max(2, Math.ceil(Math.hypot(ex - bx, ey - by) / 3));
@@ -42519,6 +43723,8 @@ MC.addLang('en', {
           const x = Math.round(w[0]), y = Math.round(w[1]) - 16 - Math.round(k * 14);
           g.ditherRect(x - 1, y, 3, 1, '#d8d4c8', lvH); g.ditherRect(x - 2, y + 1, 1, 1, '#d8d4c8', lvH); g.ditherRect(x + 2, y + 1, 1, 1, '#d8d4c8', lvH);
           g.ditherRect(x - 3, y + 2, 1, 1, '#d8d4c8', lvH); g.ditherRect(x + 3, y + 2, 1, 1, '#d8d4c8', lvH);
+          // [fix beats-clarity] 화살 표시만으로는 '누르기'로 읽혀 눌러도 아무 일이 없었다 — 손가락이 손목에서 위로 끌어 올리는 모양을 함께
+          tapHint(w[0], Math.round(w[1]) + 2 - Math.round(MC.ease.inOutQuad(Math.min(1, k * 1.25)) * 16), lvH > 0 ? Math.min(11, lvH + 2) : 0);
         }
         U.drawVig(5 + (t - S.thud < 200 ? 2 : 0), '#000000');
       }
@@ -42534,12 +43740,13 @@ MC.addLang('en', {
     if (isAuto()) return later(300, () => ({ taps: n, missed: 0 }));
     // fixer-s3: 둘째 숨까지 세지 않으면 가슴께에 손 표시(swim과 같은 방식) · 숨 셋을 잇달아 놓치면 당테스가 스스로 센다(등잔이 저절로 흔들림)
     //           — 그래도 여섯 뒤 4초 정적을 거쳐 일곱째에서 끝난다(탭하지 않아도 약 22초) · SAFE 40초 → 26초
-    const LEAD = 1400, SAFE = 26000, AUTO_MS = 380;
+    // fixer-fix: 무음 첫 플레이어가 직접 세어 볼 기회 — 손 표시는 첫 숨부터 첫 셈까지 계속, 자동 셈은 숨 다섯을 잇달아 놓친 뒤(셋 → 다섯) · 누운 자리를 빛 안에 · SAFE 26초 → 31초
+    const LEAD = 1400, SAFE = 31000, AUTO_MS = 380, AUTO_MISS = 5;
     const S = { next: FADE + LEAD, open: false, got: false, counted: 0, missed: 0, miss2: 0, bn: 0, auto: false, autoAt: -1, taps: 0, breathT: -1e9, sway: 0, swayT: -1e9, doneAt: -1 };
     function count(sc) { S.got = true; S.counted++; S.swayT = sc.t; if (S.counted >= n) S.doneAt = sc.t; }
     function breathe(sc) {
       if (S.open && !S.got) { S.missed++; S.miss2++; } else if (S.open) S.miss2 = 0;
-      if (S.miss2 >= 3) S.auto = true;                  // 숨 셋을 잇달아 놓치면(손 표시가 두 숨 동안 떠 있은 뒤)
+      if (S.miss2 >= AUTO_MISS) S.auto = true;          // 숨 다섯을 잇달아 놓치면(손 표시가 네 숨 동안 떠 있은 뒤)
       S.open = true; S.got = false; S.breathT = sc.t; S.bn++;
       S.next = sc.t + gaps[Math.min(S.counted, gaps.length - 1)];
       U.sfx('breath', { gain: 0.32, pitch: 0.82 });
@@ -42582,7 +43789,7 @@ MC.addLang('en', {
         const dx = darkC.getContext('2d');
         dx.globalCompositeOperation = 'source-over'; dx.globalAlpha = 1; dx.fillStyle = '#020204'; dx.fillRect(0, 0, W, H);
         dx.globalCompositeOperation = 'destination-out';
-        const lr = 36 + Math.round(Math.sin(t * 0.011) * 1.5 + sway * 3), fr = 17 + Math.round(rise * 3);
+        const lr = 36 + Math.round(Math.sin(t * 0.011) * 1.5 + sway * 3), fr = 25 + Math.round(rise * 3);   // fixer-fix: 17 → 25(누운 스승이 빛 안에 보이게)
         const gl = U.glow(lr, '#ffffff', 16, 1.1); dx.drawImage(gl, Math.round(sp.lamp[0]) - lr, Math.round(sp.lamp[1]) - lr);
         const gf = U.glow(fr, '#ffffff', 12, 1.2); dx.drawImage(gf, Math.round(sp.far[0]) - fr, Math.round(sp.far[1]) - fr);
         dx.globalCompositeOperation = 'source-over';
@@ -42590,10 +43797,12 @@ MC.addLang('en', {
         // 숨이 오를 때 누운 가슴께가 아주 옅게 밝아짐(소리가 없어도 보이게)
         if (rise > 0.05) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.4 * rise * lv / 16; const gb = U.glow(10, '#8090a8', 8, 1.3); ctx.drawImage(gb, Math.round(sp.far[0]) - 10, Math.round(sp.far[1]) - 11); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }   // fixer-s3: 0.22 → 0.4(소리 끈 폰에서도 숨이 보이게)
         // fixer-s3: 둘째 숨까지 아무것도 세지 않았으면 가슴께에 손 표시(글자 없음) — 첫 셈이 오면 사라짐
-        if (S.counted === 0 && S.bn >= 2 && !S.auto) {
-          const k = Math.min(1, (t - S.breathT + 200) / 500) * 10, bob = Math.round(Math.sin(t * 0.008) * 2);
-          if (!U.drawSpr('ic_hand_tap', Math.round(sp.far[0]) - 12, Math.round(sp.far[1]) + 6 + bob, Math.min(lv, k), 1)) g.ditherRect(Math.round(sp.far[0]) - 2, Math.round(sp.far[1]) + 10 + bob, 4, 4, '#c8c4d8', Math.min(lv, k));
+        if (S.counted === 0 && S.bn >= 1 && !S.auto) {        // [fixer-fix] 첫 숨부터 첫 셈까지 계속(예전: 둘째 숨 뒤 약 2초) · 불투명 손가락
+          if (S.hintT == null) S.hintT = t;
+          U.hintHand(Math.round(sp.far[0]) - 4, Math.round(sp.far[1]) + 6, Math.min(lv, Math.min(1, (t - S.hintT) / 500) * 10), 'tap');
         }
+        // [fixer-fix] 숨마다 가슴께가 1px 오른다(이불 윗선 한 줄 빛 — 소리를 꺼도 숨이 보이게)
+        if (rise > 0.05) { const cy = Math.round(sp.far[1]) - 1 - (rise > 0.45 ? 1 : 0); if (lv >= 16) g.rect(Math.round(sp.far[0]) - 3, cy, 7, 1, g.mix('#05060c', '#9aa8c0', Math.round((0.35 + rise * 0.5) * 4) / 4)); }
         // 등잔 불꽃(탭마다 한 번 흔들림)
         const fx = Math.round(sp.lamp[0] + sway * 2), fy = Math.round(sp.lamp[1]), fl = (((t / 110) | 0) & 1);
         ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.5 * lv / 16; const gw = U.glow(9 + Math.round(Math.abs(sway) * 2), '#6a4414', 10, 1.2); ctx.drawImage(gw, fx - gw.width / 2 | 0, fy - 2 - gw.height / 2 | 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
@@ -42610,6 +43819,7 @@ MC.addLang('en', {
    계약 docs/ARCHITECTURE_S3.md §C-2·§C-6, 이야기 docs/S3_NARRATIVE.md §5-2 E4·§5-3 F8·§5-4·§5-5·§5-6. 디스패처는 s3night.js와 같은 코드('없으면 만든다').
    - 씬 이름: 조작 화면 mg_s3_<stage>, 남겨 두는 배경 ev_s3_<stage>(MC.events.reset이 치운다 — 이벤트가 끝나면 스스로도 걷는다).
    - 글자: 안내 글자 없음. 보이는 문장은 모두 이벤트 인자(러너가 번역). order 카드는 '|'로 나눈 한 문자열. 코드 속 한국어 문장 없음.
+     (예외 fix beats-clarity: patrol·beam만 안내 한 줄·귀띔 한 줄 — tf 키 mg.patrolGuide·mg.beamGuide·story.patrolHush·story.beamNearFaria·story.beamNearSelf)
    - 진동은 늘 소리 + 화면(흔들림·맥동 원·흙먼지)과 함께. 실패 없음, 늘 resolve. MC.ch1.s3Auto === true면 600ms 안에 기본 결과로 끝남.
    - 그림(art-chars-s3·art-world-s3)이 없으면 이 파일의 절차 생성 그림으로 대신한다(cu_shadow_* cu_study cu_ember_* cu_hands_young cu_paper_half
      cu_paper_recon cu_lamp cu_wall_pan cu_wrist_* cu_bread_hands). 인자·결과는 계약 표 그대로(벗어난 점은 docs/handoff/s3-scenes-s3b.md). */
@@ -42699,11 +43909,10 @@ MC.addLang('en', {
     ctx.drawImage(gl, Math.round(cx) - (gl.width >> 1), Math.round(cy) - (gl.height >> 1));
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
-  function hint(x, y, lv) {                       // 안내 글자 없는 손가락(길게 누르기·탭)
-    if (lv <= 0) return;
-    const bob = Math.round(Math.sin(now() * 0.008) * 2);
-    if (!U.drawSpr('ic_hand_tap', x - 8, y + bob, lv, 1)) G().ditherRect(x - 2, y + 2 + bob, 5, 5, '#e8e0c8', lv);
-  }
+  // 안내 글자 없는 손가락 — [fixer-fix] 디더(폰에서 체크무늬 덩어리) 대신 불투명(U.hintHand, 들고 날 때 색 4단계만).
+  //   hint = 탭·끌기, holdHint = 길게 누르기(손끝 위 고리가 차오름 — 불에 쬐기·태우기·맥 짚기)
+  function hint(x, y, lv) { U.hintHand(x, y, lv, 'tap'); }
+  function holdHint(x, y, lv) { U.hintHand(x, y, lv, 'hold'); }
   // 떨어지는 가루·불티
   function Parts() { this.a = []; }
   Parts.prototype.add = function (x, y, vx, vy, life, c, gy) { this.a.push({ x, y, vx, vy, life, t: 0, c, g: gy == null ? 70 : gy }); if (this.a.length > 220) this.a.shift(); };
@@ -42784,12 +43993,15 @@ MC.addLang('en', {
   }
 
   /* ================================================================ 1) 보초 박자 — patrol(듣기)·beam(들보 세우기/빼기) */
+  // [fix beats-clarity] 소리를 꺼도 할 일이 보이게: 화면 위쪽에 '머리 위 회랑' 단면 — 보초 실루엣과 등불이 n걸음에 건너가고, 걸음마다 바닥이 울려
+  //   흙먼지가 떨어지고 빗금 셈이 쌓인다. 가운데 포석(가까운 넷)이 들보 자리 바로 위. beam은 '멀 때'(누를 때)만 들보 자리가 은은히 빛나고 손가락이 뜬다.
+  //   글자는 안내 한 줄(mg.patrolGuide·mg.beamGuide) + 첫 실수 때 귀띔 한 번(story.beamNear*)뿐. 박자·판정·결과·실패 없음은 계약(§C-2) 그대로.
   const STEP_MS = 430;
   function beatPlan(n, pause, dir) {
     n = Math.max(2, (n | 0) || 12);
     const P = Math.max(0, pause == null ? 3 : +pause) * 1000, mid = (n - 1) / 2, NEAR = n / 8 + 0.01, first = dir === 'rl' ? -1 : 1;
     return {
-      n, pause: P,
+      n, pause: P, first,
       step(k, lap) {                               // k번째 걸음: 팬 −0.8→0.8(바퀴마다 뒤집힘), 가운데 넷이 가장 크다(= 머리 위)
         const d = Math.abs(k - mid), sgn = ((lap & 1) ? -1 : 1) * first, u = k / (n - 1);
         const close = clamp(1 - Math.max(0, d - n / 8) / Math.max(0.5, mid - n / 8), 0, 1);
@@ -42811,95 +44023,246 @@ MC.addLang('en', {
   };
   BeatRun.prototype.silent = function () { return !this.last || (this.k >= this.p.n && this.bt - this.lastAt >= STEP_MS); };
   BeatRun.prototype.nearNow = function () { return !this.silent() && this.last.near; };
-  // 머리 위 발소리 하나: 소리 + 천장 흙먼지(가까울수록 많이)
-  function footstep(s, dust, g) {
+  /* ---------- 머리 위 회랑 단면(옆에서 본 그림): 위 = 보초가 걷는 회랑, 가운데 줄 = 포석, 아래 = 굴 끝 방 천장(들보 자리) ---------- */
+  const OV = { air: ['#0a090c', '#1c1a1f', '#211e24', '#26222a', '#3a3540'], floor: '#3a342e', floorHi: '#5a5248', floorSh: '#17140f',
+    slab: '#6a5a44', slabHi: '#9a8462', wood: '#7a5a34', woodHi: '#a8804c', woodSh: '#3a2814', chalk: '#d8cca8', chalkHi: '#fff4d8',
+    warm: '#ffcf6a', red: '#d0583a', guard: '#030305', rim: '#5a4426', cap: '#8a8270', capHi: '#d8cca8', whisper: '#e8d8b0', bg: '#05060c', edge: '#4a4450' };
+  const geoMemo = {};
+  function ovGeo(g, n) {                          // 화면 크기·안전 영역이 바뀌면 다시 잰다
+    const key = g.W + '|' + g.H + '|' + g.safe.top + '|' + n;
+    if (geoMemo.key === key) return geoMemo.o;
+    const sw = clamp(Math.floor(156 / n), 6, 16), w = sw * n, cx = g.W >> 1, x0 = cx - (w >> 1);
+    const top = g.safe.top + clamp(Math.round(g.H * 0.17), 44, 96), p = beatPlan(n, 0);
+    let k0 = n, k1 = -1;
+    for (let k = 0; k < n; k++) if (p.step(k, 0).near) { if (k < k0) k0 = k; if (k > k1) k1 = k; }
+    if (k1 < 0) { k0 = (n >> 1) - 1; k1 = n >> 1; }
+    const yT = top + 12, yF = top + 34, sx = x0 + k0 * sw, sw2 = (k1 - k0 + 1) * sw;
+    const o = { n, sw, w, cx, x0, top, yT, yF, sx, sw2, bx: sx + (sw2 >> 1), by: yF + 6, cap: yF + 48, bot: yF + 74 };
+    geoMemo.key = key; geoMemo.o = o;
+    return o;
+  }
+  const stepX = (o, s) => o.cx + (s.pan / 0.8) * ((o.w - o.sw) / 2);   // 팬(−0.8~0.8) = 화면 자리(소리와 그림이 같은 곳)
+  // 보초가 지금 어디 있나(걸음 사이는 이어서 걷는다). capLap: 그 바퀴 뒤로는 끝자리에 선 채(듣기는 한 바퀴만)
+  function guardAt(o, r, capLap) {
+    const P = r.p, n = P.n;
+    const faceOf = L => (P.step(n - 1, L).pan > P.step(0, L).pan ? 1 : -1);
+    if (!r.last) return { x: stepX(o, P.step(0, 0)), face: faceOf(0), count: 0, stride: 0, pre: true };
+    let lap = r.lap, k = r.k, over = false;
+    if (capLap != null && lap > capLap) { lap = capLap; k = n; over = true; }
+    const face = faceOf(lap), dt = over ? 1e9 : r.bt - r.lastAt, xa = stepX(o, P.step(Math.max(0, k - 1), lap));
+    if (k < n) { const xb = stepX(o, P.step(k, lap)); return { x: xa + (xb - xa) * clamp(dt / STEP_MS, 0, 1), face, count: k, stride: k & 1 }; }
+    return { x: xa, face: dt > STEP_MS + P.pause * 0.5 ? -face : face, count: n, stride: 0, pause: true };   // 끝에 와서 돌아선다(정적 절반 뒤)
+  }
+  // 머리 위 발소리 하나: 소리 + 그 자리 포석이 울리고 천장 흙먼지(가까울수록 많이)
+  function footstep(s, dust, o, flash) {
     U.sfx('step_stone', { gain: s.gain, pitch: 0.8, pan: s.pan });
-    const x = (g.W >> 1) + s.pan * g.W * 0.45, y0 = 21 + g.safe.top, n = s.near ? 3 : (s.close > 0.4 ? 2 : 1);
-    for (let i = 0; i < n; i++) dust.add(x + (U.vr() - 0.5) * 16, y0 + U.vr() * 3, (U.vr() - 0.5) * 8, 4 + U.vr() * 10, 900 + U.vr() * 700, U.vr() < 0.5 ? '#8a7a60' : '#6a5a48', 55);
+    const x = stepX(o, s), y0 = o.yF + 6, n = s.near ? 3 : (s.close > 0.4 ? 2 : 1);
+    for (let i = 0; i < n; i++) dust.add(x + (U.vr() - 0.5) * 10, y0 + U.vr() * 2, (U.vr() - 0.5) * 8, 4 + U.vr() * 10, 900 + U.vr() * 700, U.vr() < 0.5 ? '#8a7a60' : '#6a5a48', 55);
+    if (flash) { flash.push({ x, t: now() }); if (flash.length > 6) flash.shift(); }
     if (s.near) MC.fx.shake(0.04);
   }
-  function drawAlertDot(t0) {                     // 경계 점 한 번 깜빡(실제 경계는 올리지 않음)
-    const k = now() - t0; if (k < 0 || k > 700) return;
+  function drawAlertDot(t0, x, y) {               // 경계 점 한 번 깜빡(보초 머리 위 — 실제 경계는 올리지 않음)
+    const k = now() - t0; if (!(k >= 0 && k <= 700)) return;
     if (((k / 120) | 0) % 2 === 1) return;
-    const g = G(), x = g.W >> 1, y = 30 + g.safe.top;
+    const g = G(); x = Math.round(x); y = Math.round(y);
     g.circle(x, y, 3, '#2a0a06'); g.circle(x, y, 2, '#ff9a3a'); g.px(x - 1, y - 1, '#fff0c0');
   }
+  function drawGuard(o, gd, a) {                  // 옆모습 실루엣(외투·모자) + 앞으로 든 등불
+    if (a <= 0) return;
+    const g = G(), x = Math.round(gd.x), y = o.yF, c = OV.guard, f = gd.face;
+    if (gd.stride) { g.ditherRect(x - 2, y - 5, 1, 5, c, a); g.ditherRect(x + 1, y - 5, 1, 5, c, a); } else g.ditherRect(x - 1, y - 5, 2, 5, c, a);
+    g.ditherRect(x - 2, y - 12, 5, 7, c, a);
+    g.ditherRect(x - 1, y - 15, 3, 3, c, a);
+    g.ditherRect(x - 2, y - 16, 5, 1, c, a); g.ditherRect(x - 1, y - 18, 3, 2, c, a);
+    g.ditherRect(x + (f > 0 ? 2 : -2), y - 12, 1, 6, OV.rim, a);
+    g.ditherRect(x + f * 3, y - 10, 1, 1, c, a);
+    g.ditherRect(x + f * 4, y - 10, 1, 3, '#ffe6a0', a);
+  }
+  // 빗금 셈(벽의 날짜 빗금과 같은 모양 — 넷 긋고 다섯째는 비스듬히). 시작 자리는 n 전체 폭 기준(쌓이는 동안 흔들리지 않게)
+  function drawTally(o, cnt, age, a) {            // age: 마지막 걸음 뒤 지난 ms(막 그은 빗금만 밝게)
+    if (cnt <= 0 || a <= 0) return;
+    const g = G(), y = o.top, GW = 11, GAP = 5;
+    const widthOf = m => Math.floor(m / 5) * (GW + GAP) + (m % 5 ? (m % 5) * 3 - 1 : -GAP);
+    let x = Math.round(o.cx - widthOf(o.n) / 2), left = cnt;
+    const fresh = age < 220;
+    for (let i = 0; left > 0; i++) {
+      const m = Math.min(4, left), full = left >= 5;
+      for (let j = 0; j < m; j++) { const last = !full && j === m - 1 && left === m; g.ditherRect(x + j * 3, y, 1, 7, fresh && last ? OV.chalkHi : OV.chalk, a); }
+      if (full) { const lc = fresh && left === 5 ? OV.chalkHi : OV.chalk; for (let j = 0; j <= GW + 1; j++) g.ditherRect(x - 1 + j, y + 6 - Math.round(j * 6 / (GW + 1)), 1, 1, lc, a); }
+      left -= full ? 5 : m; x += GW + GAP;
+    }
+  }
+  // 안내·귀띔 한 줄(가운데, 작은 글자 — 디더 대신 색으로 흐리게)
+  function capText(y, s, col) {
+    if (!s) return;
+    const g = G(), LH = (MC.text.LINE && MC.text.LINE.small) || 12;
+    MC.text.wrap(s, 170, 'small').slice(0, 2).forEach((l, i) => {
+      const c = MC.text.bake(l, 'small', col, { shadow: '#000' });
+      if (c) g.ctx.drawImage(c, Math.round((g.W - c.width) / 2), y + i * LH);
+    });
+  }
+  const capCol = (col, k) => G().mix(OV.bg, col, Math.round(clamp(k, 0, 1) * 4) / 4);   // 4단계로만(굽는 글자 캐시가 넘치지 않게)
+  // 한 장면: V = {gd 보초, ga 보초 진하기, flash, danger 바로 위(붉은 테), beam 'ghost'|'solid'|null, win 0..1(지금 구간 빛), strong, sink, alertT}
+  // [fixer-fix] 띠가 떠 있는 동안 필드의 보초·등불 원뿔을 숨긴다(아래 멈춘 보초와 헷갈리지 않게) — 끝나면(실패해도) 되돌림
+  function hideFieldGuards() {
+    const m = MC.field && MC.field.map, hid = [];
+    if (m && Array.isArray(m.objs)) for (const ob of m.objs) if (ob && ob.type === 'guard' && ob.visible !== false) { ob.visible = false; hid.push(ob); }
+    let done = false;
+    return () => { if (done) return; done = true; for (const ob of hid) ob.visible = true; };
+  }
+  function drawOverhead(o, V) {
+    const g = G(), t = now(), ctx = g.ctx, gd = V.gd, bot = V.bot || o.bot;
+    g.ditherRect(0, o.top - 16, g.W, 8, OV.bg, 6);                 // 바탕 띠(위아래 끝은 디더로 녹는다)
+    g.rect(0, o.top - 8, g.W, bot - o.top + 16, OV.bg);             // [fixer-fix] 13 → 불투명: 굴 끝 방 등잔빛이 빗금 셈 뒤로 비치지 않게
+    g.ditherRect(0, bot + 8, g.W, 8, OV.bg, 6);
+    g.hline(0, o.top - 9, g.W, OV.edge); g.hline(0, bot + 8, g.W, OV.edge);   // [fixer-fix] 위아래 얇은 테 — '옆에서 본 단면 그림'이라는 표시
+    ctx.drawImage(once('ovWall|' + o.w, () => bakeStones(o.w, o.yF - o.yT, OV.air, 34, 6, 12)), o.x0, o.yT);
+    if (V.ga > 0) {                                                // 등불 — 회랑 벽만 비춘다
+      const fl = 0.85 + Math.sin(t * 0.013) * 0.08 + Math.sin(t * 0.031) * 0.05;
+      ctx.save(); ctx.beginPath(); ctx.rect(o.x0, o.yT, o.w, o.yF - o.yT); ctx.clip();
+      addGlow(gd.x + gd.face * 4, o.yF - 9, 20, OV.warm, 9, 0.6 * fl * V.ga / 16);
+      ctx.restore();
+    }
+    // 포석 줄(옆 단면) — 가운데 한 장이 들보 자리 바로 위
+    g.rect(o.x0, o.yF, o.w, 5, OV.floor); g.hline(o.x0, o.yF, o.w, OV.floorHi); g.hline(o.x0, o.yF + 5, o.w, OV.floorSh);
+    for (let x = o.x0; x <= o.x0 + o.w; x += o.sw * 2) g.vline(x, o.yF + 1, 4, OV.floorSh);
+    const sy = o.yF + (V.sink ? 1 : 0);
+    g.rect(o.sx, sy, o.sw2, 5, OV.slab); g.hline(o.sx, sy, o.sw2, OV.slabHi); g.vline(o.sx, sy, 5, OV.floorSh); g.vline(o.sx + o.sw2 - 1, sy, 5, OV.floorSh);
+    g.px(o.sx + 7, sy + 2, OV.floorSh); g.px(o.sx + 8, sy + 3, OV.floorSh); g.px(o.sx + o.sw2 - 9, sy + 1, OV.floorSh);
+    if (V.danger) {                                                // 보초가 바로 위: 포석 테가 붉게(누르면 들킬 자리)
+      const lr = V.strong ? 12 : 8;
+      g.ditherRect(o.sx - 1, sy - 1, o.sw2 + 2, 1, OV.red, lr); g.ditherRect(o.sx - 1, sy + 5, o.sw2 + 2, 1, OV.red, lr);
+      g.ditherRect(o.sx - 1, sy, 1, 5, OV.red, lr); g.ditherRect(o.sx + o.sw2, sy, 1, 5, OV.red, lr);
+    }
+    for (const f of V.flash) { const k = (t - f.t) / 260; if (k >= 0 && k < 1) g.ditherRect(Math.round(f.x) - 2, o.yF, 5, 1, OV.chalkHi, 16 * (1 - k)); }   // 디딘 자리가 울린다
+    drawGuard(o, gd, V.ga);
+    if (V.ga > 0) addGlow(gd.x + gd.face * 4, o.yF - 9, 4, '#fff0c0', 12, 0.5 * V.ga / 16);
+    if (V.alertT != null) drawAlertDot(V.alertT, gd.x, o.yF - 23);
+    // 들보(받침): 가로대 + 기둥. ghost = 아직 세우지 않은 자리(흐린 윤곽)
+    if (V.beam) {
+      const solid = V.beam === 'solid', bx = o.bx, by = o.by + (V.sink ? 1 : 0), cw = Math.min(o.sw2 - 6, 28);
+      if (V.win > 0.01) addGlow(bx, by + 10, 18, OV.warm, 8, (V.strong ? 0.5 : 0.3) * V.win * (0.82 + 0.18 * Math.sin(t * 0.006)));
+      const lb = solid ? 16 : 4 + Math.round(V.win * (V.strong ? 8 : 5));
+      g.ditherRect(bx - (cw >> 1), by, cw, 2, OV.wood, lb); g.ditherRect(bx - (cw >> 1), by, cw, 1, OV.woodHi, lb);
+      g.ditherRect(bx - 2, by + 2, 4, 18, OV.wood, lb); g.ditherRect(bx - 2, by + 2, 1, 18, OV.woodHi, lb); g.ditherRect(bx + 1, by + 2, 1, 18, OV.woodSh, lb);
+      g.ditherRect(bx - 4, by + 20, 8, 1, OV.woodSh, lb);
+    }
+    if (V.burst > 0) addGlow(o.bx, o.by + 8, 22, OV.warm, 10, 0.55 * V.burst);   // 세운 순간
+  }
 
-  // patrol {n:12, pause:3, dir:"lr"|"rl"} — 입력 없음. n걸음 → pause초 정적 뒤 끝
+  // patrol {n:12, pause:3, dir:"lr"|"rl"} — 입력 없음(듣고 세는 장면). n걸음 → pause초 정적 뒤 끝.
+  //   그림: 보초가 회랑을 한 번 건너가며 걸음마다 빗금이 하나씩 쌓이고, 끝에서 돌아선다. 손가락 없음 + 안내 「머리 위 발소리를 센다.」, 누르면 「……쉿.」
   stage('patrol', a => {
-    const g = G(), plan = beatPlan(a.n, a.pause, a.dir), run = new BeatRun(plan), dust = new Parts();
+    const g = G(), plan = beatPlan(a.n, a.pause, a.dir), run = new BeatRun(plan), dust = new Parts(), flash = [];
     const total = 350 + plan.n * STEP_MS + plan.pause;
+    let hushT = -1e9;
+    const restoreGuards = auto() ? () => {} : hideFieldGuards();
     return new Promise(resolve => {
-      const sc = makeStage({ name: 'ev_s3_patrol', IN: 250, OUT: 250, draw() {
-        g.ditherFill('#05060c', 4);
+      const sc = makeStage({ name: 'ev_s3_patrol', IN: 250, OUT: 250, onFail: () => restoreGuards(), draw() {
+        g.ditherFill('#05060c', 11);                                 // [fixer-fix] 4 → 11: 위에서 내려다본 필드를 더 어둡게(단면 띠에 눈이 가게)
+        const o = ovGeo(g, plan.n), gd = guardAt(o, run, 0);
+        drawOverhead(o, { gd, ga: gd.pre ? clamp(sc.t / 350, 0, 1) * 16 : 16, flash, beam: null, win: 0, bot: o.yF + 36 });
+        drawTally(o, gd.count, run.last && run.lap === 0 ? run.bt - run.lastAt : 1e9, 16);
         dust.render();
+        const hush = sc.t - hushT < 1300;
+        capText(o.yF + 16, U.tf(hush ? 'story.patrolHush' : 'mg.patrolGuide'), hush ? OV.whisper : capCol(OV.cap, (sc.t - 500) / 600));
       } });
       let ended = false;
-      function end() { if (ended) return; ended = true; sc.close().then(() => resolve({ ok: true })); }
+      function end() { if (ended) return; ended = true; sc.close().then(() => { restoreGuards(); resolve({ ok: true }); }); }
       wrapUpdate(sc, dt => {
         dust.update(dt);
         if (auto()) { if (sc.t > 300) end(); return; }
-        if (run.lap === 0) run.update(dt, s => { if (run.lap === 0) footstep(s, dust, g); });   // 한 바퀴(n걸음)만 — 다음 바퀴 첫걸음은 울리지 않는다
+        const o = ovGeo(g, plan.n);
+        if (run.lap === 0) run.update(dt, s => { if (run.lap === 0) footstep(s, dust, o, flash); });   // 한 바퀴(n걸음)만 — 다음 바퀴 첫걸음은 울리지 않는다
         if (sc.t >= total + 250) end();
       });
-      sc.onInput = () => true;
+      sc.onInput = ev => { if (ev.type === 'tap' || (ev.type === 'down' && ev.ptype === 'touch')) { if (sc.t - hushT > 1300) hushT = sc.t; } return true; };   // 누를 일이 없다는 것을 파리아의 「쉿」으로
       MC.scene.push(sc);
     });
   });
 
   // beam {mode:"set"|"pull", n:12, pause:3} — patrol과 같은 박자. 멀 때(1~3·10~12걸음·정적) 탭 = 성공, 가까울 때 = 흙먼지·발소리 1초 멈춤·경계 점(near+1). 실패 없음
+  //   그림: 멀 때(= 지금 눌러도 될 때)만 들보 자리가 은은히 빛나고 손가락이 뜬다. 보초가 가운데 포석 위면 포석 테가 붉고 손가락이 숨는다.
+  //   첫 실수 → 귀띔 한 번(set 파리아 / pull 속마음). 헤매면(가까울 때 두 번, 또는 안 누르고 두 바퀴) 빛·손가락·안내가 더 또렷해진다.
   stage('beam', a => {
-    const g = G(), mode = a.mode === 'pull' ? 'pull' : 'set', plan = beatPlan(a.n, a.pause, a.dir), dust = new Parts();
+    const g = G(), mode = a.mode === 'pull' ? 'pull' : 'set', plan = beatPlan(a.n, a.pause, a.dir), dust = new Parts(), flash = [];
     let run = new BeatRun(plan), near = 0, hold = 0, alertT = -1e9, phase = 'wait', doneT = 0, tail = null, firstTap = -1;
+    let whisperT = -1e9, winK = 0, succGd = null;
+    const strong = () => near >= 2 || (firstTap < 0 && run.lap >= 2);
+    const restoreGuards = auto() ? () => {} : hideFieldGuards();
+    // [fixer-fix] '바로 위' 판정을 그림 자리로: 보초 그림이 가운데 포석(sx ~ sx+sw2) 위에 있을 때만 — 포석을 막 벗어났는데 반 박자 동안 '바로 위'로 치던 어긋남을 없앰
+    const nearDrawn = () => { if (run.silent()) return false; const o = ovGeo(g, plan.n), gd = guardAt(o, run, null); return !gd.pre && !gd.pause && gd.x >= o.sx && gd.x < o.sx + o.sw2; };
     return new Promise(resolve => {
-      const sc = makeStage({ name: 'mg_s3_beam', IN: 250, OUT: 300, draw() {
-        g.ditherFill('#05060c', 4);
+      const sc = makeStage({ name: 'mg_s3_beam', IN: 250, OUT: 300, onFail: () => restoreGuards(), draw() {
+        g.ditherFill('#05060c', 11);                                 // [fixer-fix] 4 → 11
+        const o = ovGeo(g, plan.n), st = strong(), waiting = phase === 'wait';
+        let gd, ga = 16, cnt, age;
+        if (waiting) {
+          gd = guardAt(o, run, null); cnt = gd.count; age = run.bt - run.lastAt;
+          if (gd.pre) ga = clamp(sc.t / 350, 0, 1) * 16;
+        } else if (tail && tail.last) {             // 빼고 난 뒤: 보초가 모른 채 한 번 더 건너간다(빗금도 다시 열둘)
+          gd = guardAt(o, tail, 0); cnt = gd.count; age = tail.lap === 0 ? tail.bt - tail.lastAt : 1e9;
+        } else {                                    // 해낸 직후: 보초는 어둠 속으로 멀어진다(빼기는 1.3초 뒤 다시 들어온다)
+          gd = succGd || guardAt(o, run, null); cnt = 0; age = 1e9; ga = 16 * clamp(1 - (sc.t - doneT) / 500, 0, 1);   // (자동 진행은 succeed 없이 닫힌다)
+          if (tail) { const k = clamp((tail.bt - 700) / 600, 0, 1); if (k > 0) { gd = guardAt(o, tail, 0); ga = 16 * k; } }
+        }
+        const burst = !waiting && mode === 'set' ? clamp(1 - (sc.t - doneT) / 600, 0, 1) : 0;
+        drawOverhead(o, { gd, ga, flash, danger: waiting && nearDrawn(), strong: st, alertT, sink: !waiting && mode === 'pull',
+          beam: mode === 'set' ? (waiting ? 'ghost' : 'solid') : (waiting ? 'solid' : null), win: waiting ? winK : 0, burst });
+        drawTally(o, cnt, age, 16);
         dust.render();
-        drawAlertDot(alertT);
-        if (phase === 'wait') {                    // 손가락(글자 없음): 첫 바퀴는 듣기만 — 흐리게, 한 바퀴 뒤 조금 또렷이
-          const lv = sc.t < 1200 ? 0 : (run.lap >= 1 ? 11 : 6);
-          hint(g.W >> 1, g.H - 64 - g.safe.bottom, lv);
+        if (waiting && sc.t > 1200) hint(o.bx, o.by + 22, winK * (st ? 13 : (run.lap >= 1 || near > 0 ? 10 : 7)));   // 손가락 = 지금 눌러도 된다
+        if (waiting || sc.t - doneT < 250) {
+          const wh = sc.t - whisperT < 2600;
+          capText(o.cap, U.tf(wh ? (mode === 'set' ? 'story.beamNearFaria' : 'story.beamNearSelf') : 'mg.beamGuide'),
+            wh ? OV.whisper : capCol(st ? OV.capHi : OV.cap, waiting ? (sc.t - 500) / 600 : 1 - (sc.t - doneT) / 250));
         }
       } });
-      function end() { if (phase === 'end') return; phase = 'end'; sc.close().then(() => resolve({ ok: true, near })); }
+      function end() { if (phase === 'end') return; phase = 'end'; sc.close().then(() => { restoreGuards(); resolve({ ok: true, near }); }); }
       function succeed() {
+        const o = ovGeo(g, plan.n);
+        succGd = guardAt(o, run, null);
         phase = 'done'; doneT = sc.t;
-        const cx = g.W >> 1, y0 = 21 + g.safe.top;
+        const cx = o.bx, y0 = o.yF + 6;
         if (mode === 'set') {
           snd('beam', { gain: 0.9 }, 'thud', { pitch: 0.6, gain: 0.9 });
           snd('dig', { gain: 0.35, pitch: 0.7 });
-          for (let i = 0; i < 10; i++) dust.add(cx + (U.vr() - 0.5) * 60, y0 + U.vr() * 4, (U.vr() - 0.5) * 20, 6 + U.vr() * 14, 1000 + U.vr() * 800, U.vr() < 0.5 ? '#8a7a60' : '#6a5a48', 60);
+          for (let i = 0; i < 10; i++) dust.add(cx + (U.vr() - 0.5) * o.sw2, y0 + U.vr() * 4, (U.vr() - 0.5) * 20, 6 + U.vr() * 14, 1000 + U.vr() * 800, U.vr() < 0.5 ? '#8a7a60' : '#6a5a48', 60);
           buzz(25, 0.2);
         } else {
           snd('flagstone', { gain: 0.9 }, 'stone_lift', { pitch: 0.6, gain: 0.9 });
           setTimeout(() => snd('thud', { pitch: 0.5, gain: 0.5 }), 260);
-          for (let i = 0; i < 12; i++) dust.add(cx + (U.vr() - 0.5) * 70, y0 + U.vr() * 4, (U.vr() - 0.5) * 24, 8 + U.vr() * 16, 1100 + U.vr() * 800, U.vr() < 0.5 ? '#8a7a60' : '#6a5a48', 60);
+          for (let i = 0; i < 12; i++) dust.add(cx + (U.vr() - 0.5) * (o.sw2 + 10), y0 + U.vr() * 4, (U.vr() - 0.5) * 24, 8 + U.vr() * 16, 1100 + U.vr() * 800, U.vr() < 0.5 ? '#8a7a60' : '#6a5a48', 60);
           buzz(30, 0.22);
-          tail = new BeatRun(beatPlan(plan.n, 0, (run.lap & 1) ? 'rl' : 'lr'), 1300);   // 발소리 열둘이 모른 채 지나감
+          tail = new BeatRun(beatPlan(plan.n, 0, succGd.x >= o.cx ? 'rl' : 'lr'), 1300);   // 발소리 열둘이 모른 채 지나감(보초가 서 있던 쪽에서 다시 건너온다)
         }
       }
       function tap() {
         if (phase !== 'wait' || sc.t < 350) return;
         if (firstTap < 0) firstTap = sc.t;
         if (hold > 0) return;                       // 멈춘 동안의 탭은 무시
-        if (run.nearNow()) {
+        if (nearDrawn()) {
           near++; hold = 1000; alertT = now();
+          if (near === 1) whisperT = sc.t;          // 첫 실수에만 귀띔
           U.sfx('heartbeat', { gain: 0.55, pitch: 0.95 });
-          const s = run.last, x = (g.W >> 1) + s.pan * g.W * 0.45, y0 = 21 + g.safe.top;
-          for (let i = 0; i < 6; i++) dust.add(x + (U.vr() - 0.5) * 26, y0 + U.vr() * 3, (U.vr() - 0.5) * 16, 6 + U.vr() * 12, 1000 + U.vr() * 600, U.vr() < 0.5 ? '#9a8a6a' : '#6a5a48', 60);
+          const o = ovGeo(g, plan.n), x = stepX(o, run.last), y0 = o.yF + 6;
+          for (let i = 0; i < 6; i++) dust.add(x + (U.vr() - 0.5) * 20, y0 + U.vr() * 3, (U.vr() - 0.5) * 16, 6 + U.vr() * 12, 1000 + U.vr() * 600, U.vr() < 0.5 ? '#9a8a6a' : '#6a5a48', 60);
           buzz(15, 0.12);
         } else succeed();
       }
       wrapUpdate(sc, dt => {
         dust.update(dt);
-        if (auto()) { if (phase === 'wait' && sc.t > 300) { phase = 'end'; sc.close(120).then(() => resolve({ ok: true, near: 0 })); } return; }
+        if (auto()) { if (phase === 'wait' && sc.t > 300) { phase = 'end'; sc.close(120).then(() => { restoreGuards(); resolve({ ok: true, near: 0 }); }); } return; }
+        const o = ovGeo(g, plan.n);
         if (phase === 'wait') {
           if (hold > 0) hold = Math.max(0, hold - dt);
-          else run.update(dt, s => footstep(s, dust, g));
+          else run.update(dt, s => footstep(s, dust, o, flash));
+          const open = hold <= 0 && sc.t > 350 && !nearDrawn();               // '지금' 구간 — 빛은 부드럽게 들고 난다
+          winK += ((open ? 1 : 0) - winK) * Math.min(1, dt / (open ? 160 : 70));
           if (sc.t > 180000) succeed();            // 안전(3분) — 실패 없음
         } else if (phase === 'done') {
           if (tail) {
-            tail.update(dt, s => { if (tail.lap === 0) footstep(s, dust, g); });
+            tail.update(dt, s => { if (tail.lap === 0) footstep(s, dust, o, flash); });
             if (tail.lap > 0 || (tail.k >= tail.p.n && tail.bt - tail.lastAt > 700)) end();
           } else if (sc.t - doneT > 1200) end();
         }
@@ -43114,7 +44477,7 @@ MC.addLang('en', {
     const hs0 = spr('cu_hands_young'), hc0 = hs0 ? handCrops(hs0) : null;
     const THUMB = hc0 ? Math.max(0, (hc0.B - hc0.T) * (g.W >= 150 ? 2 : 1) - 14) : 0;   // 엄지가 앉을 종이 아래 여백(글자는 그 위에서 끝난다)
     const PH = () => rowsN * 16 + 28 + THUMB;
-    let idx = 0, acc = -LINE_GAP * 0.5, prox = 0, down = false, pressed = false, heldMs = 0, tickN = 0, crackT = 0;
+    let idx = 0, acc = -LINE_GAP * 0.5, prox = 0, down = false, pressed = false, heldMs = 0, tickN = 0, crackT = 0, upT = -1e9;   // upT: [fixer-fix] 마지막으로 손을 뗀 때
     let phase = 'reveal', burnT = -1, silentT = -1, noteT = -1, closing = false;
     const embers = new Parts();
     let pbuf = null;
@@ -43194,10 +44557,16 @@ MC.addLang('en', {
           const s = W >= 150 ? 2 : 1, yy = Gm.py + Gm.ph - (hc.B + 1 - hc.y0) * s;
           g.ctx.drawImage(hc.l, Gm.px - hc.L * s, yy, hc.l.width * s, hc.l.height * s);
           const k = burnT >= 0 ? MC.ease.outCubic(clamp(burnT / 700, 0, 1)) : 0;
-          const rx = Gm.px + Gm.PW - (hc.R + 1 - hc.rx) * s + Math.round(k * 16), ry = yy + Math.round(k * 10);
+          // [0.3.4-hands g2] 오른손은 화면 오른쪽 밖까지 물러난다(예전 16px — 엄지 끝 몇 칸이 화면 오른쪽 끝에 떠 남았다, QA). 그림 왼쪽 끝이 W를 넘을 만큼, 적어도 16px
+          const rx0 = Gm.px + Gm.PW - (hc.R + 1 - hc.rx) * s, rOut = Math.max(16, W - rx0 + 2);
+          const rx = rx0 + Math.round(k * rOut), ry = yy + Math.round(k * 10);
           g.ctx.drawImage(hc.r, rx, ry, hc.r.width * s, hc.r.height * s);
         } else { drawArm(0, Gm.px + 6, Gm.py + Gm.ph - 3, Gm.bot, true); drawArm(1, Gm.px + Gm.PW - 7, Gm.py + Gm.ph - 3, Gm.bot, true); }
-        if (!pressed && t > 1400) hint(Gm.cx, Gm.py + Gm.ph + 16, U.lvl(t, 1400, 400) * 0.7);
+        // [fixer-fix] 길게 누르기 손가락: 첫 누름 전 + 다 드러나기 전에 손을 떼고 2.5초 지나면 다시
+        if (phase === 'reveal' && !down) {
+          if (!pressed && t > 1400) holdHint(Gm.cx, Gm.py + Gm.ph + 16, U.lvl(t, 1400, 400) * 0.7);
+          else if (pressed && idx < glyphs.length && t - upT > 2500) holdHint(Gm.cx, Gm.py + Gm.ph + 16, U.lvl(t, upT + 2500, 400) * 0.7);
+        }
       }
       function revealOne() {
         const q = glyphs[idx]; if (!q) return;
@@ -43215,7 +44584,9 @@ MC.addLang('en', {
           if (sc.t > 250 && !closing) { closing = true; sc.close(120).then(() => resolve({ ok: true, ms: 0 })); }
           return;
         }
+        const wasDown = down;
         down = sc.t > 300 && MC.input.isDown() && !document.hidden && phase === 'reveal';
+        if (wasDown && !down) upT = sc.t;
         if (down) { pressed = true; heldMs += dt; }
         const want = phase === 'reveal' ? (down ? 1 : 0) : 0;
         prox = want > prox ? Math.min(1, prox + dt / 480) : Math.max(0, prox - dt / (phase === 'reveal' ? 420 : 900));
@@ -43284,7 +44655,7 @@ MC.addLang('en', {
     for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(U.vr() * (i + 1)); const tmp = order[i]; order[i] = order[j]; order[j] = tmp; }
     if (n > 1 && order.every((s, i) => s.row === i)) order.push(order.shift());
     order.forEach((s, i) => { s.pile = i; });
-    let miss = 0, drag = null, sel = null, phase = n ? 'join' : 'letter', joinT = -1, letT = n ? -1 : 0, closing = false, laid = false;
+    let miss = 0, drag = null, sel = null, phase = n ? 'join' : 'letter', joinT = -1, letT = n ? -1 : 0, closing = false, laid = false, touched = false;
     // 편지(9줄): 줄마다 2줄까지
     let letRows = null, letKey = '';
     function letterRows() {
@@ -43354,6 +44725,14 @@ MC.addLang('en', {
           for (const s of scraps) if (s.placed) drawScrap(s, false);
           for (const s of scraps) if (!s.placed && !(drag && drag.s === s)) { const k = now() - s.shakeT; const dx = k < 300 ? Math.round(Math.sin(k * 0.08) * 3 * (1 - k / 300)) : 0; s.cx += dx; drawScrap(s, false); s.cx -= dx; }
           if (drag) drawScrap(drag.s, true);
+          if (phase === 'join' && !touched && !drag && t > 2600) {   // [fix beats-clarity] 처음 손대기 전: 쪽지 하나를 제자리로 끌어 보이는 손짓(글자 없음)
+            const s = scraps.find(o => !o.placed);
+            if (s) {
+              const r = Gm.slots[s.row], k = ((t - 2600) % 1800) / 1800, e = MC.ease.inOutQuad(clamp(k / 0.7, 0, 1));
+              const x0 = s.cx + SW / 2, y0 = s.cy + (RH - 4) / 2, x1 = r[0] + r[2] / 2, y1 = r[1] + r[3] / 2;
+              hint(x0 + (x1 - x0) * e, y0 + (y1 - y0) * e, U.lvl(t, 2600, 300) * 0.75 * (k < 0.85 ? 1 : (1 - k) / 0.15));
+            }
+          }
           if (phase === 'joined') {
             const k = t - joinT, x = Gm.x0 + HW - 3;
             for (let y = Gm.y0; y < Gm.y0 + Gm.sheetH; y++) if (((y + ((k / 40) | 0)) % 4) < 2) g.px(x, y, '#ffcf4a');
@@ -43416,6 +44795,7 @@ MC.addLang('en', {
           return true;
         }
         if (ev.type === 'down') {
+          touched = true;
           const s = scrapAt(ev.x, ev.y);
           if (s) { drag = { s, id: ev.id, dx: ev.x - s.cx, dy: ev.y - s.cy, x0: ev.x, y0: ev.y, moved: false }; U.sfx('page', { gain: 0.3, pitch: 1.2 }); }
           else if (sel) { const j = rowAt(ev.x, ev.y); if (j >= 0) tryPlace(sel, j); }
@@ -43612,7 +44992,7 @@ MC.addLang('en', {
   }
   stage('burn', a => {
     const g = G(), HOLD = Math.max(0.3, a.hold == null ? 1.6 : +a.hold) * 1000;
-    let prog = 0, pressed = false, burnT = -1, endT = -1, closing = false;
+    let prog = 0, pressed = false, burnT = -1, endT = -1, closing = false, pinBuf = null;   // pinBuf: [0.3.2-hands] 종이 쥔 두 손·소매를 함께 디더로 지우는 판
     const parts = new Parts(), ash = new Parts();
     return new Promise(resolve => {
       const sc = makeStage({ name: 'mg_s3_burn', full: true, IN: 300, OUT: 400, draw });
@@ -43655,15 +45035,37 @@ MC.addLang('en', {
           }
           // 종이를 쥔 손가락(위 가장자리)
           if (burnT < 1800) {
-            const lv = burnT < 0 ? 16 : clamp(1 - (burnT - 1200) / 600, 0, 1) * 16, skin = '#c89a6a';
-            for (const fx2 of [Gm.px + 14, Gm.px + Gm.pw - 18]) {
-              for (let k = 0; k < 6; k++) { const y0 = Gm.py + 2 - (k + 1) * 7; g.ditherRect(fx2 - 3 + (k >> 1), y0, 8, 7, '#2e2014', lv * (1 - k / 6)); }   // 손목·소매는 위로 갈수록 어둠에 묻힌다(막대처럼 보이지 않게)
+            // [0.3.4-hands g2] 두 손이 사라지는 때를 타 올라오는 종이 끝(cut)에 맞춘다: 남은 종이가 손끝 아래 끝(종이 윗변 + 그림 높이×2 − 20)보다 44px 위에서 지우기 시작해,
+            //   불꽃 끝(타는 줄 위 최대 9px)이 손끝에 닿기 전(+8px)에 다 지운다. 예전(1200~1800ms)에는 마지막 0.3~0.4초에 손끝이 남은 종이 아래 불꽃 속에 매달려 '손이 탄다'로 읽혔다(QA).
+            // [pinch3] 제미나이 점검 1순위(원기둥 팔·잘려 붙은 손목) → pinch_g3: 손 + 맨살 손목 + 해진 소맷부리 + 소매까지 그림(24×55·24×56).
+            //   PIN_A = [손 가운데 x(종이 윗변 줄), 종이 윗변 줄, 그림 맨 위 소매 가운데 x], 소매 관은 그림 맨 위에서 위로 같은 굵기(반지름 23px)로 이어 어둠으로 녹인다
+            const PIN_A = { L: [11, 44.8, 12.5], R: [12.5, 44.8, 11.5] };
+            const pinTip = spr('cu_pinch') ? (spr('cu_pinch').height - PIN_A.L[1]) * 2 : 4;
+            const lv = burnT < 0 ? 16 : Math.min(clamp(1 - (burnT - 1200) / 600, 0, 1), clamp((cut - pinTip - 8) / 36, 0, 1)) * 16, skin = '#c89a6a';
+            const pinL = spr('cu_pinch'), pinR = spr('cu_pinch_r');
+            if (pinL) {
+              // [0.3.2-hands] 에드몽의 두 손(cu_pinch 오른손·cu_pinch_r 왼손, 2배): 손목 가운데 = 예전 fx2+2, 종이 윗변 = 그림 9·10행 사이 = Gm.py.
+              //   [0.3.4-hands] 두 그림 모두 14×22(제미나이 pinch_g1의 실제 왼쪽·오른쪽 손 — cu_pinch_r은 더 이상 좌우 뒤집기 행이 아님, 여기서도 뒤집지 않음). 코드 그대로.
+              //   회색 소매(U.sleeve)는 위 어둠으로 녹고, 소매·손을 보간 끈 판에 함께 그려 탈 때 같이 디더로 사라진다(예전 갈색 디더 막대·손끝 그림자 줄은 걷음)
+              if (!pinBuf || pinBuf.width !== g.W || pinBuf.height !== g.H) pinBuf = g.makeCanvas(g.W, g.H);
+              g.withCtx(pinBuf, () => {
+                const x = g.ctx; x.setTransform(1, 0, 0, 1, 0, 0); x.imageSmoothingEnabled = false; x.globalAlpha = 1; x.clearRect(0, 0, g.W, g.H);
+                for (const fx2 of [Gm.px + 14, Gm.px + Gm.pw - 18]) {
+                  const right = fx2 !== Gm.px + 14 && !!pinR, pin = right ? pinR : pinL, A = right ? PIN_A.R : PIN_A.L;
+                  const ox = Math.round(fx2 + 2 - A[0] * 2), oy = Math.round(Gm.py - A[1] * 2), scx = ox + A[2] * 2;
+                  U.sleeve([[scx, oy - 90], [scx, oy + 6]], 23, 23, { col: U.SLEEVE.dantes, cuff: false, fade: [12, 40] });   // [pinch3] 그림 속 소매 위로
+                  x.drawImage(pin, ox, oy, pin.width * 2, pin.height * 2);
+                }
+              });
+              U.drawDither(pinBuf, 0, 0, lv);
+            } else for (const fx2 of [Gm.px + 14, Gm.px + Gm.pw - 18]) {   // 그림이 없을 때만: 갈색 디더 손목 + 살색 덩어리
+              for (let k = 0; k < 6; k++) { const y0 = Gm.py + 2 - (k + 1) * 7; g.ditherRect(fx2 - 3 + (k >> 1), y0, 8, 7, '#2e2014', lv * (1 - k / 6)); }
               g.ditherRect(fx2 - 2, Gm.py - 3, 7, 8, skin, lv); g.ditherRect(fx2 - 2, Gm.py + 4, 7, 1, '#9a7048', lv);
             }
           }
         }
         parts.render(); ash.render();
-        if (!pressed && t > 1000 && burnT < 0) hint(g.W >> 1, Gm.py + Gm.ph + 14, U.lvl(t, 1000, 400) * 0.7);
+        if (!pressed && t > 1000 && burnT < 0) holdHint(g.W >> 1, Gm.py + Gm.ph + 14, U.lvl(t, 1000, 400) * 0.7);   // [fixer-fix] 길게 누르기 손가락
       }
       wrapUpdate(sc, dt => {
         parts.update(dt); ash.update(dt);
@@ -44094,15 +45496,23 @@ MC.addLang('en', {
           const wig = k >= 450 && k < 1250 ? Math.round(Math.sin(k * 0.04) * 2) : 0;
           const hx = Math.round(c[0] + 4 + (1 - e) * 60 + wig), hy = Math.round(c[1] + 6 + (1 - e) * 50);
           const x = g.ctx;
+          const so = spr('cu_soot');                     // hands-art: 그을음 막대를 엄지·검지로 쥔 늙은 손(막대 끝 (0,0) = 예전 검은 끝 자리)
+          if (so && so.width >= 22) {                    // [fixer-fix] 150px 회색 장대 끝의 손톱만 한 손 → 더 큰 손(22×16) + 짧은 흰 베이지 소매가 어둠 속으로 녹아 사라짐(손에서 약 26~56px)
+            U.sleeve([[hx + 70, hy + 92], [hx - 3 + 18, hy - 2 + 12]], 8, 4, { col: U.SLEEVE.faria, s: 1, fold: 6, fade: [26, 56] });
+            g.ctx.drawImage(so, hx - 3, hy - 2);
+          } else if (so) { x.fillStyle = '#3a3430'; poly(x, [[hx + 8, hy + 6], [hx + 12, hy + 3], [W + 20, H + 20], [W - 10, H + 30]]); g.ctx.drawImage(so, hx - 3, hy - 2); }
+          else {
           x.fillStyle = '#3a3430'; poly(x, [[hx + 6, hy + 4], [hx + 14, hy + 2], [W + 20, H + 20], [W - 10, H + 30]]);
           x.fillStyle = '#d8b8a0'; ell(x, hx + 4, hy + 3, 6, 4);
           g.rect(hx - 2, hy - 1, 5, 3, '#d8b8a0'); g.rect(hx - 3, hy - 2, 2, 2, '#0a0808');
           g.px(hx + 6, hy + 5, '#a88a78');
+          }
         }
         if (n < NP && T - strokeT > 380) {           // 다음 점(글자 없는 반짝임)
           const [px, py] = pts[n + 1], ph = (T % 1200) / 1200, lv = Math.round(4 + 6 * (0.5 - 0.5 * Math.cos(ph * Math.PI * 2)));
           g.ctx.globalCompositeOperation = 'lighter'; g.ctx.drawImage(U.glow(10, '#7a6a4a', lv, 1.2), px - 10, py - 10); g.ctx.globalCompositeOperation = 'source-over';
           g.px(px, py, '#e8d8b0');
+          if (n === 0 && t > 1600) hint(px, py + 3, U.lvl(t, 1600, 400) * 0.7);   // [fix beats-clarity] 첫 획 전: 반짝이는 점에 손가락(누르면 그을음 선이 그 점까지)
         }
         g.ctx.drawImage(U.vig(6, '#020202'), 0, 0);
       }
@@ -44151,8 +45561,14 @@ MC.addLang('en', {
   }
   // fixer-s3: 맥을 짚는 오른손(40×30) — 위에서 세운 '갈색 기둥' 대신, 오른쪽 아래에서 들어온 손의 두 손끝이 비스듬히 누워
   //           요골 자리(그림 (5,5))를 누른다. 손등·감아 쥔 엄지·손목, 손톱 1px 빛. 소매는 draw에서 화면 밖까지 잇는다(팔 들기의 쥔 손과 같은 소매)
-  const PRESS_TIP = [5, 5], PRESS_WRIST = [34, 26];
+  // [fixer-fix] cu_press 32×24(0.78배): 손끝 (4,4) · 소맷부리 (27,21). 그림이 없을 때(아래 코드 그림 40×30)는 (5,5)·(34,26)
+  // [0.3.4-hands] cu_press 32×30(제미나이 pulse_g1): 손끝 (4,4) 그대로 · 소매 관 끝 PRESS_WRIST (21,24.8)(그림 안 소맷부리 관 축) ·
+  //   PRESS_ARM = 손목(관 끝)에서 소매 관 먼 끝까지 화면 px(배율 2 기준, 원본 팔 방향 = 오른쪽 아래 약 40°) — draw에서 배율 s에 맞춰 늘린다
+  // [press3] 제미나이 점검 3순위(짚는 팔이 얇고 긴 막대·원근 없음) → press_g3.png: 두 손가락으로 짚는 오른손 + 짧은 맨살 손목 + 해진 소맷부리 + 소매(짚히는 팔은 흰 실루엣으로 받아 지움, 9.4° 돌림).
+  //   cu_press 32×30 → 24×33. PRESS_TIP = 검지·중지 끝, PRESS_WRIST = 그림 속 소매 끝(관 끝), PRESS_ARM = 소매 축 54.7° × 220px(배율 2 기준). 관은 소맷부리 7칸 → 먼 끝 15칸으로 넓어짐(원근)
+  const PRESS_TIP = [3, 1], PRESS_WRIST = [17.2, 27], PRESS_ARM = [127.1, 179.6];
   function pressImg() {
+    const art = spr('cu_press'); if (art) return art;     // hands-art: 참고 그림을 도트화한 손(spr_chars_s3.js cu_press, 같은 앵커) — 없을 때만 아래처럼 그림
     return once('press2', () => {
       const c = G().makeCanvas(40, 30);
       G().withCtx(c, () => {
@@ -44178,10 +45594,32 @@ MC.addLang('en', {
       return c;
     });
   }
+  // [fixer-r3 0.3.3-hands] 누르는 손 닿음 그림자: 손 그림 실루엣을 아래·아래 양옆으로 1칸(그림 1px = 화면 s px) 넓힌 어두운 판.
+  //   짚히는 팔 위에 손이 '얹혀' 보이게(두 손 살빛은 같은 사다리 그대로 — 같은 사람). 그림 원점은 (-1, 0) 칸.
+  function pressShadow(f) {
+    return once('pressShd|' + f.width + 'x' + f.height, () => {
+      const c = G().makeCanvas(f.width + 2, f.height + 1), x = c.getContext('2d');
+      x.imageSmoothingEnabled = false;
+      for (const dx of [0, 1, 2]) x.drawImage(f, dx, 1);
+      x.globalCompositeOperation = 'source-in'; x.fillStyle = '#120a08'; x.fillRect(0, 0, c.width, c.height);
+      return c;
+    });
+  }
+  // [fixer-r3 0.3.3-hands] 자기 맥 짚기: cu_wrist_young 소매(그림 x0, 안쪽 10~25행 = 가운데 18행·반지름 8칸)를 U.sleeve로 화면 왼쪽 밖까지 잇는다.
+  //   그림 소매 칸도 같은 식(빛 SLV_L 왼쪽 위·수평 관)으로 칠해 두었으므로 이음매에서 명암 단이 같다. 버퍼 격자를 그림 격자(s)에 맞추려고 Gm.x % s만큼 밀어 그린다.
+  //   주름은 그림 쪽에만(fold 60 = 이 짧은 구간엔 주름 골 없음), 소맷부리 단 없음(cuff:false — 그림 안 소맷부리가 따로 있음).
+  function selfSleeve(Gm) {
+    const s = Gm.s, X0 = Gm.x - (Gm.x % s);
+    return once('selfSlv|' + Gm.x + '|' + s, () => {
+      const c = G().makeCanvas(X0 + 2 * s, 32 * s);
+      G().withCtx(c, () => U.sleeve([[-20 * s, 20 * s], [X0 + s, 18 * s]], 12 * s, 8 * s, { col: U.SLEEVE.dantes, s, cuff: false, fold: 60 }));   // [press3] 화면 밖으로 넓어지게(원근, 제미나이 점검 '평평한 직사각형')
+      return c;
+    });
+  }
   stage('pulse', a => {
     const g = G(), old = a.who !== 'self', bpm = Math.max(20, +a.bpm || (old ? 48 : 72)), skip = old ? Math.max(0, a.skip == null ? 8 : +a.skip | 0) : Math.max(0, +a.skip | 0);
     const BEATS = Math.max(1, (a.beats | 0) || 10), IV = 60000 / bpm;
-    let felt = 0, beatN = 0, phaseT = -1, rings = [], down = false, pressed = false, doneT = -1, closing = false, bumpT = -1e9;
+    let felt = 0, beatN = 0, phaseT = -1, rings = [], down = false, pressed = false, doneT = -1, closing = false, bumpT = -1e9, downT = -1e9, upT = -1e9;
     return new Promise(resolve => {
       const sc = makeStage({ name: 'mg_s3_pulse', full: true, IN: 350, OUT: 400, draw });
       function geo() {
@@ -44205,6 +45643,7 @@ MC.addLang('en', {
         const t = sc.t, T = now(), Gm = geo();
         g.ctx.drawImage(bg(), 0, 0);
         const bump = T - bumpT < 140 ? 1 : 0;
+        if (!old && spr('cu_wrist_young')) g.ctx.drawImage(selfSleeve(Gm), Gm.x % Gm.s, Gm.y - bump);   // [fixer-r3] 제 왼팔 소매를 화면 왼쪽 밖까지(그림 왼쪽 끝에서 잘린 '회색 상자'가 아니게)
         g.ctx.drawImage(Gm.img, Gm.x, Gm.y - bump, Gm.w, Gm.h);
         const [sx, sy] = Gm.spot;
         for (const r of rings) {                     // 맥동 원
@@ -44215,13 +45654,22 @@ MC.addLang('en', {
         if (!down) {                                  // 짚을 자리(글자 없는 반짝임)
           const ph = (T % 1400) / 1400, lv = Math.round(3 + 5 * (0.5 - 0.5 * Math.cos(ph * Math.PI * 2)));
           if (doneT < 0) { g.ctx.globalCompositeOperation = 'lighter'; g.ctx.drawImage(U.glow(9, '#6a5a3a', lv, 1.2), sx - 9, sy - 9); g.ctx.globalCompositeOperation = 'source-over'; }
-          if (!pressed && t > 1500) hint(sx + 6, sy + 12, U.lvl(t, 1500, 400) * 0.7);
-        } else {                                      // 짚은 두 손가락(제 손) — 오른쪽 아래에서 들어온 손, 손목 그림과 같은 배율로(fixer-s3)
-          const f = pressImg(), s = Gm.s, ox = sx - PRESS_TIP[0] * s, oy = sy - PRESS_TIP[1] * s;
-          const bx = g.W + 24, by = g.H + 24, ex = ox + PRESS_WRIST[0] * s, ey = oy + PRESS_WRIST[1] * s;   // 소매: 화면 밖 → 손목
-          const n = Math.max(2, Math.ceil(Math.hypot(ex - bx, ey - by) / 3)), R = 5 * s;
-          for (let i = 0; i <= n; i++) { const q = i / n; g.circle(Math.round(bx + (ex - bx) * q), Math.round(by + (ey - by) * q), R + 1, '#08080c'); }
-          for (let i = 0; i <= n; i++) { const q = i / n; g.circle(Math.round(bx + (ex - bx) * q), Math.round(by + (ey - by) * q), R, '#262a34'); }
+          if (!pressed && t > 1500) holdHint(sx + 6, sy + 12, U.lvl(t, 1500, 400) * 0.7);   // [fixer-fix] 길게 누르기 손가락
+        }
+        // 짚은 두 손가락(제 손) — 오른쪽 아래에서 들어온 손, 손목 그림과 같은 배율로(fixer-s3)
+        // [fixer-fix] 누를 때 오른쪽 아래에서 100ms 미끄러져 들어오고 뗄 때 110ms 빠져나간다(한 프레임에 툭 나타나지 않게) · 박마다 손목과 함께 1px 튀어
+        //   손끝이 피부 위를 미끄러지지 않음 · 소매는 원 사슬 관 대신 화면 밖에서 굵어지는 회색 소매(U.sleeve — 짚히는 젊은 손목과 같은 색)
+        const showT = down ? t - downT : t - upT;
+        if (down || showT < 110) {
+          const f = pressImg(), art = !!spr('cu_press'), TIP = art ? PRESS_TIP : [5, 5], WR = art ? PRESS_WRIST : [34, 26], s = Gm.s;
+          const off = Math.round((down ? 1 - clamp(showT / 100, 0, 1) : clamp(showT / 110, 0, 1)) * 6);
+          const ox = sx - TIP[0] * s + off, oy = sy - bump - TIP[1] * s + off, ex = ox + WR[0] * s, ey = oy + WR[1] * s;
+          if (art) {                                   // [fixer-r3] 닿음 그림자(짚히는 팔 위 손 아래·양옆 1칸)
+            g.ctx.globalAlpha = 0.42; g.ctx.drawImage(pressShadow(f), ox - s, oy, (f.width + 2) * s, (f.height + 1) * s); g.ctx.globalAlpha = 1;
+          }
+          // [0.3.4-hands] 그림이 있으면 소매를 원본 팔 방향(PRESS_ARM)으로 곧게 잇고, 관 폭(7.5s → 4.5s px)·격자(s)를 그림 배율 s에 맞춘다
+          //   (폭 200~216의 파리아 맥 짚기는 s = 3 — 그림 속 소매 관과 같은 폭·격자라야 그림 아래 끝에서 관이 가늘어지는 계단이 없다). s = 2는 15 → 9px · 격자 2.
+          U.sleeve([art ? [ex + PRESS_ARM[0] * s / 2, ey + PRESS_ARM[1] * s / 2] : [g.W + 40, g.H + 40], [ex, ey]], art ? 15 * s : 15, art ? 7 * s : 9, { col: U.SLEEVE.dantes, s: art ? s : 2, cuff: !art });   // [press3] 관 7s → 15s(원근), 소맷부리는 그림에
           g.ctx.drawImage(f, ox, oy, f.width * s, f.height * s);
         }
       }
@@ -44240,7 +45688,8 @@ MC.addLang('en', {
       wrapUpdate(sc, dt => {
         if (auto()) { if (sc.t > 150) { felt = BEATS; close(120); } return; }
         const d = sc.t > 350 && doneT < 0 && MC.input.isDown() && !document.hidden;
-        if (d && !down) { phaseT = IV * 0.45; pressed = true; }
+        if (d && !down) { phaseT = IV * 0.45; pressed = true; downT = sc.t; }
+        if (!d && down) upT = sc.t;
         down = d;
         if (down) { phaseT -= dt; if (phaseT <= 0) { phaseT += IV; beat(); } }
         if (doneT >= 0 && sc.t - doneT > 1000) close();
@@ -44280,9 +45729,42 @@ MC.addLang('en', {
       return c;
     });
   }
+  // [fixer-fix] 빵 그림(64×40)의 소매는 그림 가장자리 x0·x63에서 잘려 화면 가장자리보다 안쪽에서 끝났다 — 소매 축 끝 (2,39)/(62,39)에서 아래 바깥으로 잇는다
+  // [breadfix] 관 끝을 이음점 (3,37)/(61,37)에서 관 축을 따라 그림 속(손 쪽)으로 1.25칸 더 넣는다. 그림이 그 위를 덮어 안쪽은 안 보이고,
+  //   관의 외곽 고리만 소맷부리 모서리까지 이어져 그림 가장자리(파리아 x 0 · 에드몽 x 63)의 소매 칸이 바탕에 바로 닿던 틈(1~2칸)이 닫힌다(2px 격자에서 틈 0).
+  const BREAD_SLV_IN = 1.25;
+  // [bread3] 사용자 「오른손 손가락이 모인 부분·아래 구부린 쪽이 어색」 → 에드몽 오른손만 제미나이 새 그림(bread_ed_g3.png: 엄지는 빵 위, 손바닥이 빵 오른쪽 끝을 감싸고
+  //   손가락이 옆·아래를 받침, 손목 → 해진 소맷부리 → 소매)으로 바꿈. cu_bread_hands의 x ≥ 30은 빵(cu_bread_loaf) 위에 새 손을 얹은 것(파리아 손 · cu_bread_old · 빵은 그대로).
+  //   BREAD_SLV_* = [관 끝 x, y(그림 칸), 축 방향 dx, dy, 소맷부리 반지름(칸)] — 에드몽 소매 축 65.6°(새 그림). 소매는 화면 밖으로 갈수록 넓어진다(먼 끝 34px, 제미나이 점검: 얇은 띠)
+  const BREAD_SLV_L = [3, 37, -0.66, 0.75, 5], BREAD_SLV_R = [42, 38.5, 0.413, 0.911, 9.5];
+  function breadSleeve(side, x0, y0, as, col) {
+    const A = side < 0 ? BREAD_SLV_L : BREAD_SLV_R;
+    const bx = x0 + (A[0] - A[2] * BREAD_SLV_IN) * as, by = y0 + (A[1] - A[3] * BREAD_SLV_IN) * as;
+    U.sleeve([[bx + A[2] * 220, by + A[3] * 220], [bx, by]], 34, A[4] * as, { col, cuff: false });
+  }
+  // [breadfix] try → ready에서 에드몽 손만 오른쪽에서 미끄러져 들어오게: cu_bread_hands의 x ≥ 30 칸 가운데 cu_bread_loaf와 다른 칸(손·소매·외곽)만 남긴 그림.
+  //   빵에만 쓰는 색(cu_bread_loaf에 있고 손 그림 cu_bread_old에는 없는 색 — 손 밑 빵 그늘 등)은 빼서, 손이 닿은 뒤 제자리에서만 보이게 한다.
+  function breadEdHand(art, lf, oh) {
+    const key0 = 'bedh|' + (art._tid || (art._tid = ++tidN)) + '|' + (lf._tid || (lf._tid = ++tidN)) + '|' + (oh._tid || (oh._tid = ++tidN));
+    return once(key0, () => {
+      const w = art.width, h = art.height, c = G().makeCanvas(w, h), x = c.getContext('2d');
+      const px = im => im.getContext('2d').getImageData(0, 0, w, h).data, A = px(art), B = px(lf), O = px(oh);
+      const col = (d, i) => d[i + 3] ? (d[i] << 16) | (d[i + 1] << 8) | d[i + 2] : -1, inLf = new Set(), inOh = new Set();
+      for (let i = 0; i < A.length; i += 4) { inLf.add(col(B, i)); inOh.add(col(O, i)); }
+      const id = x.createImageData(w, h), q = id.data;
+      for (let y = 0; y < h; y++) for (let xx = 30; xx < w; xx++) {
+        const i = (y * w + xx) * 4, ca = col(A, i);
+        if (ca < 0 || ca === col(B, i) || (inLf.has(ca) && !inOh.has(ca))) continue;
+        q[i] = A[i]; q[i + 1] = A[i + 1]; q[i + 2] = A[i + 2]; q[i + 3] = 255;
+      }
+      x.putImageData(id, 0, 0);
+      return c;
+    });
+  }
+  const BREAD_IN = 560, BREAD_HINT = 700;            // [breadfix] ready 첫 0.56초 = 두 손이 함께 쥐는 연출, 안내 손가락은 0.7초부터(두 손이 다 쥔 뒤)
   stage('bread', a => {
     const g = G(), art = spr('cu_bread_hands');
-    let phase = 'try', sep = 0, prog = 0, tearT = -1, closing = false, ptrs = new Map(), base = -1, crumbs = new Parts(), creakT = 0;
+    let phase = 'try', sep = 0, prog = 0, tearT = -1, readyT = 0, inCut = false, closing = false, ptrs = new Map(), base = -1, crumbs = new Parts(), creakT = 0;
     return new Promise(resolve => {
       const sc = makeStage({ name: 'mg_s3_bread', full: true, IN: 350, OUT: 400, draw });
       const bg = () => once('breadbg|' + g.W + 'x' + g.H, () => {
@@ -44303,18 +45785,52 @@ MC.addLang('en', {
         g.ctx.drawImage(bg(), 0, 0);
         const L = loafImg(), s = 2, lw = L.width * s, lh = L.height * s;
         if (phase === 'try') {                        // 한 손(늙은 왼손)이 찢으려다 못 한다
-          const k = t - 300, tw = k > 0 && k < 1500 ? Math.round(Math.sin(k * 0.03) * 2) : 0, slip = k > 1500 ? MC.ease.outCubic(clamp((k - 1500) / 400, 0, 1)) : 0;
+          const lf = spr('cu_bread_loaf'), oh = spr('cu_bread_old');
+          // [breadfix] 떨림·미끄러짐·그림 시작점을 2px 격자(소매 관 U.sleeve와 같은 격자)에 — 홀수 px이면 소맷부리와 관 사이에 바탕이 1px 비쳤다
+          const k = t - 300, tw = k > 0 && k < 1500 ? (lf && oh ? Math.round(Math.sin(k * 0.03)) * 2 : Math.round(Math.sin(k * 0.03) * 2)) : 0, slip = k > 1500 ? MC.ease.outCubic(clamp((k - 1500) / 400, 0, 1)) : 0;
+          if (lf && oh) {                             // hands-art: 다음 단계 그림과 같은 빵·같은 자리에 늙은 왼손 하나 — 떨며 애쓰다 미끄러져 물러난다
+            const as = lf.width * 2 <= W - 8 ? 2 : 1, aw = lf.width * as, ah = lf.height * as, ax = (cx - (aw >> 1)) & ~1, ay = (cy - (ah >> 1)) & ~1;
+            g.ctx.drawImage(lf, ax + tw, ay, aw, ah);
+            const hx0 = ax + tw - Math.round(slip * 6) * 2, hy0 = ay + Math.round(slip * 4) * 2;
+            breadSleeve(-1, hx0, hy0, as, U.SLEEVE.faria);           // [fixer-fix] 그림 가장자리에서 잘린 소매를 화면 가장자리 밖까지(파리아 = 흰 베이지)
+            g.ctx.drawImage(oh, hx0, hy0, aw, ah);
+          } else {
           g.ctx.drawImage(L, cx - (lw >> 1) + tw, cy - (lh >> 1), lw, lh);
           const hx = cx + 20 + Math.round(slip * 18), hy = cy - 8 + Math.round(slip * 12), x = g.ctx;
           x.fillStyle = '#3a3430'; poly(x, [[hx + 6, hy + 6], [hx + 18, hy + 2], [W + 20, cy + 40], [W + 20, cy + 70]]);
           x.fillStyle = '#d8b8a0'; ell(x, hx + 4, hy + 4, 9, 7);
           for (let i = 0; i < 3; i++) g.rect(hx - 6, hy - 2 + i * 4, 8, 3, '#d8b8a0');
           g.rect(hx - 6, hy + 10, 3, 1, '#a88a78');
+          }
         } else {
           if (art && phase !== 'try') {
-            const A = halfImg(0), B = halfImg(1), as = art.width * 2 <= W - 8 ? 2 : 1, aw = art.width * as, ah = art.height * as;
-            g.ctx.drawImage(A, cx - (aw >> 1) - Math.round(sep), cy - (ah >> 1), aw, ah);
-            g.ctx.drawImage(B, cx - (aw >> 1) + Math.round(sep), cy - (ah >> 1), aw, ah);
+            const as = art.width * 2 <= W - 8 ? 2 : 1, aw = art.width * as, ah = art.height * as, ax = (cx - (aw >> 1)) & ~1, ay = (cy - (ah >> 1)) & ~1;   // [breadfix] 2px 격자
+            const r = t - readyT, lf = spr('cu_bread_loaf'), oh = spr('cu_bread_old'), se = Math.round(sep / 2) * 2;
+            if (phase === 'ready' && r < BREAD_IN && (prog > 0.05 || se !== 0)) inCut = true;    // 그 사이 벌리기 시작하면 연출을 끝내고 바로 반쪽 그림(조작이 먼저, 다시 돌아가지 않음)
+            if (phase === 'ready' && r < BREAD_IN && !inCut && lf && oh) {
+              // [breadfix] 컷 대신 '거드는 손': 에드몽 손(+소매)이 화면 오른쪽 밖에서 미끄러져 들어와 빵에 닿고(약 0.27초), 그 0.12초쯤 뒤에
+              //   미끄러졌던 파리아 손(−12, +8)이 제자리로 돌아와 다시 쥔다(약 0.39초). 그림·크기·앵커는 그대로이고, 다 닿은 뒤의 화면은 아래 '통째' 그림과 픽셀이 같다.
+              const e0 = Math.max(40, (W - ax - 35 * as + 5) >> 1);               // 에드몽 손 왼쪽 끝(그림 x 35)이 화면 밖에서 시작(폭 187 → 94px)
+              const pe = MC.ease.outCubic(clamp(r / 340, 0, 1)), ex = Math.round((1 - pe) * e0) * 2;
+              const pf = MC.ease.outCubic(clamp((r - 160) / 400, 0, 1)), fx = -Math.round((1 - pf) * 6) * 2, fy = Math.round((1 - pf) * 4) * 2;
+              breadSleeve(-1, ax + fx, ay + fy, as, U.SLEEVE.faria);
+              breadSleeve(1, ax + ex, ay, as, U.SLEEVE.dantes);
+              g.ctx.drawImage(lf, ax, ay, aw, ah);
+              if (ex === 0) g.ctx.drawImage(art, 30, 0, art.width - 30, art.height, ax + 30 * as, ay, (art.width - 30) * as, ah);   // 닿은 뒤: 손 밑 빵 그늘까지 제자리 그림
+              else g.ctx.drawImage(breadEdHand(art, lf, oh), ax + ex, ay, aw, ah);
+              g.ctx.drawImage(oh, ax + fx, ay + fy, aw, ah);
+            } else if (phase === 'ready' && prog <= 0.05 && se === 0) {
+              // [breadfix] 벌리기 전에는 통째 그림(반쪽 두 장을 겹치면 가운데 찢는 선 #f0d8a8이 2칸 폭으로 보여, try → ready에서 빵 가운데 띠가 바뀌어 보였다)
+              breadSleeve(-1, ax, ay, as, U.SLEEVE.faria);
+              breadSleeve(1, ax, ay, as, U.SLEEVE.dantes);
+              g.ctx.drawImage(art, ax, ay, aw, ah);
+            } else {
+              const A = halfImg(0), B = halfImg(1);
+              breadSleeve(-1, ax - se, ay, as, U.SLEEVE.faria);    // [fixer-fix] 왼쪽 파리아(흰 베이지) · 오른쪽 당테스(회색) 소매를 화면 밖까지
+              breadSleeve(1, ax + se, ay, as, U.SLEEVE.dantes);
+              g.ctx.drawImage(A, ax - se, ay, aw, ah);
+              g.ctx.drawImage(B, ax + se, ay, aw, ah);
+            }
           } else {
             const A = halfImg(0), B = halfImg(1);
             g.ctx.drawImage(A, cx - (lw >> 1) - Math.round(sep), cy - (lh >> 1), lw, lh);
@@ -44329,9 +45845,10 @@ MC.addLang('en', {
               g.rect(hx - side * 6 - 2, hy - 8, 5, 4, '#c8905e'); g.rect(hx - side * 6 - 2, hy - 8, 5, 1, '#9a6a40');
             }
           }
-          if (phase === 'ready' && t > 2600 && prog < 0.05) {       // 가로로 벌리기(글자 없음)
-            const k = ((t - 2600) % 1500) / 1500, d = Math.round(24 * MC.ease.inOutQuad(Math.min(1, k * 1.4)));
-            const lv = U.lvl(t, 2600, 400) * 0.7 * (k < 0.85 ? 1 : (1 - k) / 0.15);
+          const h0 = readyT + BREAD_HINT;                          // [breadfix] 예전 t 2600(ready 0.3초 — 손이 들어오는 중) → 두 손이 다 쥔 뒤
+          if (phase === 'ready' && t > h0 && prog < 0.05) {       // 가로로 벌리기(글자 없음)
+            const k = ((t - h0) % 1500) / 1500, d = Math.round(24 * MC.ease.inOutQuad(Math.min(1, k * 1.4)));
+            const lv = U.lvl(t, h0, 400) * 0.7 * (k < 0.85 ? 1 : (1 - k) / 0.15);
             hint(cx - 10 - d, cy + 30, lv); hint(cx + 10 + d, cy + 30, lv);
           }
         }
@@ -44357,7 +45874,7 @@ MC.addLang('en', {
         if (auto()) { if (sc.t > 150) close(120); return; }
         if (phase === 'try') {
           if (sc.t - creakT > 420 && sc.t > 300 && sc.t < 1800) { creakT = sc.t; U.sfx('page', { gain: 0.25, pitch: 0.55 }); }
-          if (sc.t > 2300) { phase = 'ready'; }
+          if (sc.t > 2300) { phase = 'ready'; readyT = sc.t; }
         } else if (phase === 'ready') {
           const d = spread();
           prog = clamp(d / 46, 0, 1);
