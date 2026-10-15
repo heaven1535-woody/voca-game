@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.4.0-s4p1';
+  var VERSION = '0.4.0-s4p1b';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 1차(장면 1~7) 파일은 docs/S4_BUILD1.md §B(계약 docs/ARCHITECTURE_S4.md §B-2 순서, 1차에 실제로 생기는 파일만 — scenes-s4가 넣음).
@@ -46472,7 +46472,11 @@ MC.addLang('en', {
   ST.lift = function (a) {
     const n = Math.max(1, (a.n | 0) || 3), tt = a.toast != null ? String(a.toast) : '', idle = num(a.idle, 3) * 1000;
     if (isAuto()) return later(300, () => { toast(tt, 1100); return { lifts: 1 }; });
-    const MAXP = 0.6, ANG = 0.95, S = { p: 0, v: 0, held: false, y0: 0, py: 0, p0: 0, lifts: 0, counted: false, lastEnd: -1, dust: [], trem: 0, tT: 0, thud: -1e9,
+    // 0.4.0-s4p1 폰 피드백 「신부의 팔을 들어올릴 때 조작이 안 먹혀」: 위로 끌기만 받아서, 누르고만 있으면 아무 일도 없고 장면이 끝나지 않았다
+    //   → 누르고 있으면 천천히 들림(HOLD_RATE, 위로 끌면 더 높이) · 9초 동안 한 번도 안 들면 당테스가 스스로 한 번 든다(멈춤 방지)
+    //   → 「위로 올리는 게 작동을 안 해」: 폰의 빠른 휙(0.1초)은 팔이 따라 오르기 전에 손이 떨어져 무시됐다 — 위로 휙 놓으면 그 기세로 COAST_MS 동안 더 오른 뒤 떨어진다
+    const MAXP = 0.6, ANG = 0.95, HOLD_DELAY = 120, HOLD_RATE = 0.5, HOLD_MAX = 0.45, SELF_MS = 9000, SELF_LEN = 1100, FLICK_DY = 10, COAST_MS = 600, COAST_MIN = 0.3,
+      S = { p: 0, v: 0, held: false, y0: 0, py: 0, p0: 0, t0: 0, selfT: -1, coastT: -1, coastTgt: 0, lifts: 0, counted: false, lastEnd: -1, dust: [], trem: 0, tT: 0, thud: -1e9,
       ha: 0, hv: 0, gripVis: false, gripOffT: -1e9, gripOff: null, gripPose: null };   // fixer-fix: ha·hv 처진 손 상대 각·속도, gripOff 놓는 순간의 쥔 손 자세
     let lay = null;
     function layout() {
@@ -46491,9 +46495,14 @@ MC.addLang('en', {
         const kd = MC.input.keyDir ? MC.input.keyDir() : null;
         const locked = S.lifts >= n && !S.counted;         // n번 들고 떨어진 뒤엔 더 쥐지 않는다
         const kb = !locked && !S.held && sc.t > 250 && (kd === 'up' || (MC.input.isDown() && MC.input.pointerCount() === 0));
-        const grip = !locked && (S.held || kb);
+        if (S.selfT < 0 && S.lifts === 0 && !S.held && !kb && sc.t > SELF_MS) S.selfT = sc.t;   // 멈춤 방지: 스스로 한 번
+        const self = S.selfT >= 0 && sc.t - S.selfT < SELF_LEN;
+        const coast = !S.held && S.coastT >= 0 && sc.t - S.coastT < COAST_MS && S.p < S.coastTgt - 0.01;
+        const grip = !locked && (S.held || kb || self || coast);
         if (grip) {
-          const tgt = kb ? Math.min(MAXP, S.p + 0.5 * s) : MC.clamp(S.p0 + 0.6 * (S.y0 - S.py) / (L.R * ANG), 0, MAXP);
+          const drag = MC.clamp(S.p0 + 0.6 * (S.y0 - S.py) / (L.R * ANG), 0, MAXP);
+          const hold = sc.t - S.t0 > HOLD_DELAY ? Math.min(HOLD_MAX, Math.max(S.p0, 0) + HOLD_RATE * (sc.t - S.t0 - HOLD_DELAY) / 1000) : 0;
+          const tgt = coast ? S.coastTgt : (kb || (self && !S.held)) ? Math.min(MAXP, S.p + 0.5 * s) : Math.max(drag, hold);
           if (tgt > S.p) S.p = Math.min(tgt, S.p + 0.75 * s); else S.p = Math.max(tgt, S.p - 1.6 * s);
           S.v = 0;
           if (S.p > 0.1 && !S.counted) { S.counted = true; S.lifts++; toast(tt, 1100); }   // 들 때마다 「하나.」 — 「둘.」은 없다
@@ -46525,9 +46534,15 @@ MC.addLang('en', {
       },
       input(sc, ev) {
         if (sc.t < 250) return;
-        if (ev.type === 'down' && ev.id >= 0) { if (S.lifts >= n && !S.counted) return; S.held = true; S.y0 = S.py = ev.y; S.p0 = S.p; }
+        if (ev.type === 'down' && ev.id >= 0) { if (S.lifts >= n && !S.counted) return; S.held = true; S.y0 = S.py = ev.y; S.p0 = S.p; S.t0 = sc.t; }
         else if (ev.type === 'move' && S.held) S.py = ev.y;
-        else if ((ev.type === 'up' || ev.type === 'cancel') && ev.id >= 0) S.held = false;
+        else if ((ev.type === 'up' || ev.type === 'cancel') && ev.id >= 0) {
+          if (S.held && ev.type === 'up' && !S.counted && S.y0 - ev.y > FLICK_DY) {      // 위로 휙: 놓은 뒤에도 그 기세로 조금 더 오른다
+            const L = layout();
+            S.coastT = sc.t; S.coastTgt = MC.clamp(Math.max(COAST_MIN, S.p0 + 0.6 * (S.y0 - ev.y) / (L.R * ANG)), 0, MAXP);
+          }
+          S.held = false;
+        }
       },
       render(sc) {
         const g = G(), L = layout(), t = sc.t, ctx = g.ctx;
