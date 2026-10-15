@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.4.0-s4p1c';
+  var VERSION = '0.4.0-s4p1e';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 1차(장면 1~7) 파일은 docs/S4_BUILD1.md §B(계약 docs/ARCHITECTURE_S4.md §B-2 순서, 1차에 실제로 생기는 파일만 — scenes-s4가 넣음).
@@ -13562,6 +13562,23 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     return o;
   }
   const palOk = p => !!(p && MC.gfx.uiPals && MC.gfx.uiPals[p]);
+  // (sack-voice) 쉼 {p:N}: 떼어 내기 전에 그 자리(앞에 찍힌 글자 수 — 공백·줄바꿈 빼고)를 적어 두었다가, 한 자씩 찍을 때 거기서 N ms 멈춘다.
+  //   대화창(dialogue.js)과 같은 쉼 — 최종전 스승의 목소리 「계산이 틀렸으면……{p:400}\n다시 하면 되네.」가 S2 셋째 밤과 같은 박자로 들린다.
+  const isInk = c => /\S/.test(c);
+  function pausesOf(raw, chars) {
+    const out = [], re = /\{p:(\d+)\}/g; let m, last = 0, ns = 0;
+    while ((m = re.exec(raw))) { for (const c of Array.from(raw.slice(last, m.index))) if (isInk(c)) ns++; last = re.lastIndex; out.push({ ns, ms: +m[1] }); }
+    if (!out.length) return null;
+    const flat = [].concat.apply([], chars);
+    return out.map(p => { let k = 0, seen = 0; while (k < flat.length && seen < p.ns) { if (isInk(flat[k])) seen++; k++; } return { at: k, ms: p.ms }; });
+  }
+  const pauseMs = sp => (sp.pz || []).reduce((a, p) => a + p.ms, 0);
+  function shownOf(sp, now) {                                           // 지금 찍혀 있어야 할 글자 수(쉼 반영)
+    if (sp.done) return sp.total;
+    let t = now - sp.t0;
+    if (sp.pz) for (const p of sp.pz) { const a = p.at * sp.spd; if (t < a) break; if (t < a + p.ms) { t = a - 1; break; } t -= p.ms; }
+    return Math.max(0, Math.min(sp.total, Math.floor(t / sp.spd) + 1));
+  }
   H.say = async function (s) {
     const w = whoOf(s.who);
     let name = w.name;
@@ -13575,10 +13592,11 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const pal = palOk(w.pal) ? w.pal : (w.pal ? 'despair' : undefined);
     let portrait = null;
     if (PORTRAIT_IN_BATTLE[s.who]) { try { portrait = MC.dialogue && MC.dialogue.portraitOf ? MC.dialogue.portraitOf(s.who, s.face) : w.portrait; } catch (_) { portrait = w.portrait; } if (!has(portrait)) portrait = has(w.portrait) ? w.portrait : null; }
-    const sp = V.speech = { who: s.who, name: w.noTag ? null : name, color: w.color, text: w.text || G().uiPal.text, pal, shake: !!w.shake, voice: s.voice || w.voice, lines, chars, total, t0: V.t, spd, shown: 0, done: false, portrait, tempt: !!s.tempt };
+    const sp = V.speech = { who: s.who, name: w.noTag ? null : name, color: w.color, text: w.text || G().uiPal.text, pal, shake: !!w.shake, voice: s.voice || w.voice, lines, chars, total, t0: V.t, spd, shown: 0, done: false, portrait, tempt: !!s.tempt,
+      pz: pausesOf(String(s.text), chars) };
     if (s.tempt) { V.temptFx = { t0: V.t }; sfx2('tempt', 'sting', { gain: 0.6 }); }
-    const t0 = V.t;
-    await waitFor(() => V.abort || V.t - sp.t0 >= total * spd || V.skipAt >= t0);
+    const t0 = V.t, pms = pauseMs(sp);
+    await waitFor(() => V.abort || V.t - sp.t0 >= total * spd + pms || V.skipAt >= t0);
     if (!V) return;
     sp.t0 = Math.min(sp.t0, V.t - total * spd); sp.done = true;
     const t1 = V.t;
@@ -14369,7 +14387,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     // 대사 타자음
     const sp2 = V.speech;
     if (sp2 && sp2.voice) {
-      const n = Math.min(sp2.total, Math.floor((V.t - sp2.t0) / sp2.spd) + 1);
+      const n = shownOf(sp2, V.t);
       if (n > sp2.shown) { sp2.shown = n; let k = n - 1, ch = ''; for (const c of sp2.chars) { if (k < c.length) { ch = c[k]; break; } k -= c.length; } if (ch && ch !== ' ' && MC.sfx && MC.sfx.voice) { try { MC.sfx.voice(sp2.voice, ch); } catch (_) { /* */ } } }
     }
     // (S4) 자루 속: 심장 72(약 0.83초) + 비네트 맥동
@@ -15115,7 +15133,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       g.frame(nx, y - 17, nw, 18, { small: true, pal: sp.pal });
       MC.text.draw(sp.name, nx + 7, y - 16, { color: sp.color });
     }
-    const n = sp.done ? sp.total : Math.min(sp.total, Math.floor((V.t - sp.t0) / sp.spd) + 1);
+    const n = shownOf(sp, V.t);
     let k = 0;
     for (let i = 0; i < sp.chars.length && i < 3; i++) {
       let cx = x + 8;
@@ -27922,8 +27940,8 @@ MC.addSprites({ pals: PAL, spr: SPR });
 
 </script>
 <script>/* ==== data/spr_world_s4.js ==== */
-/* data/spr_world_s4.js — [art-s4] S4 「세 번째」 1차(장면 1~7) 월드 그림: 침대 위 꿰맨 자루(제미나이 sack_g1 변환)·꺼진 등잔·꺼진 촛불·바닥의 빵/반쪽 빵·촛농 자국·열린 철문·캄캄한 구멍·금빛 명령 아이콘 둘·큰 절망(en_despair2)·깊은 B4 적 세 판·삼분의 일 약병.
-   대부분 앞 파일(spr_world*.js · spr_chars_s3.js)의 행을 로드 때 읽어 글자만 바꾼다(DOM·Math.random 없음). ob_sack_bed만 제미나이 원본을 형태 그대로 옮긴 리터럴 행.
+/* data/spr_world_s4.js — [art-s4] S4 「세 번째」 1차(장면 1~7) 월드 그림: 침대 위 꿰맨 자루(손 도트 — 2026-10-15 다시 그림)·꺼진 등잔·꺼진 촛불·바닥의 빵/반쪽 빵·촛농 자국·열린 철문·캄캄한 구멍·금빛 명령 아이콘 둘·큰 절망(en_despair2)·깊은 B4 적 세 판·삼분의 일 약병.
+   대부분 앞 파일(spr_world*.js · spr_chars_s3.js)의 행을 로드 때 읽어 글자만 바꾼다(DOM·Math.random 없음). ob_sack_bed만 손으로 찍은 리터럴 행.
    계약: docs/ARCHITECTURE_S4.md §G-5·§G-6 · 1차 범위 docs/S4_BUILD1.md §F. 작업 파일(번들 밖) docs/art_wip/s4/. 2차 키(sea5·deck·ob_wreck_* …)는 아직 없다. */
 (function (MC) { 'use strict';
 if (!MC || !MC.addSprites) return;
@@ -27948,11 +27966,20 @@ function hexMix(a, b, t) {                                   // a → b로 t만�
 const lum = h => { const n = parseInt(h.slice(1), 16); return 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255); };
 
 /* ================================================================ 1. 침대 위 꿰맨 자루 ob_sack_bed (16×32, 아래 정렬) — 장면 4·5
-   원본 docs/art_refs/gemini/sack_g1.png(1792×2400, 셀 음영). 변환 docs/art_wip/s4/conv.js S4C.run(SPECS.sack)(specs.js) — 아래 행과 같다.
-   형태 그대로(돌림 없음 — 그림처럼 비스듬히 누움): k 0.0092칸/px · 원본 (70,150) → 칸 (0.6,9.4) · 10×10 표본 다수결 · 셀 톤 L 25/40/55 → a/b/c · 실밥(L≥66, 표본 10% 이상) → t
-   침대 ob_bed_straw(16×24)와 같은 칸 (1,4)에 아래 정렬로 얹힌다 → 이 그림의 8~31행 = 침대 0~23행(매트 2~21행). 짚·침대는 그리지 않는다.
-   팔레트: 자루천 #6a5a44(REDESIGN B-6 5막) 사다리 + 실밥 · 외곽 #1a1216(감방 오브젝트 k와 같음) */
-PAL.s4sack = { o: '#1a1216', a: '#3e3226', b: '#6a5a44', c: '#8e7a5c', t: '#cfc0a0' };
+   2026-10-15 손으로 다시 그림(sack-voice): 제미나이 sack_g1.png를 그대로 줄인 첫 판은 폰에서 「대각선 4px 막대」로 보였다(사용자: 「정말 막대기 같네」).
+   이번 판 = 침대 길이 방향으로 눕힌, 사람 몸이 든 자루. 아까까지 신부님이 누워 있던 그 자리(ch_faria2_lie_0 = 침대 8~23행)에 신부님 크기로.
+   몸 윤곽: 머리 쪽 끝 꿰맨 입구(밝은 실 t 점선) → 둥근 머리 혹(폭 6) → 잘록한 목 → 각진 어깨가 가장 넓음(폭 10 = 매트 14칸의 ~70%) → 몸통은 곧게 → 다리·발 쪽으로 좁아짐(폭 8, 두 발 사이 홈).
+   빛은 왼쪽 위(탁자 등잔 쪽): 왼쪽 가장자리 c · 가운데 b · 오른쪽 a, 팔이 몸 옆에 붙은 주름 a 두 칸. 오른쪽 한 칸 s는 담요 위에 떨어진 그림자.
+   첫 시안(어깨 폭 12, 침대 7~22행)은 짧고 둥글어 「호리병·돈자루」로 읽혀 버림 — 사다리 ladder_s4(침대 0~7행을 불투명하게 덮음)의 발치 2행 위로 머리를 올려 길이를 벌었다.
+   침대 ob_bed_straw(16×24)와 같은 칸 (1,4)에 아래 정렬 → 이 그림의 y행 = 침대 (y−8)행. 자루는 침대 6~22행(머리 6~7행이 사다리 발치 가로대를 덮음 — 그리는 순서 y4 > y3이라 자루가 위) · 침대 틀 22행 안.
+   sack_g1.png는 색·천 결·실밥 참고만. 비교 그림 docs/art_wip/s4/ob_sack_bed/. 외곽 o #1a1216(감방 오브젝트 k와 같은 결)
+   ── 2차 다듬기(0.4.0-s4p1e, 사용자: 「자루로 더 보이도록」): 위 판은 폰에서 「천으로 감싼 사람 인형」(둥근 머리·잘록한 목·어깨)으로 읽혔다.
+   사람 윤곽을 버리고 '꿰맨 삼베 자루 덩어리'로: 머리 쪽 끝 = 오므려 묶은 주둥이(천 술 o/c 4갈래 → 좁아짐 → 끈 u 감음 + 오른쪽 밝은 매듭 t 2×2 + 늘어진 끈 꼬리 t 2칸),
+   몸통 = 폭 8~9의 불룩한 덩어리(왼쪽 위·오른쪽 가운데에 약한 혹만, 좌우 비대칭), 가슴·무릎 자리 끈 두 줄(윤곽이 한 칸씩 조여 들어감 = 묶은 짐, 왼쪽 2칸만 밝게),
+   삼베 결 = c/b·b/a 체크 디더, 세로 솔기 = 9열 어두운 홈 a + 땀 u·t 2칸 4개, 발 쪽 끝 = 다시 묶은 주둥이(otuuo)와 짧은 술.
+   색: 자루천을 더 어둡고 누렇게(b #6a5a44 → #5a4729) — 등잔 빛(약 +45)과 반짝임(glow)을 받아도 살색이 아니라 삼베 황갈색. 끈·실 t는 #d8cbaa(#cfc4ac 계열), 끈 그림자 u #8c7c58.
+   시안 비교 docs/art_wip/s4/ob_sack_bed/compare2.png · draft2_*.png. 그리는 자리(16×32 아래 정렬, 침대 (1,4))와 길이(11~30행)는 그대로. */
+PAL.s4sack = { o: '#1c130c', a: '#3b2d1a', b: '#5a4729', c: '#7a6436', t: '#d8cbaa', u: '#8c7c58', s: '#221a16' };
 SPR.ob_sack_bed = { pal: 's4sack', rows: [
 "................",
 "................",
@@ -27962,29 +27989,29 @@ SPR.ob_sack_bed = { pal: 's4sack', rows: [
 "................",
 "................",
 "................",
-".............o..",
-"............oto.",
-"...........ocbto",
-"..........ocbbao",
-"..........obbaao",
-".........obbbao.",
-"........ocbbao..",
-".......oabbbo...",
-".......obbaao...",
-"......ocbbao....",
-".....obbbaao....",
-".....obbbao.....",
-"....obbbao......",
-"...ocbbao.......",
-"...obbbao.......",
-"..oabbao........",
-".obbbao.........",
-"ocbbbao.........",
-"obttao..........",
-"oaaaao..........",
-".oooo...........",
 "................",
 "................",
+"................",
+"....o.o.o.oo....",
+"....occbccbo....",
+".....occbco.....",
+"......oaaott....",
+".....ouuuutt....",
+"....ocabbbaot...",
+"...occabutbaot..",
+"...occbcbabaos..",
+"....ottuuuuos...",
+"...ocbcbcabaos..",
+"...occbcutbaos..",
+"...ocbcbcabaaos.",
+"...occbcutbbaos.",
+"...ocbcbcabaos..",
+"....ottuuuuos...",
+"...occbcbabaos..",
+"...ocbcbutbaos..",
+"....occbbaaos...",
+".....otuuo......",
+"....ocbcbco.....",
 "................"] };
 
 /* ================================================================ 2. 꺼진 등잔·꺼진 촛불 (장면 3 끝 ~ 5) */
@@ -28947,7 +28974,7 @@ MC.data.battle = {
       "swallow": {
         "line": { "who": "despair", "t": "그 사람처럼,\n자루에 담겨 나가." },
         "wait": 3000, "think": "……숨.", "lowpass": 420, "lateMs": 600,
-        "voice": { "who": "faria_off", "t": "계산이 틀렸으면, 다시 하면 되네." }
+        "voice": { "who": "faria_off", "t": "계산이 틀렸으면……{p:400}\n다시 하면 되네." }   // 2026-10-15 사용자 결정: S2 셋째 밤(events_a4m.js a4m.n3_measure)과 같은 글자(M08)
       },
       "master": {
         "say": "천천히. 셋까지 세고.", "counts": ["하나.", "둘.", "셋."], "countMs": 1000,
