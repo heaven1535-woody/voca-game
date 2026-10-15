@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.4.0-s4p1b';
+  var VERSION = '0.4.0-s4p1c';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 1차(장면 1~7) 파일은 docs/S4_BUILD1.md §B(계약 docs/ARCHITECTURE_S4.md §B-2 순서, 1차에 실제로 생기는 파일만 — scenes-s4가 넣음).
@@ -1257,8 +1257,11 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 
   /* ---------- 문자열 굽기 (한 줄 → 캔버스 한 장) ---------- */
   // opt: {shadow:'#000'(1px 우하), outline:'#000'(1px 8방향)}. 캔버스 맨 위 pt행은 윗여백(그릴 때 y − pt, ko는 0)
+  // 쉼 표시 {p:N}은 대화창만 읽는다 — 말풍선·토스트처럼 글자를 바로 굽는 곳에서는 글자로 새지 않게 떼어 낸다(폰 피드백 「다시.{p:200} 천천히.」)
+  const PAUSE_RE = /\{p:\d+\}/g;
   function bake(str, fname, color, shadow, outline) {
     fname = fname || 'body';
+    if (typeof str === 'string' && str.indexOf('{p:') >= 0) str = str.replace(PAUSE_RE, '');
     color = resolveColor(color);
     const key = fname + '|' + color + '|' + (shadow || '') + '|' + (outline || '') + '|' + str;
     let c = lines.get(key);
@@ -1503,6 +1506,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   function wrap(str, maxW, fname, md) {
     fname = fname || 'body';
     str = String(str == null ? '' : str);
+    if (str.indexOf('{p:') >= 0) str = str.replace(PAUSE_RE, '');
     md = md || mode;
     const key = (md === 'ko' ? '' : md + '|') + fname + '|' + maxW + '|' + str;
     const hit = wraps.get(key);
@@ -4947,14 +4951,24 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   }
 
   /* ---------------------------------------------------------------- 공개: 효과음 */
-  /** 효과음 재생. o: {pan:-1..1, pitch:배율, gain:배율}. 없는 id → 경고 1회 */
+  /** 효과음 재생. o: {pan:-1..1, pitch:배율, gain:배율, lp:Hz(이 소리만 저역 통과 — 담요 속처럼 먹먹하게, 돌려받은 inst.lp로 도중에 열 수 있음)}. 없는 id → 경고 1회 */
   X.play = function (id, o) {
     try {
       const d = def(id);
       if (!d) { A.warn('sfx:' + id, '없는 효과음 id: ' + id); return null; }
       if (!d.L) return null;
       if (!A.canPlay()) return null;
-      return playDef(A.graph(), id, d, o || {}, 'sfx', null, null);
+      o = o || {};
+      if (o.lp > 0) {                                      // [embrace-side] 소리 하나에만 거는 저역 통과(버스 앞) — 끝나면 떼어 냄
+        const g = A.graph(), lp = A.u.biquad(g.c, 'lowpass', +o.lp, 0.7);
+        lp.connect(g.cat.sfx.in);
+        const inst = playDef(g, id, d, o, 'sfx', lp, null);
+        if (!inst) { try { lp.disconnect(); } catch (e) { /* */ } return null; }
+        inst.lp = lp;
+        if (!g.off) setTimeout(function () { try { lp.disconnect(); } catch (e) { /* */ } }, Math.max(0, inst.end - g.c.currentTime + 0.6) * 1000);
+        return inst;
+      }
+      return playDef(A.graph(), id, d, o, 'sfx', null, null);
     } catch (e) { A.warn('sfxerr:' + id, '효과음 오류(' + id + '): ' + e.message); return null; }
   };
   /** 효과음 id 목록(별칭 포함, 내부용 '_' 제외 옵션) */
@@ -21312,6 +21326,8 @@ MC.addSprites({
    1807 젊은 파리아의 1인칭 손 cu_hands_young(final_paper_young.js — 플레이어가 에드몽의 손으로도 보는 손)도 같은 방식으로 제미나이 원본에서 옮겼다. 에드몽 손 13장 모두 + cu_hands_young.
    빵 장면은 두 손 모두 제미나이다(사용자 「신부님 손도 바꿔줘」): cu_bread_hands 전체(오른쪽 에드몽 손 + 왼쪽 파리아 손)와 한 손 단계 cu_bread_old(파리아 손)가
    같은 원본 bread_g1.png에서 옮긴 행이고, 정본은 final_bread_both.js다(인계 §10-10). 파리아의 다른 손(cu_arm cu_wrist_old cu_soot cu_embrace_head)은 pixelize.html이 정본 그대로.
+   [0.4.0-s4p1c] 「그 밤」 끌어안기 새 그림 cu_embrace_side(옆에서 본 포옹, 84×105 — 제미나이 embrace_side_g2.png를 형태 그대로 옮긴 행, 7-14, 인계 docs/handoff/embrace-side.md)와
+   그 층(_bg · _hand · _head, 로드 때 나눔). 예전 cu_embrace_l·r·head는 지우지 않고 남겨 둠(새 그림이 없을 때의 폴백).
    계약: docs/ARCHITECTURE_S3.md §D-2(art-chars-s3 표). 계약 밖 추가분은 docs/handoff/s3-art-chars-s3.md. */
 (function (MC) { 'use strict';
 if (!MC || !MC.addSprites) return;
@@ -23248,6 +23264,148 @@ SPR.cu_embrace_head = { pal: 'cu_embrace', rows: [
 "..............................",
 "..............................",
 ".............................."] };
+// 7-14. [embrace-side 0.4.0-s4p1c] 「그 밤」 끌어안기(breath blanket)의 새 그림 cu_embrace_side 84×105(2배로 그림) — 옆에서 본 포옹: 무릎 꿇은 에드몽(회색 셔츠·어깨까지 오는 짙은 갈색 머리·짧은 수염)이
+//   갈색 담요에 싸인 여윈 파리아(흰 머리·흰 수염, 얼굴을 에드몽 어깨에 묻음)를 가슴에 꽉 끌어안는다. 에드몽 두 손(뒷머리를 감싼 손 · 담요 등을 안은 손), 이를 악물고 눈을 꼭 감은 얼굴.
+//   사용자 피드백 「끌어안기로 보이지 않는다」(예전 = 화면 아래 두 주먹 + 담요 결 동그라미 + 흰 머리칼) → 사용자가 고른 해결 「옆에서 본 포옹 그림」.
+//   원본: docs/art_refs/gemini/embrace_side_g2.png(765×1024, 사용자 유료 제미나이 — 사용자가 고른 정본, 번들 밖). 쓰지 않은 시도: embrace_side_g1(손 셋) · embrace_side_rel_g1/g2(자세가 달라짐).
+//   변환: docs/art_wip/edmond/gemini/embrace_side/es.js ES.build()(c2p.js 위) = embrace_side/final_rows.txt. 형태는 제미나이 그림 그대로 — 초록 배경·✦ 표식·왼쪽 위 촛대만 빼고(장면엔 등잔 빛이 따로 있음),
+//   균일 배율 k = 0.12칸/px(원본 (26,98) → 칸 (0,0), 돌림 없음) · 재질별 명암 사다리 · 외곽선 · 잡티 정리. 얼굴(13×16칸)만 같은 배율·같은 격자에서 칸을 다시 고름(자동 표본은 굵은 선 셋이 붙어 뭉개짐 —
+//   찡그린 눈썹·감은 눈꺼풀·눈 밑 주름·코끝·악문 이 n·아랫입술 그늘이 2배에서 읽히게. es.js ES.FACE).
+//   팔레트 PALS.cu_embrace_side = 기존 인물 색: 에드몽 살 a~e = PALS.cu_embrace(손 기준서 §3) · 머리 k h H j = pt_dantes_d5(d h H j) · 셔츠 1~4 = U.SLEEVE.dantes ·
+//   파리아 흰 머리 q r i I = cu_embrace g · faria2 d h H · 살 u t S s = cu_wrist_old a · cu_embrace t S s · 담요 x w W y = minigames SKIN.blanket(#2a1b10 #4a3222 #5c4230) + cu_embrace W · 이 n · 외곽 o.
+//   층(코드가 따로 움직이는 부분 — 같은 색의 다른 글자): 에드몽 두 손 A~E(살)·O(외곽) → cu_embrace_side_hand · 파리아 머리·수염·얼굴 q r i I u t S s · P(외곽) → cu_embrace_side_head.
+//   cu_embrace_side_bg = 두 층 칸을 가장 가까운 다른 칸 글자로 메운 판(층이 2~4px 움직일 때 드러나는 틈만 보임). 셋 다 아래에서 로드 때 만든다(Math.random 없음).
+//   minigames.js breath(skin 'blanket')가 쓴다 — 누르는 동안 그림 그대로(경련 중 파리아 머리 1px 떨림), 손을 떼는 순간 파리아 머리가 위·뒤로 들썩, 두 손이 아래로 미끄러짐. 인계 docs/handoff/embrace-side.md
+PALS.cu_embrace_side = { '1': '#2e2b28', '2': '#4a4742', '3': '#6e6a62', '4': '#8e8a80', o: '#2b1d2a', O: '#2b1d2a', P: '#2b1d2a', a: '#654540', b: '#8e6450', c: '#b58566', d: '#d8ac8c', e: '#f0d6ba', n: '#efe0d2', A: '#654540', B: '#8e6450', C: '#b58566', D: '#d8ac8c', E: '#f0d6ba', k: '#20120c', h: '#3a2616', H: '#5a3e2a', j: '#76523a', x: '#2a1b10', w: '#4a3222', W: '#5c4230', y: '#664630', q: '#8a8680', r: '#aca8a0', i: '#e4e2dc', I: '#fdfcf8', u: '#6c5650', t: '#8e7468', S: '#b49a88', s: '#dcc0ac' };
+SPR.cu_embrace_side = { pal: 'cu_embrace_side', rows: [
+"............................................oooo....................................",
+".........................................ooojhhhooko................................",
+"........................................ojjjhhhhhhkkoo..............................",
+".......................................oojjHhhhhhhkkhhoo............................",
+"......................................ojjjHHhhhhhhkkkkkoo...........................",
+"......................................ojjHHHhkhhhhhkkkkkko..........................",
+".....................................ohhHHHkkhHhhhkkhkkkkko.........................",
+"....................................oohhhhkkhHHohhhhhhkkhhko........................",
+"...................................oohhhhoohhhhhhHhhhhookkkko.......................",
+"...................................johhhhhhhhhhHhhHhhhodokkko.......................",
+"...................................ojhookkhhhkhhHhhodddddooko.......................",
+"...................................jjhokohhhkhhHhhoddeedcoooo.......................",
+"...................................ojokhhokkhhhhohoddeedcooooo......................",
+"..................................ojjkkhooohhhohodddddedcooooo......................",
+".................................oojhkkkodochhdddoooobbdcoooo.......................",
+"................................ojjhhkokococchddbdddooodcoooo.......................",
+"................................oojhkkkkoeccchddbboooocdcoooo.......................",
+"...............................okohjkkhkooocchddddbabddbohooo.......................",
+"...............................ookokkkhkkoocbhddhdddddecohooo.......................",
+"..............................okkohhkkhhkkobchddhdooddecoh..........................",
+"..............................ojooohkkkhkkobccdddddbooddoh..........................",
+"..............................ooojokokooojoabcccbaaabooohh..........................",
+".............................oo4jjkkoooodjjabccbonnnoccohh..........................",
+"............................o44423ooojooddbaabcbbooocPPPPqP.........................",
+"..........................oo44332333oooddcbaabcbbaaccrrrqqOO........................",
+".........................o4433332o33o2ddecbboooceeccPrrPOCCAOO......................",
+"........................o4433332223332odecbboooooHjPrrrPOCCBAAO.....................",
+".......................o4j3333322213332bebbbP333PPPrrrrrDDCBABBO....................",
+"......................o4j33333233213333obbo2rrirrrrrrirPODDDAABO....................",
+".....................o443333222332123333yy23riiiiIiiiiiiBBOAABBBO...................",
+".....................o4y32333321222o133ooyo3IIiIIIiiiiiirBOqqBBBO...................",
+"....................o4y323333332122111oooyy3rrriiiiIIiirirCCqBBBBO..................",
+"....................oy323333333321111oooyyu3iiiiiiiiiiirrrqqqBBBBO..................",
+"...................o4333333333333211111o1yuiiiiiiiriiirrrrrqqqqBBAO.................",
+"..................o4433333333333232WW11o1oyyiiSiirrqrirrqqqqPPPOOAO.................",
+"..................o43333333333333221W1111oyyyiySPrrqriqrqPPqxxxxxO..................",
+"..................o432333333323332W1Wo111oyssiytyPrrrrqPWxxwxxxxxxo.................",
+".................o43322333333212332WWo111oyssitytPrrqqPWwWWwxxxxxxo.................",
+".................o433233333333212232oo111oPussttPoPqPwWWwxxxxxxxxxxoo...............",
+"................o43332333333333211221o1111Pusti3oyyPWWwowwWoOOoooooxxo..............",
+"................o4333233333333333o111ooo11oytyiiPyoWWoxWWwwWAAwwwwxxxxo.............",
+"................y433223333333223332o1ooo11yyyiiiiPWWoxwooowwwECCCOxxxxo.............",
+"................oy32313333333311222221oo11ooy3iiPwooowwWWWwwOEECOOBBxxxo............",
+"...............o4332211233333332111221ooooo233iiPowWWWWWwwwxEEEOODDBAxxo............",
+"...............o433312o1233333333111111ooooo233PWWWWwwxxxxxOEEEEEDBOOAxxo...........",
+"...............o4333211o112333333332211ooooo2owWWWWWWWwxxoOEEEEEEEDCBBxxxo..........",
+"...............o3333321oo112333333333211ooooowWWWWWWwwxxxoOEEEEEEDCCOOoxxo..........",
+"..............o433333321oo11232233333311oooooWWWWwwxxxxxoeEEEEEDDDDBBBOxxxo.........",
+"..............o433333321oo11123211222221oooowWWwwxxxxooeeeEEEEEDDBBBOOoxxxo.........",
+"..............o4333332oo1oo11333322211111ooxwwwxxxxooeeeeeEEEEBBBBBBBBxoxxxo........",
+".............o4333332o221ooo12333333222211oxxoo2ooeeeeeeeeEECBBBBBBBOOxxxxxo........",
+".............o433321122211oo112333333321o1Wo13232eeeeeeeeeeccAAAOOOxxxxxxxxo........",
+".............o43332233211oooo112333331122oW113232eeeeeeeebyooOOOoxooxxxxxxxo........",
+".............o33333333211o1ooo1133331123o121232322eeeebbbyoooxxxxxxxxxxxxxxo........",
+".............o3333333311o11ooo11133o3331122122322oeeebbbooooxxxxxxxxxxxxxxxxo.......",
+".............o333333321o111oooo113333321122222322yybybboooooxxxxxxxxxxxxxxxxo.......",
+".............o33333321o1111ooooo11322321o32223222ybyboooooxxxxxxxxxxxxxxxxxxo.......",
+".............o4333331W1211ooooooW1112321333213121oyboooooxxxxxxxxxxxxxxxxxxoxo......",
+".............o433332W12211oooooooW1123213331W1121yooooooooooxxxxxxxxxxxxxxxoxo......",
+".............oyy332W23311oooxxxxoo1113233321W1111oooooooooxxxxxxxxxxxxxxxxxoxo......",
+".............o3y32223331ooWWwxxxxxo112233211W111oooooooxxxxxxxxxxxxxxxxxxxxoxo......",
+".............o432233331o3yWWWwxxxxxo11111111W111ooooxxxxxxxxxxxxxxxwxxxxxxxoxxo.....",
+".............o43333332o3yWWWWWwxxxxxo111111111WWoooxxxxxxxxxxxxxxxwwxxoxxxxoxxo.....",
+"............o433333321oyWWWWWWWWxxxxxo1111oo1oooooooooooxxxxxxxxwWwxxoxxxxxoxxo.....",
+"............o43333321oWWWWWWWWWWWwxxxxxooooooooooxxxxxxxxxxxxxwwWwxxoxxxxxxoxxo.....",
+"............o3333321ooWWwWWWWWWWWWwxxwwxoooooxxooooxxxxxxxxwwWWwxxoxxxxxxxxoxxo.....",
+"............o33331o1o3WWwWWWWWWWWWWwxwWwxoooooxxxoooxxxxxxxwwwxxxoxxxxxxxxxxxxo.....",
+".............o3321113WWWwWWWWWWWWWWwxxWWwxooxooxxxxoooxxxxxxxxxoxxxxxxxxxxoxxxxo....",
+".............332122o3WWWwWWWWWWWWWWWxxWWWwooxxooxxxxxoooxxxxxxxxxxxxxxxxxxoxxxxo....",
+".............o2232133WWWxWWWWWWWWWWWxxxWWWWooxxooxxxxwWoooxxxxxxxxxxxxxxxxxxxxxo....",
+".............o3321o3WwWWxWWWWWWwwWWWWxxWWWWoooxxooxxxxwWWoooxxxxxxxxxxxxxxxxxxxo....",
+".............o32113WWwWWxWWWWWWwxwWWWwxxWWWWooxxxooxxxxxxWWWooxxxwwxxxxxxxxxxxxo....",
+".............o111oWWWWWWxoWWWWWwxxWWWwxxwWWWoooxxxooxxxxxxwwWWWWWwwxxxxxxxxxxxxo....",
+".............o11o3WWwwWWwoWWWWWWxxWWWWxxwWWWWooxxxxooxxxxxxxxxwwxxxxxxxxxxxxxxxxo...",
+".............o11o4WWwwWWwoWWwwWWxxxWWWxxxwWWWoxoxWwoxoxxxxxxxxxxxxxxxxxxxxxxxxxoxo..",
+".............o1o3WWWxwWWwxoWWxwWwxxwWWWxxwWWWWooowWwoxooxxxxxxxxxxxxxxxxxxxxxxxoxo..",
+".............o14WWWwxwWWwxoWWoxWwxxxwWWxxxWWWWoxowWWwxxooxxxxxxxxxxxxxxxwxxxxxxoxo..",
+"..............oWWWWwxwWWwxoWWoxwWxoxxWWxxxWWWWWxxoWWWoxxxoxxxxxxxxxxxxxxwxxxxxxoxxo.",
+".............oyyWWWxxWWWWxxWWWxxwwxoxwWWxoxWWWWoxoWWWWoxxxooxxxxxxxxxxxwwxxxxxxoxxo.",
+".............oyWWWxxxWWWWxxoWWoxxwxxxxwWwxxwWWWWxxoWWWWxxxxxooxxxxxxxxxWwxxxxxxoxxo.",
+"............oyyWWWxxxWWWWwxxWWWoxxxxoxxwWxoxwWWWoxowWWWoxxxxxxoooxxxxxwWxxxxxxxooxxo",
+"............oyWWWxxxwWWWWwxxoWWooxxxxoxxwwxoxWWWWxxowWWWoxxxxxxxxxxxxwWwxxxxxxxxoxxo",
+"...........oyWWWWxxxwWWWWWxxxoWWooxxxxooxxxxxxWWWoxxxWWWWoxxxwwxxxxWWWWwxxxxxxxxoxxo",
+"...........oyWWWwxxxwWWWWWwxxxwWWwoooxxooxxxoxwWWWxxxwWWWWoxxxwWWWWWWWWxxxxxxxxxoxxo",
+"...........oyWWwxxxxwWWWWWwxxxxwwWWWooooooxxxoxwWWoxxxwWWWWoxxxwwWWWWWwxxxxxxxxxoxxx",
+"...........oyWwxxxxxwWWWWWWwxxxxxxoooxxoooooxxoxwWWxxxxwWWWWWoxxxxwWWwxxxxxxxxxxoxxx",
+"..........oyWWwxxxxxwWWWWWWWxxxxoooxxxxoooooooxxxwWwxxxxxWWWWWwwxwWWWxxxxoxxxoxooxxx",
+"..........oyWWxxxxxxxWWWWWWxxxxoooxxxooxxxxxxoooxxxwoxxoxxwWWWWWWWWWxxxxxoxxxoxooxxo",
+"........ooyyWxxxxxxxxWWWWxxxxxooxwxxooxxwwwwwxxooxxxwxxxoxxwWWWWWWxxxxxxoxxxxoxoxxxo",
+".......oyyoyWxxxxxxxxxWxxxxxoowxowxoxxwwwwwwwwwxxoxxxxxxxxxxxwwwwxxxxxxxxxxxoxxoxxxo",
+"......oyyWoWWxxxxxxxxxxxxxxooWwoWxooxxwwwwwwwwwwxxoxxxxxxxxxxxxxxxxxxxxoxxxxoxxoxxo.",
+".....oyyWwwWWwxxxxxxxxxxxxooWWoWwxoxxwwwwwwwwwwwwwxooxxxxxxxxxxxxxxxxxoxxxxoxxoxxxo.",
+"....oyyWwwWWWWwxxxxxxxxxooWWWxwwxooxwwwwwwwwwwwwwwwxooxxxxxxxxxxxxxxxoxxxxooxxoxxo..",
+"....oyWwxwWWWWWwwxxxxxooWWWwxwwxooxxwwwwwwwwwwwwwwwwxooxxxxxxxxxxxxxxxxxxooxooxxxo..",
+"...ooyWxxxwWWWWWWwooWWWWWWwxowxxoooxxxxxwwwwwwwwwwxxxxooxxxoxxxxxxxxxxxoooooxxxxo...",
+"..oyoWWwxxxwwWWWWWWWWWWxxxxowxxooooooxwwwwwwwwwwwxxxxxoooxxxxoxxxxxxxooooxxxxxxo....",
+".oyWWWWWwoxxxxwwwwwwxxxxxxoxxxxooxxxoooooooxwwwwwxxxxxxoooxxxxxooxxoooxxxxxxxxo.....",
+".yWWxxWWWWwooxxxxxxxxxxxoxxxxxoooxxxoxoooxxwwwwwxxxxxxxooooxxxxxxxxxxxxxxxxxxo......",
+".oowwxxxxwwwxxxxoxxxxxxxxxxxxoooxxxxxxxoxooxwwwwxxxxxxxooooooxxxxxxxxxxxxoxoo.......",
+"...oooooooooxxxxxxxxxxxxxxxxo.oooxxxxxxxowxxxxxxxxxxxxxo.ooooooxxxxxxoooo...........",
+"............oooxxxxxxxxxxooo.....oooxxxxxxwwwwwxxxxxxxo.......ooooooo...............",
+"...............ooxxxooooo...........ooxxxxxxxxxxxxxxxo..............................",
+".................ooo..................oooooxxxxxxxxoo...............................",
+"...........................................oooooooo.................................",
+"...................................................................................."] };
+// 층 나누기: 손(A~E O) · 머리(q r i I u t S s P) → 각자 판, 나머지 + 층 자리를 메운 판(_bg). 메우기 = 층이 아닌 칸에서 출발한 다중 출발 너비 우선(4이웃, 외곽 o·빈칸은 나중 출발)
+(function () {
+  const R = SPR.cu_embrace_side.rows, H = R.length, W = R[0].length, HAND = 'ABCDEO', HEAD = 'qriIutSsP';
+  const src = R.join(''), bg = src.split(''), done = new Uint8Array(W * H), lay = c => HAND.indexOf(c) >= 0 || HEAD.indexOf(c) >= 0;
+  let q = [];
+  for (const pass of [0, 1]) {
+    for (let p = 0; p < W * H; p++) if (!done[p] && !lay(src[p]) && ((src[p] !== 'o' && src[p] !== '.') === (pass === 0))) { done[p] = 1; q.push(p); }
+    for (let i = 0; i < q.length; i++) {
+      const p = q[i], x = p % W, y = (p / W) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= W || Y >= H) continue;
+        const r = Y * W + X; if (done[r] || !lay(src[r])) continue;
+        done[r] = 1; bg[r] = bg[p]; q.push(r);
+      }
+    }
+    q = [];
+  }
+  const rows = a => { const o = []; for (let y = 0; y < H; y++) o.push(a.slice(y * W, (y + 1) * W).join('')); return o; };
+  const pick = set => rows(src.split('').map(c => (set.indexOf(c) >= 0 ? c : '.')));
+  SPR.cu_embrace_side_bg = { pal: 'cu_embrace_side', rows: rows(bg) };
+  SPR.cu_embrace_side_hand = { pal: 'cu_embrace_side', rows: pick(HAND) };
+  SPR.cu_embrace_side_head = { pal: 'cu_embrace_side', rows: pick(HEAD) };
+})();
 MC.addSprites({ pals: PALS, spr: SPR });
 })(window.MC);
 
@@ -41493,7 +41651,8 @@ MC.addLang('ko', {
     "mg.breath": "숨",
     "mg.notYet": "아직!",
     "mg.pressAgain": "다시 눌러 버틴다",
-    "mg.holdHintBlanket": "떨림이 오면 손을 떼지 말 것",
+    "mg.holdHintBlanket": "떨림이 오면 놓치지 말 것",
+    "mg.holdPromptBlanket": "길게 눌러 꽉 끌어안는다",
     "mg.blanketGauge": "힘",
     "mg.patrolGuide": "머리 위 발소리를 센다.",
     "mg.beamGuide": "발소리가 멀 때 누른다.",
@@ -41750,7 +41909,8 @@ MC.addLang('ko', {
     "mg.breath": { "w": 20, "font": "small", "note": "숨 게이지 왼쪽 한 낱말(숨)" },
     "mg.notYet": { "w": 150, "font": "big", "lines": 1, "note": "손을 떼면 크게 흔들리는 외침(아직 떼면 안 된다) — 매우 짧게" },
     "mg.pressAgain": { "w": 170, "font": "small", "lines": 1, "note": "손을 뗀 뒤 안내(다시 눌러 버티라)" },
-    "mg.holdHintBlanket": { "w": 170, "font": "small", "lines": 1, "note": "발작 끌어안기 보조 안내(프롤로그 mg.holdHint 자리) — 스승의 경련이 오면 손을 떼지 말라" },
+    "mg.holdHintBlanket": { "w": 170, "font": "small", "lines": 1, "note": "발작 끌어안기 보조 안내(프롤로그 mg.holdHint 자리) — 스승의 경련이 오면 안은 팔을 놓치지 말라" },
+    "mg.holdPromptBlanket": { "w": 170, "font": "body", "lines": 1, "note": "발작 끌어안기 첫 안내(프롤로그 mg.holdPrompt 자리) — 누르는 것이 '담요째 끌어안기'임을 말한다" },
     "mg.blanketGauge": { "w": 20, "font": "small", "note": "끌어안기 게이지 왼쪽 한 낱말(버티는 팔의 힘)" },
     "mg.patrolGuide": { "w": 170, "font": "small", "lines": 2, "note": "S3 굴 끝 방: 머리 위 회랑 단면 아래 안내(누를 것 없음 — 보초 발소리를 듣고 세는 장면, 빗금이 쌓인다)" },
     "mg.beamGuide": { "w": 170, "font": "small", "lines": 2, "note": "S3 들보 세우기·빼기 안내: 보초 발소리가 멀 때(들보 자리가 빛날 때) 화면을 누른다" },
@@ -43176,7 +43336,7 @@ MC.addLang('en', {
   const SKIN = {
     sack: { weave: 'sack', hint: 'mg.holdHint', gauge: 'mg.breath', rel: () => U.sfx('gasp', { gain: 0.55, pitch: 1.15 }) },
     blanket: {
-      weave: 'blanket', hint: 'mg.holdHintBlanket', gauge: 'mg.blanketGauge',
+      weave: 'blanket', prompt: 'mg.holdPromptBlanket', hint: 'mg.holdHintBlanket', gauge: 'mg.blanketGauge',
       // 먹먹한 비명(없으면 낮고 작은 gasp)
       rel: () => (MC.sfx && MC.sfx.has && MC.sfx.has('fit_cry') ? U.sfx('fit_cry', { gain: 0.8 }) : U.sfx('gasp', { gain: 0.4, pitch: 0.72 }))
     }
@@ -43197,6 +43357,14 @@ MC.addLang('en', {
     maskC = c; return c;
   }
   let litC = null, armBuf = null;                         // armBuf: fixer-fix 담요를 움켜쥔 두 팔(소매+손 그림)을 한 장에 그려 어둡게 얹는 판
+  // [embrace-side] 등잔 빛(따뜻한 계단 원) — lightMask를 등잔 색으로 한 번 칠해 둔 판
+  let warmC = null;
+  function warmGlow() {
+    if (warmC) return warmC;
+    const m = lightMask(), c = G().makeCanvas(m.width, m.height), x = c.getContext('2d');
+    x.drawImage(m, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#6a4424'; x.fillRect(0, 0, c.width, c.height);
+    warmC = c; return c;
+  }
   function litCanvas(W, H) {
     if (!litC || litC.width !== W || litC.height !== H) litC = G().makeCanvas(W, H);
     return litC;
@@ -43206,6 +43374,10 @@ MC.addLang('en', {
     opt = opt || {};
     const g = G();
     const SK = SKIN[opt.skin] || SKIN.sack, blanket = SK === SKIN.blanket;
+    // [embrace-side] 담요: 옆에서 본 포옹 그림 한 장(cu_embrace_side) + 따로 움직이는 두 층(파리아 머리 _head · 에드몽 두 손 _hand) + 층 자리를 메운 판(_bg).
+    //   없으면 예전 그리기(담요 결 동그라미 · cu_embrace_head · 두 주먹 cu_embrace_l·r)
+    const SIDE = blanket ? U.spr('cu_embrace_side') : null;
+    const SIDE_L = SIDE ? { bg: U.spr('cu_embrace_side_bg'), head: U.spr('cu_embrace_side_head'), hand: U.spr('cu_embrace_side_hand') } : null;
     // S3 파도: 양수 초 배열(없으면 프롤로그식 한 번 버티기)
     const WV = Array.isArray(opt.waves) ? opt.waves.map(v => Math.round(+v * 1000)).filter(v => v > 0) : [];
     const WAVES = WV.length > 0, GAP = Math.max(0, opt.gap != null ? +opt.gap * 1000 : 1000);
@@ -43222,7 +43394,8 @@ MC.addLang('en', {
       holdT0: -1, lowWarn: false, promptA: 0, done: false,
       // 파도(S3)
       wi: 0, wt: 0, heldMs: 0, calm: false, gapT: 0, vibT: 0, seizNext: 0, quake: 0, stepT: 800, stepN: 0, stepHush: 0,
-      gripK: 0                                            // fixer-s3 담요: 두 팔이 조인 정도(누르는 동안 1로, 떼면 0으로 미끄러짐)
+      gripK: 0,                                           // fixer-s3 담요: 두 팔이 조인 정도(누르는 동안 1로, 떼면 0으로 미끄러짐) — [embrace-side] 두 손 층이 미끄러지는 양
+      relT: -1e9, seizI: null                             // [embrace-side] 손 뗀 시각(머리 들썩) · 지금 울리는 경련 소리(먹먹함을 열고 닫음)
     };
     return new Promise(resolve => {
       const sc = { name: 'breath', opaque: true, blocking: true };
@@ -43244,19 +43417,27 @@ MC.addLang('en', {
         U.sfx('heartbeat', { gain: 0.65 + 0.5 * S.prog, pitch: 1 + S.prog * 0.06 });
         if (S.prog > 0.55) U.vibrate(12);
       }
+      // [embrace-side] 경련 소리: 꽉 안고 있으면 담요·가슴 속에 묻혀 작고 낮고 먹먹하게(저역 통과), 손을 떼면 날것으로 크게.
+      //   울리는 도중에 손을 떼거나 다시 안으면 그 소리의 거르개·크기를 바로 옮긴다(inst.lp — sfx.js X.play o.lp)
+      const MUF = { lp: 620, gain: 0.42, pitch: 0.9 }, RAW = { gain: 0.95 };
+      function muffle(on) {
+        const I = S.seizI; if (!blanket || !I || !I.lp || !I.out) return;
+        try { const n = I.lp.context.currentTime; I.lp.frequency.setTargetAtTime(on ? MUF.lp : 16000, n, 0.035); I.out.gain.setTargetAtTime(on ? 1 : RAW.gain / MUF.gain, n, 0.035); } catch (_) {}
+      }
       function release() {
-        S.releases++; S.ajikT = S.t; S.freeT = 0;
+        S.releases++; S.ajikT = S.t; S.freeT = 0; S.relT = S.t;
         MC.fx.shake(0.4); U.vibrate([20, 30, 20]);
         SK.rel();
-        if (blanket) S.stepHush = 1000;                  // 먼 복도 발소리가 1초 멎는다
+        if (blanket) { S.stepHush = 1000; muffle(false); }   // 먼 복도 발소리가 1초 멎는다 · 경련 소리가 담요 밖으로 샌다
         S.air = Math.max(FLOOR, S.air - 0.06);
       }
       function seizure() {                                // 경련 소리(없으면 낮은 숨)
         if (MC.sfx && MC.sfx.has && MC.sfx.has('seizure')) {
-          U.sfx('seizure', { gain: 0.8 });
+          if (blanket) S.seizI = U.sfx('seizure', S.held ? MUF : RAW) || null;
+          else U.sfx('seizure', { gain: 0.8 });
           let d = 0; try { d = MC.sfx.duration('seizure') * 1000; } catch (_) {}
           S.seizNext = S.t + Math.max(700, (d || 1200) - 60);
-        } else { U.sfx('breath', { gain: 0.6, pitch: 0.55 }); S.seizNext = S.t + 760; }
+        } else { U.sfx('breath', { gain: blanket && S.held ? 0.32 : 0.6, pitch: 0.55 }); S.seizNext = S.t + 760; }
       }
       function startWave() {                              // 예고 없이 — 손이 떨어져 있으면 곧 비명이 샌다
         S.calm = false; S.wt = 0; S.vibT = 0; S.seizNext = S.t;
@@ -43266,7 +43447,7 @@ MC.addLang('en', {
       function updateWaves(dt, down) {
         if (!S.calm) {
           if (down) {
-            if (!S.held) { S.held = true; S.paused = false; U.sfx('breath', { gain: 0.45, pitch: 1.05 }); }
+            if (!S.held) { S.held = true; S.paused = false; U.sfx('breath', { gain: 0.45, pitch: 1.05 }); muffle(true); }   // 다시 안으면 경련 소리가 도로 묻힌다
             S.wt += dt; S.heldMs += dt;
             S.air = Math.max(FLOOR, S.air - DRAIN_HOLD * dt);
           } else {
@@ -43356,37 +43537,81 @@ MC.addLang('en', {
         let ox = Math.round(sway * 3) + shx, oy = Math.round(Math.abs(sway) * 2) + shy;
         if (WAVES && S.quake > 0) { ox += Math.round((U.vr() - 0.5) * 4 * S.quake); oy += Math.round((U.vr() - 0.5) * 3 * S.quake); }
         // 천 결은 2배(굵은 올)로 — REDESIGN D-10 5-3 '자루 직조 64×64 오버레이'. 천 너머로 스미는 희미한 빛(이리저리 움직임)만 결을 드러낸다
-        const tile = weaveTile(SK.weave), tw = tile.width * 2, th = tile.height * 2;
         const lx = (W >> 1) + Math.round(Math.sin(t * 0.00071) * 26) + ox, ly = Math.round(H * 0.42 + Math.cos(t * 0.00053) * 18);
         const r = Math.max(22, Math.round(84 + Math.sin(t * 0.0013) * 6 - S.pulse * 12 - S.prog * 20 - (S.phase === 'hold' && !S.held && !S.calm ? 10 : 0)));
-        const lc = litCanvas(W, H), lg = lc.getContext('2d');
-        lg.imageSmoothingEnabled = false; lg.globalAlpha = 1; lg.globalCompositeOperation = 'source-over';
-        lg.clearRect(0, 0, W, H);
-        for (let y = -th + (((oy % th) + th) % th); y < H; y += th) for (let x = -tw + (((ox % tw) + tw) % tw); x < W; x += tw) lg.drawImage(tile, x, y, tw, th);
-        const x0 = lx - r, y0 = ly - r, s = 2 * r + 1;
-        lg.globalCompositeOperation = 'destination-in'; lg.drawImage(lightMask(), x0, y0, s, s);
-        lg.globalCompositeOperation = 'source-over';
-        lg.clearRect(0, 0, W, Math.max(0, y0)); lg.clearRect(0, y0 + s, W, H); lg.clearRect(0, y0, Math.max(0, x0), s); lg.clearRect(x0 + s, y0, W, s);
-        ctx.globalAlpha = 0.8; ctx.drawImage(lc, 0, 0);
-        if (S.pulse > 0.05) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.4 * S.pulse; ctx.drawImage(lc, 0, 0); ctx.globalCompositeOperation = 'source-over'; }   // 박동마다 결이 살짝 밝아짐
-        ctx.globalAlpha = 1;
-        // fixer-s3 담요: 결 위쪽에 흰 머리칼 몇 올(누구를 안았는지) + 화면 아래에서 담요 위로 교차해 들어온 젊은 두 팔뚝(누르면 조이고, 떼면 미끄러진다)
-        // fixer-fix: 점 몇 개(「……」처럼 읽힘) 대신 담요 위로 비져나온 파리아의 정수리·흰 머리칼·귀 그림(cu_embrace_head, 2배) — 그림이 없을 때만 예전 머리칼
-        const head = blanket ? U.spr('cu_embrace_head') : null;
-        if (head) {
-          const hy = ly - Math.round(r * 0.6) + oy, hs = 2;
-          ctx.globalAlpha = 0.86;                                       // 천 결(0.8)과 같은 어둠 속 — 등잔빛에 살짝 묻힘
-          ctx.drawImage(head, ((lx - head.width) >> 1) << 1, ((hy - Math.round(head.height * 1.3)) >> 1) << 1, head.width * hs, head.height * hs);
+        let promptY = Math.round(H * 0.62), fig = null;
+        if (SIDE) { fig = drawRoom(t, shx, shy); promptY = fig.py; }
+        else drawWeave();
+        function drawWeave() {
+          const tile = weaveTile(SK.weave), tw = tile.width * 2, th = tile.height * 2;
+          const lc = litCanvas(W, H), lg = lc.getContext('2d');
+          lg.imageSmoothingEnabled = false; lg.globalAlpha = 1; lg.globalCompositeOperation = 'source-over';
+          lg.clearRect(0, 0, W, H);
+          for (let y = -th + (((oy % th) + th) % th); y < H; y += th) for (let x = -tw + (((ox % tw) + tw) % tw); x < W; x += tw) lg.drawImage(tile, x, y, tw, th);
+          const x0 = lx - r, y0 = ly - r, s = 2 * r + 1;
+          lg.globalCompositeOperation = 'destination-in'; lg.drawImage(lightMask(), x0, y0, s, s);
+          lg.globalCompositeOperation = 'source-over';
+          lg.clearRect(0, 0, W, Math.max(0, y0)); lg.clearRect(0, y0 + s, W, H); lg.clearRect(0, y0, Math.max(0, x0), s); lg.clearRect(x0 + s, y0, W, s);
+          ctx.globalAlpha = 0.8; ctx.drawImage(lc, 0, 0);
+          if (S.pulse > 0.05) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.4 * S.pulse; ctx.drawImage(lc, 0, 0); ctx.globalCompositeOperation = 'source-over'; }   // 박동마다 결이 살짝 밝아짐
           ctx.globalAlpha = 1;
-        } else if (blanket) {
-          const hy = ly - Math.round(r * 0.6) + oy;                     // 흰 머리칼 한 움큼(담요 위로 비져나옴)
-          for (let i = 0; i < 11; i++) {
-            const hx = lx - 16 + i * 3, sw = Math.round(Math.sin(i * 1.3 + t * 0.0015) * 1.2), len = 4 + ((i * 7) % 4);
-            for (let k = 0; k < len; k++) g.ditherRect(hx + Math.round((i - 5) * k * 0.18) + sw, hy - k + Math.abs(i - 5) / 2, 1, 1, k === len - 1 ? '#bdb8ae' : '#ece8e0', 9);
+          // fixer-s3 담요: 결 위쪽에 흰 머리칼 몇 올(누구를 안았는지) + 화면 아래에서 담요 위로 교차해 들어온 젊은 두 팔뚝(누르면 조이고, 떼면 미끄러진다)
+          // fixer-fix: 점 몇 개(「……」처럼 읽힘) 대신 담요 위로 비져나온 파리아의 정수리·흰 머리칼·귀 그림(cu_embrace_head, 2배) — 그림이 없을 때만 예전 머리칼
+          const head = blanket ? U.spr('cu_embrace_head') : null;
+          if (head) {
+            const hy = ly - Math.round(r * 0.6) + oy, hs = 2;
+            ctx.globalAlpha = 0.86;                                       // 천 결(0.8)과 같은 어둠 속 — 등잔빛에 살짝 묻힘
+            ctx.drawImage(head, ((lx - head.width) >> 1) << 1, ((hy - Math.round(head.height * 1.3)) >> 1) << 1, head.width * hs, head.height * hs);
+            ctx.globalAlpha = 1;
+          } else if (blanket) {
+            const hy = ly - Math.round(r * 0.6) + oy;                     // 흰 머리칼 한 움큼(담요 위로 비져나옴)
+            for (let i = 0; i < 11; i++) {
+              const hx = lx - 16 + i * 3, sw = Math.round(Math.sin(i * 1.3 + t * 0.0015) * 1.2), len = 4 + ((i * 7) % 4);
+              for (let k = 0; k < len; k++) g.ditherRect(hx + Math.round((i - 5) * k * 0.18) + sw, hy - k + Math.abs(i - 5) / 2, 1, 1, k === len - 1 ? '#bdb8ae' : '#ece8e0', 9);
+            }
           }
         }
+        // [embrace-side] 어두운 돌방 + 왼쪽 위 등잔 빛(비네트 앞) → 비네트 → 옆에서 본 포옹 그림(2배, 화면 가운데 조금 아래 — 비네트 뒤에 그려 가장자리가 디더에 먹히지 않게).
+        //   drawRoom이 돌려주는 py = 안내(손 표시) 자리 — 그림 바로 아래.
+        function drawRoom(t, shx, shy) {
+          const ctx = g.ctx, sw = SIDE.width * 2, sh = SIDE.height * 2;
+          // 아래에 안내(손 표시 + 두 줄) 자리 96px — 위아래 영화 띠(약 20px)에 보조 안내가 가리지 않게
+          const bx = (W - sw) >> 1, by = Math.max(22, Math.min(Math.round((H - sh) / 2 + 14), H - sh - 96));
+          const x0 = bx + shx, y0 = by + shy;
+          // 방: 바닥(그림 발치 아래로 아주 조금 밝은 돌) — 2단 디더
+          const fy = y0 + sh - 26;
+          g.ditherRect(0, fy, W, H - fy, '#0e0a09', 10);
+          g.ditherRect(0, fy + 10, W, H - fy - 10, '#0e0a09', 16);
+          // 등잔 빛(원본 촛대 자리 — 그림 왼쪽 위): 계단 원, 불꽃처럼 살짝 흔들리고 박동마다 조금 밝아짐
+          const wr = Math.round(150 + Math.sin(t * 0.011) * 3 + Math.sin(t * 0.027) * 2 + S.pulse * 8), wc = warmGlow();
+          ctx.globalAlpha = 0.5 + S.pulse * 0.12;
+          ctx.drawImage(wc, x0 + Math.round(sw * 0.16) - wr, y0 + Math.round(sh * 0.1) - wr, wr * 2 + 1, wr * 2 + 1);
+          ctx.globalAlpha = 1;
+          // 그림 아래 그림자(바닥에 붙은 자리)
+          for (let i = 0; i < 6; i++) g.ditherRect(x0 + 10 + i * 4, y0 + sh - 8 + (i >> 1), sw - 20 - i * 8, 2, '#000000', 9);
+          return { x0, y0, sw, sh, py: by + sh + 2 };
+        }
+        //   누르는 동안: 그림 그대로(경련 중엔 파리아 머리 층만 1px 떨림, 에드몽은 버팀) ·
+        //   손을 뗀 순간: 파리아 머리 층이 위·뒤(오른쪽)로 최대 4px 들썩였다 돌아옴(놓친 채 경련이 오면 또 들썩) + 두 손 층이 gripK만큼 최대 3px 아래로 미끄러짐(다시 누르면 제자리).
+        //   회전 없이 정수 픽셀 이동만. 아무것도 움직이지 않으면 한 장(cu_embrace_side)만 그린다
+        function drawFigure(F) {
+          const ctx = g.ctx, x0 = F.x0, y0 = F.y0, sw = F.sw, sh = F.sh;
+          // 층 위치
+          const since = S.t - S.relT;
+          let lift = since >= 0 && since < 460 ? 4 * Math.sin(Math.PI * since / 460) : 0;
+          if (S.phase === 'hold' && !S.held && !S.calm) lift = Math.max(lift, 3 * S.quake);
+          let hx = Math.round(lift * 0.5), hy = -Math.round(lift);
+          if (S.phase === 'hold' && S.held && !S.calm && WAVES) { const f = (t / 70) | 0; hx += Math.floor(U.hash(f, 3, 11) * 3) - 1; hy -= U.hash(f, 5, 13) < 0.35 ? 1 : 0; }
+          const slide = S.phase === 'intro' ? 0 : Math.round((1 - MC.clamp(S.gripK, 0, 1)) * 3);
+          const L = SIDE_L;
+          if ((hx || hy || slide) && L && L.bg && L.head && L.hand) {
+            ctx.drawImage(L.bg, x0, y0, sw, sh);
+            ctx.drawImage(L.head, x0 + hx, y0 + hy, sw, sh);
+            ctx.drawImage(L.hand, x0, y0 + slide, sw, sh);
+          } else ctx.drawImage(SIDE, x0, y0, sw, sh);
+        }
         const drawArms = () => {                                          // (비네트 뒤에 — 카메라 바로 앞의 제 팔이라 어둠에 묻히지 않게)
-          if (!blanket || S.phase === 'intro') return;
+          if (!blanket || S.phase === 'intro' || SIDE) return;            // [embrace-side] 새 그림이 있으면 두 손은 그림 속에
           const gk = S.gripK, slide = Math.round((1 - gk) * 18), sq = Math.round(gk * 10);
           // fixer-fix: 원을 이어 그린 두 팔(X자로 교차한 막대) 대신 — 담요 자락을 양쪽에서 움켜쥔 두 손 그림(cu_embrace_l·r, 2배)과 화면 아래 바깥까지 굵어지는 회색 소매(U.sleeve).
           //   누르면 두 손이 안으로 조이고(sq), 떼면 아래로 미끄러진다(slide) — 예전 gripK 그대로. 그림이 없을 때만 아래 예전 그리기
@@ -43429,14 +43654,15 @@ MC.addLang('en', {
         U.drawVig(3 + S.pulse * 6 + S.prog * 5 + (WAVES && !S.calm && S.phase === 'hold' ? S.quake * 8 : 0), '#000000');
         if (S.air < 0.35 && S.phase === 'hold') U.drawVig(2 + S.pulse * 5, '#2a0610');
         else if (WAVES && S.phase === 'hold' && !S.calm && S.quake > 0.2) U.drawVig(1 + S.quake * 4, '#2a0610');
+        if (fig) drawFigure(fig);
         drawArms();
 
         const cx = W >> 1, P = { txt: '#c8c4d8', dim: '#6a6878' };
         // 안내: 길게 누르기
         if (S.phase === 'intro' && t > 400) {
-          const lv = S.promptA * 16, bob = Math.round(Math.sin(t * 0.008) * 2), hy = Math.round(H * 0.62);
+          const lv = S.promptA * 16, bob = Math.round(Math.sin(t * 0.008) * 2), hy = promptY;   // [embrace-side] 새 그림이면 그림 바로 아래
           if (!U.drawSpr('ic_hand_tap', cx - 16, hy + bob, lv, 2)) g.circle(cx, hy + 12 + bob, 6, '#c8c4d8');
-          const a = MC.text.bake(U.tf('mg.holdPrompt'), 'body', P.txt, { shadow: '#000' });
+          const a = MC.text.bake(U.tf(SK.prompt || 'mg.holdPrompt'), 'body', P.txt, { shadow: '#000' });
           U.drawDither(a, cx - (a.width >> 1), hy + 38, lv);
           const b = MC.text.bake(U.tf(SK.hint), 'small', P.dim);
           U.drawDither(b, cx - (b.width >> 1), hy + 56, lv);             // 작은 글자는 디더 중간 단계가 깨져 보이므로 흐린 색으로만
