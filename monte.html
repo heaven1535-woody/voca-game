@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.4.2-fix';
+  var VERSION = '0.4.3a-play';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -3193,7 +3193,16 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         let lx = cx + 5;
         if (it.icon) { const sz = g.spriteSize(it.icon); g.sprite(it.icon, lx, cy + ((ch - sz.h) >> 1)); lx += sz.w + 3; }
         MC.text.draw(it.label, lx, ty, { font: this.font, color: col });
-        if (it.right != null && it.right !== '') MC.text.draw(it.right, cx + cw - 5, ty, { font: this.font, color: down ? P.f : (it.enabled === false ? P.dim : P.dim), align: 'right' });
+        if (it.right != null && it.right !== '') {
+          // [a43-ui P9] 오른쪽 글이 칸을 넘으면 작은 글꼴 → 그래도 넘으면 작은 글꼴 두 줄(「감방에서 · 자동 기록은 늘」)
+          const rc = down ? P.f : P.dim, room = cx + cw - 5 - (lx + MC.text.width(it.label, this.font) + 8);
+          if (MC.text.width(it.right, this.font) <= room) MC.text.draw(it.right, cx + cw - 5, ty, { font: this.font, color: rc, align: 'right' });
+          else if (MC.text.width(it.right, 'small') <= room) MC.text.draw(it.right, cx + cw - 5, cy + ((ch - (MC.text.LINE.small || 12)) >> 1) + 1, { font: 'small', color: rc, align: 'right' });
+          else {
+            const ls = MC.text.wrap(it.right, Math.max(24, room), 'small').slice(0, 2), sl = MC.text.LINE.small || 12, y0 = cy + ((ch - ls.length * sl) >> 1);
+            for (let k = 0; k < ls.length; k++) MC.text.draw(ls[k], cx + cw - 5, y0 + k * sl, { font: 'small', color: rc, align: 'right' });
+          }
+        }
         if (s < this.per - 1 && this.cols === 1 && this.items[i + 1] && !down) g.hline(cx + 3, cy + ch - 1, cw - 6, g.mix(P.f, P.D, 0.6));
       }
       if (this.paged) {
@@ -4034,6 +4043,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   let everRan = false;       // 한 번이라도 running이 됐는가(첫 잠금 해제 전에는 복구 사다리를 돌리지 않는다 — 타이틀 안내가 맡음)
   let gen = 0;               // 컨텍스트 세대(재구성할 때마다 +1)
   let lpHz = null;           // A.lowpass 마지막 목표(재구성 때 새 그래프에 다시 건다)
+  let lpQ = 0.707;           // [a43-play S1] 그 Q
   let firing = false;        // fireHooks 재진입 막기
   const hooks = [];          // 컨텍스트가 running이 될 때마다 호출(음악·환경음 보류분 시작, 재동기화)
   const warned = {};
@@ -4242,7 +4252,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     // 또 처음엔 '꽉 눌린' 상태에서 release 속도로 풀리므로, 시작 0.25초만 release를 짧게 해 첫 탭 소리가 작아지지 않게 한다.
     g.glp = u.biquad(c, 'lowpass', 20000, 0.707);
     g.comp = u.comp(c, -14, 10, 3.5, 0.005, 0.2);
-    g.compMk = u.gain(c, 1 / 1.583);
+    g.compMk = u.gain(c, 1.0);   // [a43-play S5] 1/1.583 → 1.0: 전체 +4dB(소2-4 — 폰 스피커에서 전반이 작음). 리미터(−2dB)는 그대로라 클리핑은 거기서 막힌다
     g.master = u.gain(c, 1);
     g.lim = u.comp(c, -2, 0, 20, 0.001, 0.08);
     g.limMk = u.gain(c, 1 / 1.218);
@@ -4383,7 +4393,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const g = G = cur = build(c, false);
     lastSig = settingsSig();
     applyLevels(g, 0);
-    if (lpHz != null) g.glp.frequency.value = lpHz;
+    if (lpHz != null) { g.glp.frequency.value = lpHz; g.glp.Q.value = lpQ; }
     c.onstatechange = function () { if (ctx === c) onState(); };
     R.clkCt = c.currentTime; R.clkW = pnow();
     setTimeout(function () { makeIRsLater(g); }, 0);
@@ -4676,12 +4686,21 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       } else p.linearRampToValueAtTime(1, t + 0.05);
     });
   };
-  /** 전 버스 저역통과(물속). hz=null이면 해제 */
-  A.lowpass = function (hz, ms) {
+  /** [a43-play S3] 환경음만 잠깐 낮춤: db(음수) 만큼 rampMs에 내려 holdMs 머문 뒤 600ms에 되돌림(손가락 셈 「열넷」 뒤 바다 베드 −6dB 1.5초) */
+  A.duckAmb = function (db, holdMs, rampMs) {
+    const g = cur; if (!g || !g.cat || !g.cat.amb) return;
+    const p = g.cat.amb.lvl.gain, t = g.c.currentTime, k = Math.pow(10, (Math.min(0, +db || -6)) / 20), r = Math.max(0.01, (+rampMs || 80) / 1000), h = Math.max(0, (+holdMs || 1500) / 1000);
+    const v0 = p.value || 1;
+    p.cancelScheduledValues(t); p.setValueAtTime(v0, t);
+    p.linearRampToValueAtTime(v0 * k, t + r); p.setValueAtTime(v0 * k, t + r + h); p.linearRampToValueAtTime(v0, t + r + h + 0.6);
+  };
+  /** 전 버스 저역통과(물속). hz=null이면 해제. q(선택, [a43-play S1]) — 컷오프 둘레를 살짝 솟게(물속 '먹먹함'에 중역 윤곽). 해제하면 0.707 */
+  A.lowpass = function (hz, ms, q) {
     const g = cur, to = hz == null ? 20000 : clamp(+hz, 40, 20000);
     if (!g || !g.off) lpHz = hz == null ? null : to;   // 재구성·첫 생성 때 다시 건다
     if (!g) return;
     const p = g.glp.frequency, t = g.c.currentTime;
+    { const qv = hz == null ? 0.707 : (q != null && isFinite(+q) ? clamp(+q, 0.3, 4) : 0.707), Q = g.glp.Q; if (!g.off) lpQ = qv; Q.cancelScheduledValues(t); Q.setValueAtTime(Q.value, t); Q.linearRampToValueAtTime(qv, t + Math.max(0.01, (+ms || 0) / 1000)); }
     const from = clamp(p.value || 20000, 40, 20000);
     p.cancelScheduledValues(t); p.setValueAtTime(from, t);
     p.exponentialRampToValueAtTime(to, t + Math.max(0.01, (+ms || 0) / 1000));
@@ -5729,6 +5748,17 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     for (const k in p.lfos) { try { p.lfos[k].stop(stopT); } catch (e) { /* */ } }
     if (!p.g.off) setTimeout(function () { A.u.disc(p.nodes); for (const k in p.lfos) { try { p.lfos[k].disconnect(); } catch (e) { /* */ } } }, 6000);
   }
+  // [a43-play S6] 시퀀서 박동: 본 스레드 setInterval(25ms)은 숨은·소리 없는 탭(녹화 탭 — 소리를 녹음 경로로만 보냄)에서 크롬이 1초에 한 번으로 묶는다.
+  //   그러면 0.12초 선예약만 울리고 0.88초가 비어 '1초마다 0.9초 무음'이 된다(녹음 s2_1822_001·002·s4_3_001 — F50). 그림은 이미 워커 박동(core.js)이라 멀쩡했다.
+  //   워커 타이머는 묶이지 않으므로 워커가 25ms마다 깨운다(못 쓰면 예전처럼 setInterval). 그래도 박동 사이가 0.2초를 넘으면 5초 동안 선예약을 0.3초로 늘린다(앱 포장·절전 모드 대비).
+  let la = LA, lastBeat = 0, wideUntil = 0;
+  function beat() {
+    const t = performance.now();
+    if (lastBeat && t - lastBeat > 200) wideUntil = t + 5000;
+    lastBeat = t; la = t < wideUntil ? Math.max(LA, 0.3) : LA;
+    loop();
+  }
+  M._beatInfo = () => ({ worker: !!(timer && timer.postMessage), la, wide: performance.now() < wideUntil });
   function loop() {
     try {
       if (main) {
@@ -5736,7 +5766,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         if (c.state === 'running') {
           const now = c.currentTime;
           if (main.nt < now - 0.05) main.nt = now + 0.03;   // 멈췄다 돌아오면 재동기화
-          main.advance(now + LA);
+          main.advance(now + la);
           if (main.ended && now > main.endT + 2) { dispose(main); main = null; }
         }
       }
@@ -5744,12 +5774,21 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         const p = fading[i], c = p.c;
         if (c.state !== 'running') continue;
         const now = c.currentTime;
-        if (now < p.stopAt) { if (p.nt < now - 0.05) p.nt = now + 0.03; p.advance(Math.min(now + LA, p.stopAt)); }
+        if (now < p.stopAt) { if (p.nt < now - 0.05) p.nt = now + 0.03; p.advance(Math.min(now + la, p.stopAt)); }
         else { dispose(p); fading.splice(i, 1); }
       }
     } catch (e) { A.warn('mloop', '시퀀서 오류: ' + e.message); }
   }
-  function ensureTimer() { if (!timer) timer = setInterval(loop, 25); }
+  function ensureTimer() {
+    if (timer) return;
+    const fallback = () => { timer = setInterval(beat, 25); };
+    try {
+      const wk = new Worker(URL.createObjectURL(new Blob(['setInterval(function(){postMessage(0)},25)'], { type: 'text/javascript' })));
+      wk.onmessage = beat;
+      wk.onerror = () => { try { wk.terminate(); } catch (e) { /* */ } timer = 0; fallback(); };
+      timer = wk;
+    } catch (e) { fallback(); }
+  }
   function msArg(v, dflt) { if (v == null) return dflt; v = +v; if (v > 0 && v < 5) { A.warn('mfadesec', 'fade는 ms 단위입니다(초로 보고 변환함)'); v *= 1000; } return Math.max(0, v); }
 
   function startSong(s, o) {
@@ -6369,6 +6408,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   const G = () => MC.gfx;
   const BOX_W = 176, BOX_H = 62, TEXT_W = 160, LH = 16, PER = 3;          // 계약서 5장: 176×62, 본문 3줄(행 16), 여백 좌8·위8
   const OPEN_MS = 120, CLOSE_MS = 90, IGNORE_MS = 150, FF_HOLD = 350, FF_STEP = 120, CHOICE_READY = 250;
+  // [a43-ui P6] 탭·빨리감기가 정점 대사를 지우지 않게: 큰 쉼({p:600} 이상)은 탭으로 건너뛰지 않는다 · 정점 줄(say key:true 또는 {p:1000} 이상 쉼)은 빨리감기로 넘기지 않는다
+  const BIG_P = 600, KEY_P = 1000, KEY_IGNORE = 500, MIN_H = 16;   // MIN_H [V6] 여닫는 상자가 이보다 납작하면 그리지 않는다
   const GRACE = { yes: 650, grace: 280, no: 0 };                          // 마지막 페이지 뒤 창을 열어 두는 시간(다음 대사를 기다림)
   const SPEEDS = [45, 28, 12, 0];                                          // 설정 대사 속도: 느림/보통/빠름/즉시 (ms/자)
   const PAUSE = { ',': 90, '，': 90, '、': 90, '.': 180, '。': 180, '!': 180, '！': 180, '?': 180, '？': 180, '…': 300 };
@@ -6628,6 +6669,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     st.auto = o.auto != null ? +o.auto : null;
     st.noWait = !!o.noWait;
     st.voice = o.voice;
+    st.key = !!o.key;                                // [a43-ui P6] 정점 줄
+    st.hidIdle = false;                              // [a43-ui V6] 글이 다시 찍히면 '감춘 빈 상자' 표시를 푼다
     st.mode = 'typing';
     return new Promise(r => { st.onAdv = r; });
   }
@@ -6656,7 +6699,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       if (st.open <= 0) finishClose();
       return;
     }
-    const ff = ffHeld();
+    let ff = ffHeld();
+    if (ff && st.key && (st.mode === 'typing' || st.mode === 'shown')) { st.ffUsed = true; ff = false; }   // [a43-ui P6] 정점 줄: 누르고 있어도 보통 속도로 찍고, 다 찍히면 탭을 기다린다(뗀 손은 탭으로 치지 않음)
     if (st.mode === 'typing') typeStep(dt, ff, t);
     if (st.mode === 'shown' && !st.noWait) {
       if (st.auto != null) { if (t - st.doneAt >= st.auto) advance(false); }
@@ -6697,9 +6741,20 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const r = st.onAdv; st.onAdv = null;
     if (r) r();
   }
+  // [a43-ui P6] 찍는 중 탭: 다음 큰 쉼({p:600} 이상) 직전까지만 드러낸다. 큰 쉼이 도는 동안의 탭은 버린다. 작은 쉼은 예전처럼 건너뛴다.
+  function revealTo(t) {
+    const pg = st.page, gs = pg.glyphs, n = gs.length;
+    if (st.base <= 0) { revealAll(t); return; }
+    if (st.shown < n ? gs[st.shown].pre >= BIG_P : pg.tail >= BIG_P) return;   // 지금 큰 쉼 → 무시
+    let j = st.shown + 1;
+    while (j < n && !(gs[j].pre >= BIG_P)) j++;
+    if (j >= n && !(pg.tail >= BIG_P)) { revealAll(t); return; }
+    for (let i = st.shown; i < j; i++) st.revealT[i] = t - 999;
+    st.shown = j; st.acc = 0;                      // 쉼은 지금부터 센다
+  }
   function tapped(t) {
-    if (st.mode === 'typing') { revealAll(t); return; }
-    if (st.mode === 'shown' && t - st.doneAt >= IGNORE_MS) advance(true);
+    if (st.mode === 'typing') { revealTo(t); return; }
+    if (st.mode === 'shown' && t - st.doneAt >= (st.key ? KEY_IGNORE : IGNORE_MS)) advance(true);
   }
   function onInput(ev) {
     if (st.choice) return choiceInput(ev);
@@ -6725,11 +6780,16 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   function renderBox(g, P, pal) {
     const L = boxRect(), t = now(), fo = pal ? { pal } : undefined;
     if (st.mode === 'opening' || st.mode === 'closing') {
+      if (st.mode === 'closing' && st.hidIdle) return;          // [a43-ui V6] 이미 감춘 빈 상자는 접히는 모습도 그리지 않는다
       const e = st.mode === 'opening' ? MC.ease.outQuad(st.open) : 1 - MC.ease.inQuad(1 - st.open);
-      const h = Math.max(6, Math.round(BOX_H * e) & ~1);
+      const h = Math.round(BOX_H * e) & ~1;
+      if (h < MIN_H) return;                                     // [a43-ui V6] 납작한 테(가는 막대)가 한두 프레임 남지 않게
       g.frame(L.x, L.y + ((BOX_H - h) >> 1), BOX_W, h, fo);
       return;
     }
+    // [a43-ui V6] 마지막 대사 뒤 닫히기만 기다리는 빈 상자(이름표만 남은 테)는 그리지 않는다. 다음 대사를 기다리는 자리(keep 'yes')는 예전처럼 둔다.
+    st.hidIdle = st.mode === 'idle' && !st.page && !st.choice && pending === 0 && st.keep !== 'yes';
+    if (st.hidIdle) return;
     g.frame(L.x, L.y, BOX_W, BOX_H, fo);
     renderDeco(g, P, pal, L, t);
     if (st.page) renderText(g, P, L, t);
@@ -6892,7 +6952,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const c = st.choice, R = choiceRect(), t = now(), fo = pal ? { pal } : undefined;
     const e = c.closing ? 1 - MC.ease.inQuad(1 - c.open) : MC.ease.outQuad(c.open);
     if (e <= 0.02) return;
-    if (e < 1) { const h = Math.max(6, Math.round(R.h * e) & ~1); g.frame(R.x, R.y + R.h - h, R.w, h, fo); return; }
+    if (e < 1) { const h = Math.round(R.h * e) & ~1; if (h >= MIN_H) g.frame(R.x, R.y + R.h - h, R.w, h, fo); return; }   // [a43-ui V6]
     g.frame(R.x, R.y, R.w, R.h, fo);
     const sepC = g.mix(P.f, P.D, 0.6), dotC = g.mix(P.W, P.f, 0.55);
     for (let i = 0; i < c.rows.length; i++) {
@@ -6930,11 +6990,13 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       const voice = o.voice !== undefined ? o.voice : sp.voice;
       for (let b = 0; b < boxes.length; b++) {
         const comp = compile(boxes[b], { align: sp.align });
+        // [a43-ui P6] 정점 줄: key:true 또는 {p:1000} 이상 쉼이 있는 대사 → 빨리감기로 넘기지 않는다(auto 줄은 제외 — 끊기는 말)
+        const key = o.auto == null && (!!o.key || comp.pages.some(pg => pg.tail >= KEY_P || pg.glyphs.some(gl => gl.pre >= KEY_P)));
         for (let p = 0; p < comp.pages.length; p++) {
           if (!inStack()) return;
           // auto(끊기는 말): 한국어는 옛 그대로 모든 페이지. 번역에서 상자·페이지가 늘면 마지막 것에만(앞 상자는 읽을 수 있게 탭 대기)
           const auto = !tr || (b === boxes.length - 1 && p === comp.pages.length - 1) ? o.auto : undefined;
-          await showPage(comp.pages[p], { auto, speed: o.speed, voice });
+          await showPage(comp.pages[p], { auto, speed: o.speed, voice, key });
         }
       }
       st.keep = o.keep || 'grace';
@@ -7098,7 +7160,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         let e = 1;
         if (t < T.open) e = MC.ease.outQuad(t / T.open);
         else if (t > T.hold) e = 1 - MC.ease.inQuad(MC.clamp((t - T.hold) / (T.close - T.hold), 0, 1));
-        if (e < 1) { const hh = Math.max(6, Math.round(h * e) & ~1); if (e > 0.02) g.frame(x, y + ((h - hh) >> 1), w, hh); return; }
+        if (e < 1) { const hh = Math.round(h * e) & ~1; if (hh >= MIN_H) g.frame(x, y + ((h - hh) >> 1), w, hh); return; }   // [a43-ui V6]
         g.frame(x, y, w, h);
         let nx = x + 12;
         if (pt) {
@@ -7159,7 +7221,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         let e = 1;
         if (t < T.open) e = MC.ease.outQuad(t / T.open);
         else if (t > T.hold) e = 1 - MC.ease.inQuad(MC.clamp((t - T.hold) / (T.close - T.hold), 0, 1));
-        if (e < 1) { const hh = Math.max(6, Math.round(h * e) & ~1); if (e > 0.02) g.frame(x, y + ((h - hh) >> 1), w, hh); return; }
+        if (e < 1) { const hh = Math.round(h * e) & ~1; if (hh >= MIN_H) g.frame(x, y + ((h - hh) >> 1), w, hh); return; }   // [a43-ui V6]
         g.frame(x, y, w, h);
         let nx = x + 12;
         if (pt) {
@@ -7529,7 +7591,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     parallel: (c, env) => Promise.all((c.do || []).map(b => runList(Array.isArray(b) ? b : [b], env.frame, env.ctx, true))),
 
     /* 대화 */
-    say: (c, env) => { stopSkip(); return MC.dialogue.say({ who: c.who, t: c.t != null ? c.t : c.text, face: c.face, auto: c.auto, pos: c.pos, voice: c.voice, speed: c.speed, keep: keepAfter(env) }); },
+    say: (c, env) => { stopSkip(); return MC.dialogue.say({ who: c.who, t: c.t != null ? c.t : c.text, face: c.face, auto: c.auto, pos: c.pos, voice: c.voice, speed: c.speed, keep: keepAfter(env), key: !!c.key }); },   // [a43-ui P6] key: 정점 대사(빨리감기로 넘기지 않음)
     narr: async c => {
       const t = c.t != null ? c.t : c.text;
       if (MC.i18n && MC.i18n.active && Array.isArray(t) && !t.length) return;          // i18n: 번역이 모두 빈 값(앞에 합침)이면 서술 화면을 건너뜀
@@ -7826,9 +7888,12 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (depth > 0) return;
     depth = 0;
     stopSkip();
+    const hadDlg = !!(MC.dialogue && MC.dialogue.open);
     try { await closeDlg(); } catch (_) {}
     if (myGen !== gen || depth > 0) return;             // 닫는 사이 새 이벤트가 시작됨
     EV.current = null; EV.free = false; EV.step = null;
+    // [a43-play P7] 대화로 끝난 이벤트에서 필드로 돌아올 때 400ms 완충 — 마지막 줄을 넘긴 탭·누름이 그대로 이동 입력이 되지 않게(누르던 손가락은 뗄 때까지 무시)
+    if (hadDlg && MC.input && MC.input.lock) MC.input.lock(400);
     lockField(false);
     refresh();
   };
@@ -11503,7 +11568,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (!tut && !party && !B.boss && TU.first && !MC.game.flag(TU.first.flag)) tut = TU.first;          // (1인) 첫 전투 안내
     if (!tut || MC.game.flag(tut.flag)) return;
     const lines = tut.lines || [{ who: tut.who || 'think', t: tut.t }];
-    for (const l of lines) S.push({ t: 'say', who: l.who || 'think', text: fmt(l.t, {}) });
+    for (const l of lines) S.push({ t: 'say', who: l.who || 'think', text: fmt(l.t, {}), hold: true });   // [a43-ui P3] 안내는 다 읽고 탭할 때 닫힌다(battle_view H.say)
     if (tut.flag) MC.game.setFlag(tut.flag);
   }
 
@@ -13866,7 +13931,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (!V || !V.cmdRes) return;
     const u = V.actor;
     if (c.target != null && V.mir && V.B.ss.slots) { const si = V.B.ss.slots.indexOf(c.target); if (si >= 0) c.slot = si; }   // (S3) 거울 속: [↻]는 같은 '자리'를 친다
-    if (c.kind !== 'back') V.last[u.idx] = Object.assign({}, c);
+    if (c.kind !== 'back' && c.kind !== 'flee') V.last[u.idx] = Object.assign({}, c);   // [a43-ui P2] 「피한다」는 [↻반복] 칸에 남기지 않는다(반복 칸 = 싸우는 손)
     const res = V.cmdRes;
     V.cmdRes = null; V.pend = null; V.list = null;
     setMode('play');
@@ -13876,8 +13941,9 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   function back() {
     if (V.mode === 'list' || V.mode === 'target') {
       sfx('ui_cancel'); V.list = null; V.pend = null; setMode('cmd');
-      // [a42-ui 0.4.2 A9] [뒤로]와 [피한다]는 같은 칸 — 목록을 닫은 뒤 250ms 동안 명령 칸이 누름을 삼킨다(빠른 두 번 탭이 도망으로 들어가 전투를 버리지 않게)
-      for (const b of curBtns()) b.arm(250);
+      // [a42-ui 0.4.2 A9] [뒤로]와 [피한다]는 같은 칸 — 목록을 닫은 뒤 명령 칸이 누름을 삼킨다(빠른 두 번 탭이 도망으로 들어가 전투를 버리지 않게)
+      // [a43-ui P2] 250 → 450ms: 폰 두 번 탭(300ms 간격)이 뚫렸다
+      for (const b of curBtns()) b.arm(450);
       return;
     }
     if (V.mode === 'cmd' && actorIsF() && V.canBack) { sfx('ui_cancel'); commit({ kind: 'back' }); }   // 파리아 차례에서 뒤로 → 당테스 명령 다시
@@ -14124,6 +14190,15 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (!V) return;
     sp.t0 = Math.min(sp.t0, V.t - total * spd); sp.done = true;
     const t1 = V.t;
+    if (s.hold && !BT.autoplay) {
+      // [a43-ui P3] 안내(hold): 저절로 닫히지 않는다. 다 찍힌 뒤 1.2초가 지나고 '탭할 때' 닫는다(그 전 탭은 버린다). 다음 표시도 그때부터.
+      sp.holdT = t1 + 1200;
+      await waitFor(() => V.abort || V.skipAt >= sp.holdT);
+      if (!V) return;
+      V.speech = null;
+      logNote(String(s.text).replace(/\{p:\d+\}/g, ''), s.who === 'sys' ? 'sys' : 'think');   // 닫힌 뒤 로그에 생각 색으로 한 줄 — 앞 문구가 다시 드러나 '덮어쓴' 것처럼 보이지 않게
+      return;
+    }
     await waitFor(() => V.abort || V.skipAt > t1 || V.t - t1 >= (1500 + total * 30 * typeMul()) * kf());
     if (V) V.speech = null;
   };
@@ -15304,22 +15379,28 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       if (targeting) drawTargetCorners(ev, by, t, P);
       // 머리 위: [상태] [예고(+파)] [다음 예고] / 분노 스택 점
       if (!e.alive || V.mode === 'panel') continue;
-      const iy0 = Math.max(topMin, ev.top - 15);
+      // [a43-ui V3] 큰 적(h > 60)은 예고를 머리 위 대신 몸 오른쪽 위 어깨 옆에 둔다. 몸에 겹쳐도 검은 네모 판 없이 아이콘에 검은 1px 외곽선만.
+      //   (복수심 96px: 화면 위 한계에 걸려 얼굴 위에 검은 네모가 놓였고, 돌진 예고가 깜빡이면 빈 네모·테만 남았다)
+      const hy0 = Math.max(topMin, ev.top - 15), big = ev.h > 60;
+      const axI = big ? Math.min(V.X0 + 180 - 24, ev.bx + ev.bw + 1) : ev.cx - 6;   // 오른쪽에 '파'·×2 자리를 남긴다
+      const iy0 = big ? Math.max(topMin, ev.top + 8) : hy0;
+      const lapped = big || ev.top - 15 < hy0;                              // 몸에 겹칠 수 있는 자리 → 외곽선
       const it = ev.intent;
       let iy = iy0;
       if (it) {
         const pop = clamp((t - ev.intentT) / 180, 0, 1);
         if (pop > 0) {
-          const dy = Math.round((1 - EZ.outBack(pop)) * 5), ix = ev.cx - 6;
+          const dy = Math.round((1 - EZ.outBack(pop)) * 5), ix = axI;
           iy = iy0 + dy;
           const sealed = !!(ev.vst && ev.vst.seal);
           if (it.zz) MC.text.draw('z', ix + 4 + (((t / 400) | 0) & 1), iy - (((t / 400) | 0) & 1), { font: 'small', color: P.dim, outline: '#000' });
           else {
             const nm = intentIcon(it), blink = it.icon === 'ic_intent_charge' && (((t / 300) | 0) & 1);
-            if (ev.top - 15 < iy0) { g.rect(ix - 2, iy - 2, 16, 16, '#05060c'); g.rectO(ix - 2, iy - 2, 16, 16, famOf(e.fam).dark); }   // 화면이 낮아 몸 위에 겹치면 작은 칸에 담는다
-            else if (ev.h > 60) g.ditherRect(ix - 1, iy - 1, 14, 14, '#05060c', 8);
-            if (!blink) g.sprite(nm, ix, iy, sealed ? { alpha: 0.35 } : null);
-            if (it.kind === 'tempt' && !sealed) { const p2 = (t % 900) / 900; if (p2 < 0.5) g.ring(ev.cx, iy + 6, 7 + Math.round(p2 * 10), '#ff7a9a'); }
+            if (!blink) {
+              if (lapped) for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) g.sprite(nm, ix + ox, iy + oy, { tint: '#000000', alpha: sealed ? 0.35 : 1 });
+              g.sprite(nm, ix, iy, sealed ? { alpha: 0.35 } : null);
+            }
+            if (it.kind === 'tempt' && !sealed) { const p2 = (t % 900) / 900; if (p2 < 0.5) g.ring(ix + 6, iy + 6, 7 + Math.round(p2 * 10), '#ff7a9a'); }
             if (sealed) { g.line(ix + 1, iy + 1, ix + 10, iy + 10, '#c8b8ff'); g.line(ix + 10, iy + 1, ix + 1, iy + 10, '#c8b8ff'); }
             if (it.tgt && it.tgt.idx > 0 && it.tgt.alive) num(tf('battle.fariaMark'), ix + 12, iy + 1, COL.faria);            // 파리아를 노림('파' 표식)
             if (ev.intent2) num('×2', ix + 12, iy + (it.tgt && it.tgt.idx > 0 ? 9 : 1), COL.rage);
@@ -15327,14 +15408,16 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         }
       }
       if (ev.next && ev.scanned) {                                        // 간파: 다음 라운드 예고(작게)
-        const nx = ev.cx + 7 + (it && it.tgt && it.tgt.idx > 0 ? 10 : 0) + (ev.intent2 ? 10 : 0);
-        if (ev.top - 15 < iy0) g.rect(nx - 1, iy0 - 1, 19, 14, '#05060c');
-        MC.text.draw('›', nx, iy0 + 1, { font: 'small', color: P.dim, outline: '#000' });
-        g.sprite(intentIcon(ev.next), nx + 5, iy0, { alpha: 0.55 });
+        const nx = big ? axI - 4 : ev.cx + 7 + (it && it.tgt && it.tgt.idx > 0 ? 10 : 0) + (ev.intent2 ? 10 : 0);   // [a43-ui V3] 큰 적: 예고 아래 줄
+        const ny = big ? iy0 + 14 : iy0, nn = intentIcon(ev.next);
+        MC.text.draw('›', nx, ny + 1, { font: 'small', color: P.dim, outline: '#000' });
+        if (lapped) for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) g.sprite(nn, nx + 5 + ox, ny + oy, { tint: '#000000', alpha: 0.55 });
+        g.sprite(nn, nx + 5, ny, { alpha: 0.55 });
       }
-      // 상태 아이콘(적): 예고 왼쪽으로
+      // 상태 아이콘(적): 예고 왼쪽으로(큰 적은 예고 아래)
       const ids = ST_ORDER.filter(k => ev.vst && ev.vst[k] != null && k !== 'endure');
-      let sx = ev.cx - 8 - 9;
+      let sx = big ? axI + 4 : ev.cx - 8 - 9;
+      const sy = big ? iy0 + (ev.next && ev.scanned ? 28 : 15) : iy0 + 2;
       if (e.data.flip && e.data.flip.length > 1) {                        // (S3) 거꾸로 된 달력: 다음 라운드의 계열 — 제 몸 오른쪽 위 모서리(옆 적의 예고와 겹치지 않게)
         const fl = e.data.flip, nf = famOf(fl[(fl.indexOf(e.fam) + 1) % fl.length]), fi = iconName('ic_intent_flip');
         const fx0 = ev.bx + ev.bw - 8, fy0 = Math.max(topMin + 12, ev.top - 1);
@@ -15345,11 +15428,11 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         const a = t * 0.006 + k * 2.09, sxx = Math.round(ev.cx + Math.cos(a) * 9), syy = Math.round(ev.top + 2 + Math.sin(a) * 3);
         g.px(sxx, syy, '#ffe070'); g.px(sxx + 1, syy, '#fff6d0');
       }
-      for (const k of ids.slice(0, 3)) { const ic = stIcon(k); if (ic) { g.sprite(ic, sx, iy0 + 2); sx -= 9; } }
+      for (const k of ids.slice(0, 3)) { const ic = stIcon(k); if (ic) { g.sprite(ic, sx, sy); sx -= 9; } }
       // 분노 스택(복수심): 예고 위 점 3개
       if (e.boss && V.B.script && V.B.script.d.stacks && (ev.stacks > 0 || ev.stanceT > 0 || ev.frenzy)) {
         const max = V.B.script.d.stacks.max || 3, pop = clamp((t - ev.stackT) / 200, 0, 1);
-        const y = iy0 - 7;
+        const y = hy0 - 7;
         for (let i = 0; i < max; i++) {
           const x = ev.cx - (max * 6 >> 1) + i * 6 + 1, on = i < (ev.stacks || 0);
           const r = on && i === (ev.stacks || 0) - 1 && pop < 1 ? 1 : 0;
@@ -15670,7 +15753,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         k++;
       }
     }
-    if (sp.done && !sp.keep) MC.ui.nextMark(x + 176 - 12, y + 58 - 12);
+    if (sp.done && !sp.keep && !(sp.holdT && V.t < sp.holdT)) MC.ui.nextMark(x + 176 - 12, y + 58 - 12);
   }
   function statusBar(x, y, w, v, ghost, max, col, hi, blink, h) {
     const g = G(), hh = h || 3;
@@ -15730,7 +15813,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const jx = jq < 200 ? Math.round(3 * (1 - jq / 200) * Math.sin(jq * 0.12)) : 0;
     const x = V.X0 + 2 + jx, y = V.statY;
     g.frame(x, y, 176, 34, { over: frameOver(av, 0) });
-    MC.text.draw(u.name, x + 8, y + 4, { font: 'small', color: COL.name });
+    const cov = cellCover(av, x, y, 176, 34);                                // [a43-ui V1]
+    MC.text.draw(u.name, x + 8, y + 4, { font: 'small', color: cov ? P.dim : COL.name });
     const nx = x + 8 + MC.text.width(u.name, 'small') + 5;
     MC.text.draw(tf('fmt.lvTight', { n: av.lv }), nx, y + 4, { font: 'small', color: P.dim });
     let ix = x + 166;
@@ -15740,7 +15824,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (Object.keys(extra).length) drawStIcons({ vst: extra }, ix - 2, y + 5, 2);
     const crit = av.dhp > 0 && av.dhp <= u.maxHp * 0.25;
     const breath = crit ? (0.5 + 0.5 * Math.sin(t * 2 * Math.PI / 1000)) : 0;
-    const hpCol = crit ? (breath > 0.5 ? COL.red : COL.pink) : P.text;
+    const hpCol = cov ? P.dim : (crit ? (breath > 0.5 ? COL.red : COL.pink) : P.text);
     const ry = y + 17;
     let cx = x + 8;
     const sHP = tf('stat.hp'), sMP = tf('stat.mp');
@@ -15752,7 +15836,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     cx += hpBarW + 7;
     MC.text.draw(sMP, cx, ry, { font: 'small', color: P.dim }); cx += MC.text.width(sMP, 'small') + 3;
     const ms = Math.round(av.dmp) + '/' + u.maxMp, mw = MC.text.width(u.maxMp + '/' + u.maxMp, 'small');
-    MC.text.draw(ms, cx + mw, ry, { font: 'small', color: P.text, align: 'right' }); cx += mw + 4;
+    MC.text.draw(ms, cx + mw, ry, { font: 'small', color: cov ? P.dim : P.text, align: 'right' }); cx += mw + 4;
     statusBar(cx, ry + 5, Math.max(12, x + 168 - cx), av.dmp, av.dmp, u.maxMp, COL.mp, COL.mpHi, false);
     cellMarks(av, x, y, 176, 34);
   }
@@ -15762,7 +15846,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const jq = t - av.jolt, jx = jq < 200 ? Math.round(3 * (1 - jq / 200) * Math.sin(jq * 0.12)) : 0;
     const x = c.x + jx, y = c.y, w = c.w, down = av.down || av.dhp <= 0 && !u.alive;
     g.frame(x, y, w, c.h, { over: frameOver(av, i) });
-    const nameCol = down ? P.dim : (u.support ? COL.faria : COL.name);
+    const cov = cellCover(av, x, y, w, c.h);                                 // [a43-ui V1] 덮개는 글자 아래
+    const nameCol = (down || cov) ? P.dim : (u.support ? COL.faria : COL.name);
     const inCmd = V.mode === 'cmd' || V.mode === 'target', A = V.actor;
     const badge = party2() && inCmd && A && (A.idx === i || (i === 0 && A.support && V.canBack && V.mode === 'cmd'));   // 떠 있는 칩·◀ 자리만큼 이름을 민다(S4: 회색 빈 칸은 칩이 없다)
     const nx0 = x + 7 + (badge ? 15 : 0);
@@ -15774,7 +15859,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     // HP
     const crit = !u.support && av.dhp > 0 && av.dhp <= u.maxHp * 0.25;
     const breath = crit ? (0.5 + 0.5 * Math.sin(t * 2 * Math.PI / 1000)) : 0;
-    const hpCol = down ? P.dim : (crit ? (breath > 0.5 ? COL.red : COL.pink) : (av.dhp <= u.maxHp * 0.3 ? '#ff9a8a' : P.text));
+    const hpCol = (down || cov) ? P.dim : (crit ? (breath > 0.5 ? COL.red : COL.pink) : (av.dhp <= u.maxHp * 0.3 ? '#ff9a8a' : P.text));
     let ry = y + 16;
     MC.text.draw(tf('stat.hp'), x + 7, ry, { font: 'small', color: P.dim });
     const d8 = n => String(n).replace(/\d/g, '8');                    // 글자 폭이 달라도 숫자 자리가 흔들리지 않게 가장 넓은 숫자로 잰다
@@ -15786,7 +15871,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     ry = y + 28;
     if (!u.support) {
       MC.text.draw(tf('stat.mp'), x + 7, ry, { font: 'small', color: P.dim });
-      MC.text.draw(Math.round(av.dmp) + '/' + u.maxMp, nx, ry, { font: 'small', color: P.text, align: 'right' });
+      MC.text.draw(Math.round(av.dmp) + '/' + u.maxMp, nx, ry, { font: 'small', color: cov ? P.dim : P.text, align: 'right' });
       statusBar(bx, ry + 5, bwid, av.dmp, av.dmp, u.maxMp, COL.mp, COL.mpHi, false);
     } else if (down) {
       g.ditherRect(x + 3, y + 3, w - 6, 25, '#05060c', 6);                  // 이름·HP는 흐리게, '기도 중'은 또렷하게
@@ -15806,7 +15891,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
           if (n > 0) num(n, cx + 8, ry, P.dim);
           cx += 16;
         } else {
-          cx = MC.text.draw(lab, cx, ry, { font: 'small', color: n > 0 ? P.dim : col });
+          cx = MC.text.draw(lab, cx, ry, { font: 'small', color: (n > 0 || cov) ? P.dim : col });
           if (n > 0) { num(n, cx + 1, ry, '#b8b4c8'); cx += 7; }
           cx += 5;
         }
@@ -15821,9 +15906,15 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     cellMarks(av, c.x + jx, y, w, c.h);
   }
   // (S3) 결박: 칸 테두리에 사슬 / 삼켜짐: 칸이 어둠에 덮임
+  // [a43-ui V1] 자루 속·삼켜짐 덮개는 칸 판을 그린 '직후', 글자보다 먼저 깐다(글자 위에 체커를 덮으면 숫자가 실선으로 끊겨 보였다). 덮인 칸의 글자는 P.dim 단색.
+  const coveredCell = av => { const vs = av.vst || {}; return !!(vs.swallow || (V.sack && av.u.idx === 0)); };
+  function cellCover(av, x, y, w, h) {
+    if (!coveredCell(av)) return false;
+    G().ditherRect(x + 2, y + 2, w - 4, h - 4, '#020808', V.sack ? 9 : 5); G().hline(x + 3, y + 2, w - 6, '#1c4a48');   // (S4) 자루 속
+    return true;
+  }
   function cellMarks(av, x, y, w, h) {
     const vs = av.vst || {};
-    if (vs.swallow || (V.sack && av.u.idx === 0)) { G().ditherRect(x + 2, y + 2, w - 4, h - 4, '#020808', V.sack ? 9 : 5); G().hline(x + 3, y + 2, w - 6, '#1c4a48'); }   // (S4) 자루 속
     if (vs.bind) drawLinksRect(x + 1, y + 1, w - 2, h - 2, 1);
   }
   function drawBroken(k, b) {
@@ -16434,7 +16525,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   const S3_TROOPS = ['b3_chain', 'b3_tide', 'b3_wall', 'b3_cal', 'b3_chain_wall', 'b3_tide_cal', 'madking', 'b4_letter', 'b4_sack', 'b4_candle_letter'];
   const S3_ENEMIES = ['iron_chain', 'sinking_tide', 'whisper_wall', 'rev_calendar', 'madking', 'mirror_self', 'burnt_letter', 'black_sack', 'gutter_candle'];
   const S3_UIPALS = ['madness', 'sea'];
-  const S3_STAGES = ['swim', 'vial', 'drops', 'hour', 'lift', 'breaths', 'patrol', 'beam', 'paper', 'reveal', 'join', 'order', 'burn', 'shadow', 'sweep', 'island', 'pulse', 'bread'];
+  const S3_STAGES = ['swim', 'vial', 'drops', 'hour', 'lift', 'breaths', 'patrol', 'beam', 'paper', 'reveal', 'join', 'order', 'burn', 'shadow', 'sweep', 'island', 'pulse', 'bread', 'bedcut'];   // bedcut: a43-play P4(광기의 왕 패배 → 짚 침대 컷)
   /* ---------- S4 계약 목록(docs/ARCHITECTURE_S4.md §F-3, docs/S4_BUILD1.md §D — 1차) — 스프라이트는 경고, 전투·곡 레이어는 오류 ---------- */
   // S4_SPR: S4_BUILD1 §F에서 1차에 만드는 키(원본이 아직 없는 cu_bless·cu_grip_hands는 만든 뒤에 더한다)
   const S4_SPR = ['ch_faria2_grip_0', 'ch_faria2_grip_1', 'ch_faria2_bless', 'cu_phial_third', 'cu_mouth_knife', 'en_despair2',
@@ -18531,11 +18622,12 @@ MC.data.sfx = {
     {"o":"sine","f":[1310,1290],"a":2,"d":420,"g":0.03,"send":{"stone":0.3}},
     {"n":"white","hp":2500,"a":2,"d":10,"g":0.08},
     {"n":"brown","lp":400,"a":2,"d":80,"g":0.1}]},
-  /* wind_fall: 떨어지는 1.5초의 바람(wind_gust를 늘려 점점 높게). 끝의 splash는 이벤트 몫 */
+  /* wind_fall: 떨어지는 2.4초의 바람(wind_gust를 늘려 점점 높게). 끝의 splash는 이벤트 몫
+     [a43-play P5] 1.5 → 2.4초(낙하 fall 2400ms와 같은 길이 — 바람이 끊긴 뒤 0.3초 완전 무음 → 착수) */
   "wind_fall": {"gain":2.8,"c":"story","p":4,"cd":300,"L":[
-    {"n":"white","bp":[500,1600,2600],"q":0.9,"ffms":1500,"a":250,"s":0.9,"h":1050,"r":200,"g":0.1,"pan":[-0.3,0.3]},
-    {"n":"pink","lp":[500,900],"a":250,"s":1,"h":1050,"r":250,"g":0.07},
-    {"n":"brown","lp":300,"a":400,"s":1,"h":800,"r":300,"g":0.06}]},
+    {"n":"white","bp":[500,1600,2600],"q":0.9,"ffms":2400,"a":250,"s":0.9,"h":1950,"r":200,"g":0.1,"pan":[-0.3,0.3]},
+    {"n":"pink","lp":[500,900],"a":250,"s":1,"h":1900,"r":250,"g":0.07},
+    {"n":"brown","lp":300,"a":400,"s":1,"h":1700,"r":300,"g":0.06}]},
   /* pulse140: 물속 저음 펄스 한 번(D2 삼각파, ♩140 16분 길이) — sea_sink 스테이지가 428ms마다 되풀이(음악 버스 아님, LP 400은 스테이지) */
   "pulse140": {"c":"story","p":3,"cd":60,"L":[
     {"o":"triangle","f":73.4,"a":3,"d":100,"g":0.3},
@@ -18579,9 +18671,10 @@ MC.data.sfx = {
     {"o":"sawtooth","f":[80,104],"fms":700,"fm":[10,9],"bp":520,"q":5,"a":120,"s":1,"h":450,"r":200,"g":0.05},
     {"n":"white","bp":450,"q":2,"a":2,"d":40,"g":0.07},
     {"o":"triangle","f":[100,65],"a":2,"d":50,"g":0.1}]},
-  /* finger_fold: 손가락 하나를 접음(아주 작게 — 열넷 세기) */
+  /* finger_fold: 손가락 하나를 접음(열넷 세기) — [a43-play S3] 폰에서 안 들리던 6ms 딸깍(g .04) → 나무 '딱'(60ms: 삼각 900 + noise bp1800 30ms, g .18) */
   "finger_fold": {"c":"story","p":2,"cd":60,"rp":0.04,"gain":1.5,"L":[
-    {"o":"p12","f":1200,"a":2,"d":6,"g":0.04},
+    {"o":"triangle","f":[900,860],"a":2,"d":58,"g":0.18},
+    {"n":"white","bp":1800,"q":1.5,"a":1,"d":30,"g":0.18},
     {"n":"brown","lp":500,"a":3,"d":40,"g":0.04}]},
 
   "_gull_far": {"c":"amb","p":1,"rp":0.1,"rpan":0.8,"L":[
@@ -18662,7 +18755,8 @@ MC.data.sfx = {
     {"o":"sine","f":[160,420],"fms":40,"lp":900,"a":2,"d":60,"g":0.05,"rep":5,"every":110,"jit":60,"rpm":0.3,"rgm":[0.4,1],"send":{"dream":0.4}}]},
   "_boom_far": {"c":"amb","p":1,"rpan":0.4,"L":[
     {"n":"brown","lp":[120,260,110],"ffms":2400,"a":700,"s":1,"h":400,"r":1400,"g":0.072,"send":{"dream":0.5}},
-    {"o":"sine","f":[46,38],"a":600,"s":1,"h":400,"r":1300,"g":0.024}]},
+    {"o":"sine","f":[46,38],"a":600,"s":1,"h":400,"r":1300,"g":0.024},
+    {"t":500,"n":"pink","bp":400,"q":0.8,"wob":0.3,"a":150,"s":1,"h":250,"r":400,"g":0.03,"send":{"dream":0.5}}]},   /* [a43-play S4] 0.8초 굴림(폰 스피커에 남는 층) */
   /* S4 2차 환경음 이벤트: 빗방울 틱(storm) · 돛 펄럭(deck — blanket을 낮게) */
   "_rain_tick": {"gain":2.2,"c":"amb","p":1,"rp":0.3,"rg":4,"rpan":0.9,"L":[
     {"n":"white","hp":3500,"a":2,"d":5,"g":0.02},
@@ -18784,12 +18878,18 @@ MC.data.amb = {
     "ev":[{"id":"calendar_flip","every":[9000,20000],"first":[2500,6000],"g":0.3},{"id":"_whisper","every":[11000,24000],"first":[5000,10000]},
       {"id":"_tick_rev","every":[1700,4200],"first":[800,1600]},{"id":"_drip_echo","every":[5000,12000],"first":[2000,5000]}]},
   /* seabed: 바다 밑의 자루들(B4) — 물속 저음(brown LP160)·아주 낮은 물결·E·B 드론, 깊은 거품 드물게, 먼 파도 울림 */
+  /* [a43-play S4] 폰 대역 소2-5: sub 층(brown LP160·드론)을 −6dB(g .07→.035, .008→.004). 먼 파도 울림(_boom_far)에 bp400 굴림 층을 더함 */
   "seabed": {"beds":[
-      {"type":"noise","n":"brown","lp":160,"q":0.7,"g":0.07,"glfo":[0.05,0.4]},
+      {"type":"noise","n":"brown","lp":160,"q":0.7,"g":0.035,"glfo":[0.05,0.4]},
       {"type":"waves","g":0.03,"lp":180,"lpv":80,"mono":true},
-      {"type":"drone","f":[41.2,82.4,123.5],"g":0.008,"lfo":[0.06,6]}],
+      {"type":"drone","f":[41.2,82.4,123.5],"g":0.004,"lfo":[0.06,6]}],
     "ev":[{"id":"_bubble_deep","every":[6000,14000],"first":[1500,4000]},{"id":"_boom_far","every":[12000,26000],"first":[4000,9000]},
       {"id":"_drip_echo","every":[8000,18000],"first":[5000,9000],"g":0.6}]},
+  /* [a43-play S1] undersea: S4 장면 10 물속(sea_sink) 바다 베드 — 먹먹한 물살 쉬익(noise bp600 q0.8, 폰 스피커 대역) + 깊은 거품 드물게. 스테이지가 틀고 끈다
+     g: 계획 .05는 폰 근사 평균 −39.6dB(목표 −38 미달) → .08(실측 −38.1) */
+  "undersea": {"beds":[
+      {"type":"noise","n":"white","bp":600,"q":0.8,"g":0.08,"lfo":[0.08,120],"glfo":[0.07,0.35]}],
+    "ev":[{"id":"_bubble_deep","every":[3000,7000],"first":[800,2000],"g":0.8}]},
   /* hush: 발작의 밤·한 시간·의심의 하루 — 물방울 드물게 + 아주 낮은 파도. 촛불 지글 없음(정적이 들리게) */
   "hush": {"beds":[
       {"type":"waves","g":0.03,"lp":240,"lpv":90,"mono":true}],
@@ -33580,7 +33680,7 @@ MC.addMaps({
     "spawns": {
       "default": [1, 14, "right"],
       "from_catalan": [1, 14, "right"],
-      "feast": [8, 11, "up"],
+      "feast": [8, 10, "up"],                                              // [a43-ui P8-4] 출구 막기 t_gate(7~8,12)에서 두 칸 위 — 손가락이 살짝 아래로 끌려도 바로 밟지 않게
       "rw": [8, 11, "up"]
     },
     "objects": [
@@ -35028,15 +35128,17 @@ MC.addEvents({
 
   // 프롤로그 가운데 토막(자루 속 — 심장·??? 두 줄·숨 참기·「하나, 둘—」). a0.start가 부르고, S4 장면 9(s4x.sack)가 계단·바위 끝 뒤에 같은 토막을 부른다(ARCHITECTURE_S4 §C-3).
   // 옛 a0.start 15~36행을 글자·쉼·소리 그대로 옮김. custom breath 인자에 alt(s4.on이면 숨 = 3 + 최대 MP/20초)·var(뗀 횟수 s4_rel1)만 더함 — 프롤로그는 flag가 없어 5초 그대로
+  // [a43-ui P8-1 · C9 ②] 길이는 한 박도 그대로. 0.5초부터 자루 천 결이 희미하게 보이고 심장 박마다 드러난다(sackweave — minigames.js). 「하나, 둘—」 뒤에 걷는다
   "a0.sack": [
+    { "op": "sackweave", "on": true, "delay": 500, "async": true },
     { "op": "lowpass", "hz": 650, "ms": 0 },
     { "op": "wait", "ms": 1500 },
     { "op": "parallel", "async": true, "do": [ [
-      { "op": "sfx", "id": "heartbeat" }, { "op": "vibrate", "p": 30 }, { "op": "wait", "ms": 833 },
-      { "op": "sfx", "id": "heartbeat" }, { "op": "vibrate", "p": 30 }, { "op": "wait", "ms": 833 },
-      { "op": "sfx", "id": "heartbeat" }, { "op": "vibrate", "p": 30 }, { "op": "wait", "ms": 833 },
-      { "op": "sfx", "id": "heartbeat" }, { "op": "vibrate", "p": 30 }, { "op": "wait", "ms": 833 },
-      { "op": "sfx", "id": "heartbeat" }, { "op": "vibrate", "p": 30 }
+      { "op": "sfx", "id": "heartbeat" }, { "op": "sackweave", "beat": true }, { "op": "vibrate", "p": 30 }, { "op": "wait", "ms": 833 },
+      { "op": "sfx", "id": "heartbeat" }, { "op": "sackweave", "beat": true }, { "op": "vibrate", "p": 30 }, { "op": "wait", "ms": 833 },
+      { "op": "sfx", "id": "heartbeat" }, { "op": "sackweave", "beat": true }, { "op": "vibrate", "p": 30 }, { "op": "wait", "ms": 833 },
+      { "op": "sfx", "id": "heartbeat" }, { "op": "sackweave", "beat": true }, { "op": "vibrate", "p": 30 }, { "op": "wait", "ms": 833 },
+      { "op": "sfx", "id": "heartbeat" }, { "op": "sackweave", "beat": true }, { "op": "vibrate", "p": 30 }
     ] ] },
     { "op": "wait", "ms": 1900 },
     { "op": "sfx", "id": "thud" },
@@ -35050,7 +35152,8 @@ MC.addEvents({
     { "op": "custom", "id": "breath", "args": { "sec": 5, "fail": false, "alt": { "flag": "s4.on", "base": 3, "mpDiv": 20 }, "var": "s4_rel1" } },
     { "op": "sfx", "id": "swing" },
     { "op": "shake", "p": 0.22 },
-    { "op": "say", "who": "unknown", "t": "하나,{p:450} 둘—", "auto": 120 }
+    { "op": "say", "who": "unknown", "t": "하나,{p:450} 둘—", "auto": 120 },
+    { "op": "sackweave", "off": true, "async": true }                  // async: 대화창 유지 판정(keepAfter)이 예전처럼 토막 끝으로 읽게
   ]
 
 });
@@ -35128,7 +35231,8 @@ MC.addEvents({
     { "op": "set", "flag": "s2.alley_open", "v": true },
     { "op": "say", "who": "think", "t": "아버지 댁은 북쪽 골목 맨 위.\n{p:200}……석 달 만이다." },
     { "op": "say", "who": "sys", "t": "화면을 누른 채 끌면 걷는다.\n짧게 누르면 살펴본다." },
-    { "op": "save", "slot": "auto" }
+    { "op": "save", "slot": "auto" },
+    { "op": "movehint" }                                                  // [a43-ui P8-3] 손가락 + 「화면을 끌어서 걷는다」 — 첫 걸음에 사라짐(custom.js)
   ],
 
   "a1.port_enter": [
@@ -35826,7 +35930,7 @@ MC.addEvents({
 /* events_a2.js — 2막 '약혼 잔치와 체포': a2.start(이틀 후 카드 → 잔치, 하객 대화 자유) → a2.toast(메르세데스에게 말 걸면 건배 선택 toast A/B/C, 마지막 어절 직전에 문이 쾅) → a2.arrest(음악 뚝·채도 0.55·세 사람 closeup) → a2.villefort(두 신랑, 투서, honest, '누아르티에' 정적 2초, 벽난로, doubt) → a2.boat(밤바다, 뛰어들려다 제압, 암전 속 등대, 철문) → a3.start. 담당: content-a12(S1) → content-a1b(S2: a2.father 두 번째 대사에 var father 메아리 A/B, 값 없으면 S1 대사)
    flags: a2.feast a2.arrested a2.villefort_done a2.done
    vars(선택): toast "A"|"B"|"C", honest "A"|"B", doubt "A"|"B"  (3막 담당이 회수)
-   vars(대화 순번): a2.t_morrel a2.t_father a2.t_caderousse a2.t_danglars a2.t_fernand a2.t_guest_a a2.t_guest_b a2.t_boy a2.t_sailor */
+   vars(대화 순번): a2.t_morrel a2.t_father a2.t_caderousse a2.t_danglars a2.t_fernand a2.t_guest_a a2.t_guest_b a2.t_boy a2.t_sailor · (0.4.3a) a2.t_gate(출구 막기 횟수) */
 (function (MC) { 'use strict';
 MC.addEvents({
 
@@ -35852,11 +35956,15 @@ MC.addEvents({
     { "op": "emote", "id": "mercedes", "kind": "note", "ms": 1000, "async": true },
     { "op": "say", "who": "morrel", "t": "왔나, 신랑!{p:200} 오늘 건배는 자네 몫일세." },
     { "op": "say", "who": "morrel", "t": "인사 다 돌거든 신부 옆으로 가게.{p:200} 다들 목이 마르다네." },
+    { "op": "glow", "id": "mercedes" },                                   // [a43-ui P8-4] 신부 자리가 한 번 반짝인다(말을 걸면 꺼짐)
     { "op": "save", "slot": "auto" }
   ],
 
+  // [a43-ui P8-4] 「오늘은 여기가 내 자리다.」는 처음 한 번만 — 그 뒤로는 말 없이 한 칸 밀어낸다(같은 말 되풀이 금지)
   "a2.gate": [
-    { "op": "say", "who": "think", "t": "오늘은 여기가 내 자리다." },
+    { "op": "if", "cond": { "not": { "var": "a2.t_gate", "gte": 1 } }, "then": [
+      { "op": "say", "who": "think", "t": "오늘은 여기가 내 자리다." } ] },
+    { "op": "add", "var": "a2.t_gate", "n": 1 },
     { "op": "move", "id": "player", "path": "U1", "speed": 200 }
   ],
 
@@ -40069,7 +40177,7 @@ MC.addEvents({
       { "op": "wait", "ms": 600 },
       { "op": "emote", "id": "faria", "kind": "exclaim", "ms": 600 },
       { "op": "say", "who": "faria", "t": "하.{p:300} ……내 해시계 금보다 분명하군." },
-      { "op": "say", "who": "faria", "face": "stern", "t": "누아르티에는 그자의 아버지일세." },
+      { "op": "say", "who": "faria", "face": "stern", "t": "누아르티에는 그자의 아버지일세.", "key": true },   // [a43-ui P6] 정점 — 빨리감기로 넘기지 않음
       { "op": "bgmcut" },
       { "op": "flash", "color": "#ffffff", "a": 0.3, "ms": 140 },
       { "op": "sfx", "id": "heartbeat" },
@@ -41963,7 +42071,7 @@ MC.addEvents({
         [ when({ "var": "n3_vow", "eq": "B" },
           [ { "op": "say", "who": "faria", "t": "그땐 '지금은 안 되냐'더니.\n이번엔 기다리겠다고." } ],
           [ { "op": "wait", "ms": 300 } ]) ]),
-      { "op": "say", "who": "faria", "face": "smile", "t": "……고맙네.{p:300} 받겠네." },
+      { "op": "say", "who": "faria", "face": "smile", "t": "……고맙네.{p:300} 받겠네.", "key": true },   // [a43-ui P6] 맹세(M74)
       // fixer-s3: 받아 준 순간 뒤에 할 일 목록 3상자를 두지 않는다 — 굴 메우기는 숨 일곱 뒤 당테스 자신의 판단으로(s3f.breaths 끝), '내일 할 말'은 s3t.morning의 「간수가 신부님 방을 다녀간 뒤」가 잇는다
       { "op": "wait", "ms": 1200 },
       { "op": "say", "who": "faria", "face": "tired", "t": "……잠들 때까지만\n있어 주게." },
@@ -42659,7 +42767,7 @@ MC.addEvents({
       { "op": "say", "who": "faria", "face": "wry", "t": "이젠 자네 등에 업혀 가야겠군." },
       { "op": "say", "who": "dantes", "t": "그건 신부님 겁니다.\n저는 신부님 핏줄도 아닌데요." },
       { "op": "say", "who": "faria", "t": "……첫날 그랬지.\n아버지가 내 연세쯤이라고." },
-      { "op": "say", "who": "faria", "t": "자네는 내 아들일세." },
+      { "op": "say", "who": "faria", "t": "자네는 내 아들일세.", "key": true },   // [a43-ui P6] M75
       { "op": "wait", "ms": 1200 },
       { "op": "say", "who": "faria", "t": "신부라 아들이 없었고,\n죄수라 문이 없었지." },
       { "op": "say", "who": "faria", "face": "smile", "t": "자네가 벽을 넘어와서,\n둘 다 생겼네." },
@@ -43407,7 +43515,7 @@ MC.addEvents({
       { "op": "choice", "who": "think", "t": "무어라 답할까.", "var": "s3_knife", "opts": [
         { "t": "약속합니다", "v": "vow", "do": [
           { "op": "say", "who": "dantes", "t": "……약속합니다." },
-          { "op": "say", "who": "faria", "t": "……받겠네." } ] },
+          { "op": "say", "who": "faria", "t": "……받겠네.", "key": true } ] },   // [a43-ui P6] 칼 약속(M74)
         { "t": "(대답하지 않는다)", "v": "silent", "do": [
           { "op": "emote", "id": "player", "kind": "dots", "ms": 1200 },
           { "op": "say", "who": "faria", "t": "……대답은 나중에 해도 되네." } ] }
@@ -43935,7 +44043,27 @@ MC.addEvents({
       { "op": "wait", "ms": 400 },
       { "op": "letterbox", "on": false, "ms": 0 },
       { "op": "hud", "show": true },
-      { "op": "battle", "troop": "madking", "boss": true, "canFlee": false, "onWin": [ { "op": "call", "ev": "s3d.after_king" } ] }
+      { "op": "battle", "troop": "madking", "boss": true, "canFlee": false, "onWin": [ { "op": "call", "ev": "s3d.after_king" } ],
+        "onLose": [ { "op": "call", "ev": "s3d.king_lost" } ] }   // [a43-play P4] 지면 감방에서 깨어 연도를 다시 걷지 않고, 문 앞에서 그 자리 재도전
+    ],
+
+    // [a43-play P4] 광기의 왕에게 졌다(조정 31 · F40): 흰 페이드 → 짚 침대 1.5초 컷(글 없음) → 왕의 문 앞 칸(t_king 8,8)에서 HP·MP 가득 →
+    //   두 번째 갈래(「거울 속의 내가 또 웃는다.」)로 곧장 전투. 선택지 없음. sys.faint(재료 절반 손실·감방 깸)는 거치지 않는다. 연도 문 깃발은 그대로.
+    //   다시 하는 전투는 watch(60ms)로 새로 띄운다 — onLose 안에서 곧장 부르면 질 때마다 call이 한 겹씩 깊어진다(s4b.lost와 같은 까닭)
+    "s3d.king_lost": [
+      { "op": "wait", "ms": 400 },
+      { "op": "bgm", "id": null, "fade": 300 },
+      { "op": "fade", "to": 1, "ms": 450, "color": "#e8ecf4" },
+      { "op": "hud", "show": false },
+      { "op": "letterbox", "on": true, "ms": 0 },
+      { "op": "heal" },
+      { "op": "custom", "id": "s3", "args": { "stage": "bedcut", "ms": 1500 } },
+      { "op": "fade", "to": 1, "ms": 0, "color": "#e8ecf4" },
+      { "op": "place", "at": [ 8, 8, "up" ] },
+      { "op": "face", "id": "follower", "dir": "player" },
+      { "op": "light", "dark": 0.82, "r": 46, "at": "player", "color": "#c8a0ff", "ms": 0 },
+      { "op": "fade", "to": 0, "ms": 600, "color": "#e8ecf4" },
+      { "op": "watch", "id": "s3d_king_again", "ms": 60, "ev": "s3d.king" }
     ],
 
     // 이긴 뒤: 왕의 마지막 말 「생각이…… 줄을 서네.」(전투 안)에 동행이 답한다 → 거울이 깨지고 한 장(1825년의 얼굴)만 → 깸
@@ -44824,8 +44952,9 @@ MC.addEvents({
       W(2600)                                                              // 오르골만(말 없이 손이 머리 위에 있는 동안)
     ], CU_BLESS
       // fixer-s4p1: 클로즈업이 토막을 끊어 주므로(축복 뒤 8상자) 축복을 한 상자로 따로 — 정점이 '섬 이름.' 문답에 묻히지 않게. 폴백 판은 10상자를 지키려 합친 채
-      ? [ SAYF("……내 아들에게, 복을 비네.", "weak", SLOWER), W(1600), SAYF("섬 이름.", "weak", SLOWER) ]
-      : [ SAYF("……내 아들에게, 복을 비네.{p:1600}\n섬 이름.", "weak", SLOWER) ], [
+      // [a43-play P6] 축복은 정점 — "key": true(누르고 있기 빨리감기로 넘기지 않음, a43-ui 엔진)
+      ? [ Object.assign(SAYF("……내 아들에게, 복을 비네.", "weak", SLOWER), { "key": true }), W(1600), SAYF("섬 이름.", "weak", SLOWER) ]
+      : [ Object.assign(SAYF("……내 아들에게, 복을 비네.{p:1600}\n섬 이름.", "weak", SLOWER), { "key": true }) ], [
       W(1400),
       { "op": "say", "who": "dantes", "t": "……몬테크리스토.", "speed": 52 },
       W(1300),
@@ -44876,7 +45005,8 @@ MC.addEvents({
       // 기다림 — 오르골만 아주 작게 늦어진다(♩76→64). 컷신(cut): 입력 없이 띠가 ¼·½·¾에 저절로 뜨고, 그때마다 잡은 손에 온기가 돈다
       // (fixer-s4p1: 52 → 48초. 줄인 4초와 아래 새벽 쉼 조정으로 장면 2·3 합계 6분을 지킨다)
       { "op": "music", "fn": "tempoTo", "args": [ 64, 30 ] },
-      { "op": "custom", "id": "s3", "args": { "stage": "hour", "sec": 48, "cut": true, "lines": [ "십 분.", "……", "반 시간." ] } },
+      // [a43-play V2] 48초를 12초씩 네 컷으로(와이드 → 맞잡은 손 「십 분.」 → 등잔 심지 인서트 「……」 → 와이드 「반 시간.」). 길이·맥(41.5초)은 그대로
+      { "op": "custom", "id": "s3", "args": { "stage": "hour", "sec": 48, "cut": true, "lines": [ "십 분.", "……", "반 시간." ], "cuts": [ "wide", "grip", "wick", "wide" ] } },
       W(1600),
       { "op": "sfx", "id": "phial", "gain": 0.35, "pitch": 0.9 },
       W(2800),
@@ -44887,11 +45017,12 @@ MC.addEvents({
       { "op": "sprite", "id": "faria", "sprite": FIT },
       { "op": "sfx", "id": "seizure", "gain": 0.4 },
       { "op": "shake", "p": 0.15 }, { "op": "vibrate", "p": 40 },
-      W(180),
+      // [a43-play V2] 경련: 칼날 판 입 클로즈업이 0.4초 흔들린다(그림이 없으면 still이 곧장 끝나 필드 그대로)
+      { "op": "custom", "id": "s4", "args": { "stage": "still", "spr": "cu_mouth_knife", "ms": 400, "in": 0, "out": 120, "jolt": 400, "bg": "#0a0706" } },
       { "op": "sprite", "id": "faria", "sprite": FIT1 },
       W(220),
       { "op": "sprite", "id": "faria", "sprite": LIE },
-      W(2400),
+      W(2060),                                                             // [a43-play V2] 2400 − 경련 클로즈업이 늘린 340ms(장면 길이 그대로)
       { "op": "jump", "id": "faria", "h": 1, "ms": 90 },                    // 한 번 더 — 그리고 고요
       W(3000),
       { "op": "sfx", "id": "heartbeat", "gain": 0.3 },
@@ -45704,7 +45835,7 @@ MC.addEvents({
       { "op": "say", "who": "narr", "t": "눈을 뜨니, 창빛이 붉었다." },
       W(700),
       { "op": "say", "who": "think", "t": "여기서 나가는 방법은 하나뿐이다." },
-      { "op": "say", "who": "think", "t": "죽은 사람이 되는 것." },
+      { "op": "say", "who": "think", "t": "죽은 사람이 되는 것.", "key": true },   // [a43-play P6] 결심의 정점 — 누르고 있기 빨리감기로 넘기지 않음
       W(500),
       { "op": "custom", "id": "s4", "args": { "stage": "slit", "len": 0.6, "sfx": "cloth_tear" } },
       { "op": "set", "flag": "s4x.wake_done" },
@@ -46037,11 +46168,17 @@ MC.addEvents({
       SFX("swing"), { "op": "shake", "p": 0.22 },
       SFX("wind_fall"),                                                  // 상처 입은 새처럼, 한참
       // [fixer-s4p2] QA 21: 검정 + 소리뿐이던 1.5초 → 자루 천 결이 위로 흘러가는 낙하(소리를 끈 폰에서도 보이게, 글 없음)
-      { "op": "custom", "id": "s4", "args": { "stage": "fall", "ms": 1500 } },
+      // [a43-play P5] 떨어지고(2.4초 — 바람 wind_fall도 같은 길이) · 숨이 멎고(완전 무음 0.3초) · 물에 닿는다(splash + 흰 1프레임 + 진동 80) · 입력 없는 검정 1.2초(거품 소리만) → 바다
+      { "op": "custom", "id": "s4", "args": { "stage": "fall", "ms": 2400 } },
       { "op": "fade", "to": 1, "ms": 0 },
-      { "op": "amb", "id": null, "fade": 200 },
+      { "op": "amb", "id": null, "fade": 40 },
+      W(300),
       SFX("splash", { "gain": 1 }), { "op": "shake", "p": 0.35 }, { "op": "vibrate", "p": 80 },
+      { "op": "fade", "to": 1, "ms": 0, "color": "#ffffff" }, W(40),     // 흰 1프레임(알파 없이 화면 전체)
+      { "op": "fade", "to": 1, "ms": 0, "color": "#000000" },
       { "op": "vignette", "a": 0, "ms": 0 },
+      { "op": "lowpass", "hz": 700, "ms": 120 },                          // 물속(sea_sink가 이어받음)
+      W(350), SFX("bubble", { "gain": 0.7, "pitch": 0.8 }), W(450), SFX("bubble", { "gain": 0.45, "pitch": 0.7 }), W(400),
       call("s4x.sea")
     ],
 
@@ -46915,7 +47052,7 @@ MC.addLang('ko', {
     "menu.memNew": "새 기억 {n}",
     "menu.memCount": "{n}장",
     "menu.twoPeople": "두 사람",
-    "menu.saveOnlyCell": "감방에서만",
+    "menu.saveOnlyCell": "감방에서 · 자동 기록은 늘",
     "menu.saveOnlyCellToast": "기록은 감방(짚 침대 곁)에서만 할 수 있다.",
     "menu.use": "사용한다",
     "menu.cantUse": "지금은 쓸 수 없다.",
@@ -47066,6 +47203,7 @@ MC.addLang('ko', {
     "deduce.tapAgain": "한 번 더 누르면 답한다.",
     "deduce.tapWall": "벽을 누른다.",
 
+    "hint.move": "화면을 끌어서 걷는다",
     "mg.holdPrompt": "길게 누르고 버틴다",
     "mg.holdHint": "숨을 참는 동안 손을 떼지 말 것",
     "mg.breath": "숨",
@@ -47078,6 +47216,7 @@ MC.addLang('ko', {
     "mg.seaRise": "연타해서 떠오른다",
     "mg.seaDive": "길게 눌러 잠수한다",
     "mg.seaSwim": "왼쪽·오른쪽을 번갈아 눌러 헤엄친다",
+    "mg.seaSwimSlow": "천천히, 하나… 둘…",
     "mg.helmPrompt": "좌우로 끌어 바위 바깥으로",
     "mg.blanketGauge": "힘",
     "mg.patrolGuide": "머리 위 발소리를 센다.",
@@ -47209,7 +47348,7 @@ MC.addLang('ko', {
     "menu.memNew": { "w": 70, "font": "body", "lines": 1, "note": "기억 오른쪽 '새로 얻은 기억 수'(금색). {n}" },
     "menu.memCount": { "w": 70, "font": "body", "lines": 1, "note": "기억 오른쪽 '가진 기억 장 수'. {n}" },
     "menu.twoPeople": { "w": 70, "font": "body", "lines": 1, "note": "상태 오른쪽(에드몽·파리아 둘)" },
-    "menu.saveOnlyCell": { "w": 70, "font": "body", "lines": 1, "note": "기록 오른쪽(감방에서만 저장 가능 — 흐린 글)" },
+    "menu.saveOnlyCell": { "w": 120, "font": "small", "lines": 2, "note": "기록 오른쪽(손 기록은 감방에서만, 자동 기록은 맵을 옮길 때마다 늘 된다 — 흐린 글). 칸을 넘으면 작은 글꼴 두 줄(ui List)" },
     "menu.saveOnlyCellToast": { "w": 156, "font": "body", "lines": 2, "note": "감방 밖에서 기록을 누르면 토스트" },
     "menu.use": { "w": 68, "font": "body", "lines": 1, "note": "도구 쪽 사용 단추(76폭)" },
     "menu.cantUse": { "w": 156, "font": "body", "lines": 2, "note": "도구를 지금 쓸 수 없을 때 토스트" },
@@ -47360,6 +47499,7 @@ MC.addLang('ko', {
     "deduce.tapAgain": { "w": 160, "font": "small", "lines": 1, "note": "아래 칸 안내 둘째 줄" },
     "deduce.tapWall": { "w": 170, "font": "small", "lines": 1, "note": "벽에 이름 새기기 안내" },
 
+    "hint.move": { "w": 170, "font": "body", "lines": 1, "note": "부두 첫 자유 이동 — 손가락이 옆으로 끌리는 그림 아래 한 줄. 처음 걸으면 사라진다" },
     "mg.holdPrompt": { "w": 170, "font": "body", "lines": 1, "note": "프롤로그 자루 속 숨 참기 안내(길게 누르고 버틴다)" },
     "mg.holdHint": { "w": 170, "font": "small", "lines": 1, "note": "숨 참기 안내 둘째 줄" },
     "mg.breath": { "w": 20, "font": "small", "note": "숨 게이지 왼쪽 한 낱말(숨)" },
@@ -47372,6 +47512,7 @@ MC.addLang('ko', {
     "mg.seaRise": { "w": 168, "font": "body", "lines": 2, "note": "S4 물속 sea_sink ⑤ 첫 안내 — 빠르게 여러 번 눌러(연타) 물 위로 헤엄쳐 오른다" },
     "mg.seaDive": { "w": 168, "font": "body", "lines": 2, "note": "S4 sea_sink ⑥ 첫 안내 — 성의 횃불 빛이 닿기 전에 길게 눌러 물속에 잠겨 숨는다" },
     "mg.seaSwim": { "w": 168, "font": "body", "lines": 2, "note": "S4 헤엄 sea_swim 첫 안내 — 화면 왼쪽을 누르면 왼팔, 오른쪽을 누르면 오른팔로 젓는다. 번갈아 저어야 곧게 나아간다(한쪽만 누르면 그쪽으로 틀어짐)" },
+    "mg.seaSwimSlow": { "w": 168, "font": "body", "lines": 1, "note": "S4 헤엄 sea_swim 둘째 줄 — 너무 빨리 연타해 탭이 버려지기 시작하면(3번) 첫 안내 아래에 뜸. 한 번 젓는 박자는 약 0.45초, 손가락이 0.7초 박자로 번갈아 깜빡인다. 셈을 세듯 천천히" },
     "mg.helmPrompt": { "w": 170, "font": "body", "lines": 1, "note": "S4 장면 13 키 잡기(custom s4 helm) 첫 안내 한 줄 — 화면 어디서든 좌우로 끌면 키 손잡이가 움직이고 뱃머리가 돌아, 앞의 바위섬(리우)을 바깥쪽(바다 쪽)으로 비켜 가라. 처음 비킬 때까지만 보임" },
     "mg.blanketGauge": { "w": 20, "font": "small", "note": "끌어안기 게이지 왼쪽 한 낱말(버티는 팔의 힘)" },
     "mg.patrolGuide": { "w": 170, "font": "small", "lines": 2, "note": "S3 굴 끝 방: 머리 위 회랑 단면 아래 안내(누를 것 없음 — 보초 발소리를 듣고 세는 장면, 빗금이 쌓인다)" },
@@ -47531,7 +47672,7 @@ MC.addLang('en', {
     "menu.memNew": ["{n} new", "1ie0msu"],
     "menu.memCount": ["{n} kept", "1o4twrm"],
     "menu.twoPeople": ["Two of us", "1eicq3h"],
-    "menu.saveOnlyCell": ["Cell only", "akxfxi"],
+    "menu.saveOnlyCell": ["In the cell · autosave always on", "zh10af"],
     "menu.saveOnlyCellToast": ["You can only save by your cell’s straw bed.", "1j57vp"],
     "menu.use": ["Use", "99l8vy"],
     "menu.cantUse": ["You can’t use that now.", "1yyspib"],
@@ -47682,6 +47823,7 @@ MC.addLang('en', {
     "deduce.tapAgain": ["Tap again to answer.", "w607dy"],
     "deduce.tapWall": ["Tap the wall.", "3aih0m"],
 
+    "hint.move": ["Drag on the screen to walk", "ygfcpy"],
     "mg.holdPrompt": ["Press and hold to endure.", "18z6ood"],
     "mg.holdHint": ["Don’t let go. Hold your breath.", "md2r7p"],
     "mg.breath": ["Air", "ce6cd3"],
@@ -48519,8 +48661,11 @@ MC.addLang('en', {
           }
         }
         // 전후 당테스(2배, 나란히)
+        // [a43-ui V5] 설명 줄이 두 줄이면 오른쪽 인물 위 「…」이 둘째 줄을 덮었다(「방이 하나 [말풍선]겼다」) — 인물 줄을 설명 줄 수만큼 내린다
+        const lineN = line ? MC.text.wrap(line, 164, 'small').length : 0;
+        const sprY = cy + (line ? (roll ? 34 : 22) + lineN * 13 + 16 + 14 : 42);
         if (sprA && t >= tYear) {
-          const sy = cy + (line ? 62 : 42), rs = rollState(t);
+          const sy = sprY, rs = rollState(t);
           const pB = rs[0] >= steps ? 1 : (rs[0] + MC.ease.outCubic(rs[1])) / steps;
           const la = U.lvl(t, tYear, 300);
           g.hline(cx - 44, sy + 32, 26, '#15141c'); g.hline(cx + 18, sy + 32, 26, '#15141c');
@@ -48534,7 +48679,7 @@ MC.addLang('en', {
         }
         // ▼ (내용 바로 아래)
         if (t >= sc.markAt && sc.out < 0) {
-          const bottom = sprA ? cy + (line ? 62 : 42) + 34 : (line ? (roll ? cy + 34 : cy + 22) + 26 : cy + 34);
+          const bottom = sprA ? sprY + 34 : (line ? (roll ? cy + 34 : cy + 22) + 26 : cy + 34);
           MC.ui.nextMark(cx - 3, Math.min(H - 34 - g.safe.bottom, bottom + 22));
         }
         if (t < 400) g.ditherFill('#000', 16 - t / 400 * 16);        // 첫 검정에서 서서히
@@ -49036,6 +49181,9 @@ MC.addLang('en', {
             if (!S.held) { S.held = true; S.paused = false; U.sfx('breath', { gain: 0.45, pitch: 1.05 }); }
             S.prog = Math.min(1, S.prog + dt / DUR);
             S.air = Math.max(FLOOR, S.air - DRAIN_HOLD * dt);
+          } else if (S.held && !S.paused && S.releases === 0 && S.t - S.holdT0 < 600) {
+            // [a43-ui P8-2] 첫 시도에서 600ms 안에 뗀 짧은 탭은 실패(「아직!」)로 치지 않는다 — 처음으로 되돌리고 손가락이 '꾹' 누르는 모션을 두 번 보인다
+            S.phase = 'intro'; S.held = false; S.prog = 0; S.air = 1; S.holdT0 = -1; S.squeezeT = S.t; S.promptA = 1;
           } else {
             if (S.held && !S.paused) release();
             S.held = false;
@@ -49194,8 +49342,12 @@ MC.addLang('en', {
         const cx = W >> 1, P = { txt: '#c8c4d8', dim: '#6a6878' };
         // 안내: 길게 누르기
         if (S.phase === 'intro' && t > 400) {
-          const lv = S.promptA * 16, bob = Math.round(Math.sin(t * 0.008) * 2), hy = promptY;   // [embrace-side] 새 그림이면 그림 바로 아래
+          const lv = S.promptA * 16, hy = promptY;   // [embrace-side] 새 그림이면 그림 바로 아래
+          // [a43-ui P8-2] 짧게 뗀 뒤: 손가락이 '꾹' 두 번(누름 0.6초 → 뗌 — 누르는 동안 아래로 3px + 손끝 둘레 고리가 남아 '눌러 둔다'로 읽힘)
+          const sq = S.squeezeT != null ? S.t - S.squeezeT : -1, squeezing = sq >= 0 && sq < 1700;
+          const press = squeezing && (sq % 850) < 600, bob = squeezing ? (press ? 3 : 0) : Math.round(Math.sin(t * 0.008) * 2);
           if (!U.drawSpr('ic_hand_tap', cx - 13, hy + bob, lv, 2)) g.circle(cx, hy + 12 + bob, 6, '#c8c4d8');
+          if (press) { const k = (sq % 850) / 600; g.ring(cx - 5, hy + 2, 4 + Math.round(k * 5), k < 0.5 ? '#f0ecff' : '#8a88a0'); }
           const a = MC.text.bake(U.tf(SK.prompt || 'mg.holdPrompt'), 'body', P.txt, { shadow: '#000' });
           U.drawDither(a, cx - (a.width >> 1), hy + 38, lv);
           const b = MC.text.bake(U.tf(SK.hint), 'small', P.dim);
@@ -49227,7 +49379,57 @@ MC.addLang('en', {
     });
   }
 
-  ch1.minigames = { breath, drawBreathGauge };
+  /* [a43-ui P8-1 · C9 ②] 자루 속 첫 암전: 길이는 그대로 두고, 0.5초부터 자루 천 결(cu_sack 2배 — 최종전 drawSack과 같은 그림)이 심장 박마다 희미하게 드러난다(글 없음).
+     이벤트 즉시 op {op:"sackweave", on:true, delay:ms} / {beat:true} / {off:true} — events_a0 a0.sack(프롤로그 · S4 장면 9가 같은 토막을 부름).
+     custom이 아니라 즉시 op인 까닭: custom은 대화창을 닫고 페이드를 잠시 걷었다 되돌리므로(present), 박마다 부르면 S4(페이드 1 위)에서 결이 가려진다.
+     화면이 페이드로 덮여 있으면(S4) 스스로 검은 바탕을 깔고 띄운다(events.lift) — off에서 되돌린다. 입력은 받지 않고 그대로 아래로 넘긴다. */
+  const SW = { sc: null, t0: 0, delay: 500, beatT: -1e9, lift: null };
+  function sackWeaveOff() {
+    const sc = SW.sc; if (!sc) return;
+    SW.sc = null;
+    MC.scene.remove(sc);
+    const h = SW.lift; SW.lift = null;
+    if (!h || !(MC.events && MC.events.unlift)) return;
+    // 그 사이 열린 대화창(「하나, 둘—」「셋!」)은 이 바탕 위에 떠 있다 — 창이 다 닫힌 뒤에 페이드를 되돌린다(창이 페이드에 가려지지 않게)
+    const t0 = MC.time.real;
+    (function tryUnlift() {
+      if (MC.dialogue && MC.dialogue.active && MC.time.real - t0 < 20000) { setTimeout(tryUnlift, 50); return; }
+      MC.events.unlift(h);
+    })();
+  }
+  function sackWeave(c) {
+    c = c || {};
+    if (c.off) { sackWeaveOff(); return; }
+    if (c.beat) { SW.beatT = MC.time.real; return; }
+    if (!c.on) return;
+    sackWeaveOff();
+    SW.t0 = MC.time.real; SW.delay = c.delay != null ? Math.max(0, +c.delay) : 500; SW.beatT = -1e9;
+    SW.lift = MC.events && MC.events.lift ? MC.events.lift() : null;
+    const sc = SW.sc = { name: 'sackweave', opaque: false, blocking: false };
+    sc.update = () => {
+      // 이벤트가 끊기면(타이틀로 등) 스스로 치운다 · 안전 상한 90초
+      if (!(MC.events && MC.events.running) || MC.time.real - SW.t0 > 90000) sackWeaveOff();
+    };
+    sc.onInput = ev => { const i = MC.scene.stack.indexOf(sc), below = i > 0 ? MC.scene.stack[i - 1] : null; return below && below.onInput ? !!below.onInput(ev) : true; };
+    sc.onBack = ev => { const i = MC.scene.stack.indexOf(sc), below = i > 0 ? MC.scene.stack[i - 1] : null; if (below && below.onBack) below.onBack(ev); };
+    sc.render = () => {
+      const g = G(), W = g.W, H = g.H, now = MC.time.real, t = now - SW.t0 - SW.delay;
+      if (t <= 0) return;
+      const tile = weaveTile('sack'), tw = tile.width * 2, th = tile.height * 2, ctx = g.ctx;
+      const fin = MC.clamp(t / 900, 0, 1), pulse = MC.clamp(1 - (now - SW.beatT) / 460, 0, 1);
+      const a = fin * (0.12 + 0.43 * pulse);                              // 박 사이엔 겨우 보이고, 박마다 결이 드러난다(폰 밝기 50%에서도 '멈춘 화면'이 아니게)
+      if (a < 0.02) return;
+      const sway = Math.round(Math.sin(now * 0.0023) * 2), dx = Math.round(Math.sin(now * 0.0011) * 3);   // 옮겨지는 자루: 결이 조금씩 흔들린다
+      ctx.globalAlpha = a;
+      for (let y = -th + (((sway % th) + th) % th); y < H; y += th) for (let x = -tw + (((dx % tw) + tw) % tw); x < W; x += tw) ctx.drawImage(tile, x, y, tw, th);
+      ctx.globalAlpha = 1;
+      U.drawVig(4 + pulse * 4, '#000000');                                // 가장자리는 어둠 — 가운데만 결이 스민다
+    };
+    MC.scene.push(sc);
+  }
+  if (MC.events && MC.events.ops && !MC.events.ops.sackweave) MC.events.ops.sackweave = c => { sackWeave(c); };
+
+  ch1.minigames = { breath, drawBreathGauge, sackWeave };
 })(window.MC);
 
 </script>
@@ -49255,6 +49457,75 @@ MC.addLang('en', {
     if (ch1.minigames && ch1.minigames.breath) return ch1.minigames.breath(args || {});
     U.warn('breath', 'minigames.breath 없음'); return Promise.resolve({ ok: true });
   };
+
+  /* ================================================================ [a43-ui P8-3] 첫 자유 이동 안내(부두) */
+  // 즉시 op {op:"movehint"} — 이벤트가 끝나 조작이 풀리면 화면 아래쪽에 손가락이 옆으로 끌리는 그림 + 「화면을 끌어서 걷는다」(hint.move) 한 줄.
+  //   처음 한 칸 걷거나(위치가 바뀜) 맵이 바뀌면 사라지고 다시 뜨지 않는다. 입력은 받지 않는다(필드 훅 renderHud로만 그림 — 미니게임 안내 규격 B1 자리)
+  const MH = { on: false, map: null, x: 0, y: 0, t0: 0 };
+  // [a43-ui P10] 맵에 들어온 직후 입력 잠금(약 0.8초)이 풀리는 순간, 가장 가까운(3칸 안) 말 걸 사람 하나가 한 번 반짝인다 — '이제 눌러도 된다'(녹화: 들어오자마자 누른 파리아 탭이 잠금에 먹힘)
+  const FL = { armed: false, armT: 0, t0: -1, pts: [], mapRef: null };
+  function flashUpdate() {
+    if (!FL.armed || !MC.field) return;
+    const now = MC.time.real;
+    if (now - FL.armT > 1600) { FL.armed = false; return; }              // 진입 잠금만(이벤트가 이어지면 반짝이지 않는다 — 이벤트가 따로 안내한다)
+    const top = MC.scene.top();
+    if (!top || top.name !== 'field' || !(MC.field.controls && MC.field.controls()) || (MC.input.locked && MC.input.locked())) return;
+    FL.armed = false;
+    const m = FL.mapRef, st = MC.field.state ? MC.field.state() : null;
+    if (!m || !st || !Array.isArray(m.objs)) return;
+    const dist = o => Math.max(Math.abs(o.x - st.x), Math.abs(o.y - st.y));
+    const near = m.objs.filter(o => o && o.present !== false && o.visible !== false && o.type === 'npc' && o.event && dist(o) <= 3).sort((a, b) => dist(a) - dist(b));
+    FL.pts = near.length ? [[near[0].x, near[0].y]] : [];                 // 가장 가까운 한 사람만
+    if (FL.pts.length) FL.t0 = now;
+  }
+  function flashRender() {
+    if (FL.t0 < 0 || !MC.field || !MC.field.tileToScreen) return;
+    const q = (MC.time.real - FL.t0) / 520;
+    if (q >= 1) { FL.t0 = -1; return; }
+    const g = G();
+    for (const p of FL.pts) {
+      const s = MC.field.tileToScreen(p[0], p[1]), cx = s[0] + 8, cy = s[1] + 2;
+      g.ring(cx, cy, 6 + Math.round(q * 12), q < 0.5 ? '#fff6d0' : '#a89a70');
+      if (q < 0.3) g.ring(cx, cy, 4 + Math.round(q * 8), '#ffffff');
+    }
+  }
+  function moveHintHook() {
+    return {
+      onLoad(map) { FL.mapRef = map; FL.armed = true; FL.armT = MC.time.real; FL.t0 = -1; },
+      update() {
+        flashUpdate();
+        if (!MH.on || !MC.field) return;
+        const st = MC.field.state ? MC.field.state() : null;
+        if (!st || st.map !== MH.map) { MH.on = false; return; }
+        if (st.x !== MH.x || st.y !== MH.y || st.moving) MH.on = false;   // 첫 걸음
+      },
+      renderHud() {
+        flashRender();
+        if (!MH.on || !(MC.field && MC.field.controls && MC.field.controls())) return;
+        const g = G(), W = g.W, H = g.H, cx = W >> 1, now = MC.time.real;
+        if (!MH.t0) MH.t0 = now;
+        const t = now - MH.t0, lv = Math.min(16, t / 300 * 16), y = Math.round(H * 0.66) - g.safe.bottom;
+        // 손가락: 왼쪽에서 누르고(0.25초) → 오른쪽으로 끌고(0.7초) → 떼고 잠깐 쉼. 끌린 자리에 점 셋이 남는다
+        const cyc = t % 1700, drag = MC.clamp((cyc - 250) / 700, 0, 1), on = cyc < 1100;
+        const hx = cx - 22 + Math.round(MC.ease.inOutQuad ? MC.ease.inOutQuad(drag) * 44 : drag * 44);
+        if (on) for (let i = 0; i < 3; i++) { const dx = cx - 22 + Math.round(i * 44 / 3); if (dx < hx - 2) g.rect(dx - 1, y - 1, 3, 3, '#c8c4d8'); }
+        if (on && cyc >= 200) g.ring(hx, y, 5, '#f0ecff');
+        if (!U.drawSpr('ic_hand_tap', hx - 9, y - 4 + (on ? 0 : -3), lv, 2)) g.circle(hx, y + 8, 5, '#c8c4d8');
+        const img = MC.text.bake(U.tf('hint.move'), 'body', '#e8e4f0', { shadow: '#000' });
+        U.drawDither(img, cx - (img.width >> 1), y + 40, lv);
+      }
+    };
+  }
+  let mhHooked = false;
+  function hookOnce() { if (!mhHooked && MC.field && MC.field._hook) { MC.field._hook(moveHintHook()); mhHooked = true; } }
+  hookOnce();                                                             // 맵 진입 반짝임(P10)은 처음부터 — field.js가 먼저 실린다(boot FILES)
+  function moveHint() {
+    if (!MC.field || !MC.field._hook || !MC.field.state) return;
+    hookOnce();
+    const st = MC.field.state();
+    Object.assign(MH, { on: true, map: st.map, x: st.x, y: st.y, t0: 0 });
+  }
+  if (MC.events && MC.events.ops && !MC.events.ops.movehint) MC.events.ops.movehint = () => { moveHint(); };
 
   /* ================================================================ 1-7 탁자 위의 세 손 */
   // 저녁 정자 탁자(나뭇결 + 등불 빛) — 화면 크기별 캐시
@@ -51278,7 +51549,8 @@ MC.addLang('en', {
       const p = tile();
       if (ev.key || !p || !MC.field || !MC.field.tileToScreen) { finish(); return true; }
       const s = MC.field.tileToScreen(p[0], p[1]);
-      if (ev.x >= s[0] - 6 && ev.x < s[0] + 22 && ev.y >= s[1] - 10 && ev.y < s[1] + 22) { U.vibrate(10); finish(); }
+      // [a43-ui P10] 판정을 사방 12px 넓힌다(창 한 칸이 폰에서 약 20 CSS px — 녹화에서 6분 막힘)
+      if (ev.x >= s[0] - 18 && ev.x < s[0] + 34 && ev.y >= s[1] - 22 && ev.y < s[1] + 34) { U.vibrate(10); finish(); }
       else if (args.other && MC.fx.floatText) MC.fx.floatText(String(args.other), ev.x, ev.y - 8, { color: '#9a98a8', font: 'small', rise: 8, ms: 700 });
       return true;
     };
@@ -51287,6 +51559,12 @@ MC.addLang('en', {
       const p = tile();
       if (!p || !MC.field || !MC.field.tileToScreen) return;
       const s = MC.field.tileToScreen(p[0], p[1]), bob = ((MC.time.real / 300) | 0) % 2;
+      // [a43-ui P10] 입력 잠금(250ms)이 풀리는 순간 누를 칸이 한 번 반짝인다(고리가 퍼짐 + 흰 테 한 번)
+      if (sc.t >= 250 && sc.t < 700) {
+        const k = (sc.t - 250) / 450;
+        g.ring(s[0] + 8, s[1] + 8, 6 + Math.round(k * 12), k < 0.5 ? '#fff6d0' : '#a89a70');
+        if (k < 0.25) g.rectO(s[0] - 1, s[1] - 1, 18, 18, '#ffffff');
+      }
       if (sc.t > 500) { if (!U.drawSpr('ic_hand_tap', s[0] + 6, s[1] + 6 + bob)) g.rect(s[0] + 8, s[1] + 8 + bob, 4, 4, '#ffcf4a'); }
       if (args.hint && sc.t > 1100) {
         const img = MC.text.bake(String(args.hint), 'small', '#9a98a8', { shadow: '#000' });
@@ -51441,6 +51719,7 @@ MC.addLang('en', {
         if (sc.done) return; sc.done = true;
         try { if (o.exit) o.exit(sc); } catch (e) { MC.core.error(e, o.name + '.exit'); }
         MC.scene.remove(sc);
+        if (MC.input && MC.input.lock) MC.input.lock(400);   // [a43-play P7] 조작 → 대사 이음새 400ms 완충(끝의 휙·누름이 다음 줄을 넘기지 않게, 누르던 손가락은 뗄 때까지 무시)
         if (sc.cover) U.coverEnd();
         resolve(sc.res || { ok: true });
       }
@@ -52149,19 +52428,48 @@ MC.addLang('en', {
       return c;
     });
   }
+  // [a43-play V2] 컷 그림: 맞잡은 손(cu_grip_hands — S4 장면 2의 still과 같은 그림·같은 정수 배율) · 등잔 심지 인서트(코드 — 흙 등잔·심지·불꽃이 시간이 갈수록 작아짐)
+  function hourGrip(g, k) {
+    const img = U.spr('cu_grip_hands'), W = g.W, H = g.H;
+    g.clear('#1a1310');
+    if (img) { const s = Math.max(1, Math.min(3, Math.floor((W + 12) / img.width), Math.floor((H * 0.7) / img.height))); g.ctx.imageSmoothingEnabled = false; g.ctx.drawImage(img, (W - img.width * s) >> 1, Math.round(H * 0.42 - img.height * s / 2), img.width * s, img.height * s); }
+    else { g.rect((W >> 1) - 20, Math.round(H * 0.42) - 10, 40, 20, '#8e7468'); }
+    U.drawVig(5, '#1a1310');
+  }
+  function hourWick(g, t, k) {                            // k: 0..1 이 컷 안의 진행(불꽃이 조금씩 낮아짐)
+    const W = g.W, H = g.H, cx = W >> 1, by = Math.round(H * 0.6);
+    g.clear('#0a0806');
+    const fl = Math.sin(t * 0.031) + Math.sin(t * 0.077) * 0.6, fh = Math.max(4, Math.round(13 - k * 5 + fl * 1.5)), fw = 3 + (fh > 9 ? 1 : 0);
+    U.drawDither(U.glow(46 - Math.round(k * 10), '#6a4414', 9), cx - 46 + Math.round(k * 10), by - 18 - 46 + Math.round(k * 10), 12);   // 등잔 빛(점점 작게)
+    for (let y = 0; y < 14; y++) { const hw = Math.round(30 - Math.abs(y - 4) * 1.6 - (y > 8 ? (y - 8) * 2 : 0)); g.rect(cx - hw, by + y, hw * 2, 1, y < 2 ? '#7a5034' : y < 6 ? '#5a3a24' : '#3a2416'); }   // 흙 등잔 몸(위가 넓은 접시)
+    g.rect(cx - 24, by, 48, 1, '#9a6a44'); g.rect(cx + 26, by + 2, 8, 3, '#4a2e1c');                                  // 테 · 손잡이
+    g.rect(cx - 1, by - 4, 2, 4, '#2a1a10'); g.px(cx - 1, by - 5, '#120a06');                                        // 심지(타서 검게)
+    for (let y = 0; y < fh; y++) { const q = y / fh, w = Math.max(1, Math.round(fw * Math.sin(Math.PI * Math.min(1, (1 - q) * 1.1)))), x0 = cx - (w >> 1) + Math.round(Math.sin(t * 0.02 + y * 0.4) * q * 1.2); g.rect(x0, by - 5 - y, w, 1, q < 0.25 ? '#fff0c0' : q < 0.6 ? '#ffcf6a' : '#ff8a30'); }
+    U.drawVig(6, '#0a0806');
+  }
   ST.hour = function (a) {
     const sec = Math.max(1, num(a.sec, 12)), lines = strs(a.lines), cut = a.cut === true;
     if (isAuto()) return later(300, () => ({ taps: 0 }));
     // fixer-s3: 띠는 덮어쓰지 않고 차례로(앞 띠 2초가 끝난 뒤 다음 띠) · 떠 있는 띠가 다 지나야 끝남 · 3초 동안 손이 없으면 스승 손 자리 온기가 한 번 희미하게 맥동(글자 없는 안내)
     // fixer-s4p1: cut:true(S4 장면 3 — 전부 컷신)면 입력·손가락 힌트·기다리는 온기 없이, 띠가 sec를 고르게 나눈 시각(¼·½·¾)에 저절로 뜨고 그때마다 잡은 손에 온기가 한 번 돈다
-    const S = { taps: 0, band: null, queue: [], touch: -1e9, dim: 0, next: 0 };
+    // [a43-play V2] 망사(디더) 대신: 들어올 때 0.6초만 디더, 그 뒤는 색을 곱해 낮춘 단색(81% → 45%) + 비네트 2단(조정 29). 시간 흐름은 촛불 원 반경을 6초마다 1도트씩 줄여 보인다.
+    //   cuts:["wide","grip","wick","wide"](선택, cut:true에서만) — sec를 고르게 나눈 컷. 띠(lines[i])는 i+1번째 컷이 열린 0.8초 뒤(전과 같은 ¼·½·¾ 자리). 길이는 그대로(조정 27).
+    const cuts = cut && Array.isArray(a.cuts) && a.cuts.length ? a.cuts.map(String) : null, nC = cuts ? cuts.length : 0, cutMs = cuts ? sec * 1000 / nC : 0, XF = 300;
+    const isPic = k => k === 'grip' || k === 'wick';
+    const S = { taps: 0, band: null, queue: [], touch: -1e9, dim: 0, next: 0, r0: -1, shrink: 0 };
+    try { const fs = MC.field && MC.field.state && MC.field.state(); if (fs && fs.light && fs.light.r > 0) S.r0 = fs.light.r; } catch (_) {}
     const BAND_MS = 2000;
     const bandBusy = t => !!(S.band && t - S.band.t0 < BAND_MS);
+    let picBuf = null;
+    function drawCut(g, k, t, q) { if (k === 'grip') hourGrip(g, q); else if (k === 'wick') hourWick(g, t, q); }
     return mount({
       name: 'mg_s3_hour', opaque: false,
       update(sc) {
         S.dim = Math.min(1, sc.t / (sec * 1000));
-        if (cut && S.next < lines.length && sc.t >= FADE + sec * 1000 * (S.next + 1) / (lines.length + 1)) { S.queue.push(lines[S.next++]); S.touch = sc.t; }
+        const n6 = Math.floor(Math.max(0, sc.t - FADE) / 6000);   // 6초마다 촛불 원 1도트
+        if (S.r0 > 0 && n6 !== S.shrink && sc.out < 0) { S.shrink = n6; try { if (MC.field && MC.field.setLight) MC.field.setLight({ r: Math.max(8, S.r0 - n6) }, 600); } catch (_) {} }
+        const lineAt = i => cuts ? FADE + cutMs * (i + 1) + 800 : FADE + sec * 1000 * (i + 1) / (lines.length + 1);
+        if (cut && S.next < lines.length && sc.t >= lineAt(S.next)) { S.queue.push(lines[S.next++]); S.touch = sc.t; }
         if (S.queue.length && !bandBusy(sc.t)) S.band = { text: S.queue.shift(), t0: sc.t };
         if (sc.t >= FADE + sec * 1000 && !bandBusy(sc.t) && !S.queue.length) sc.end({ taps: S.taps });
       },
@@ -52173,9 +52481,29 @@ MC.addLang('en', {
       render(sc, lv) {
         const g = G(), t = sc.t, ctx = g.ctx;
         if (!fieldOn()) standBg(lv, '#05060c');
-        g.ditherFill('#000000', Math.min(lv, 3 + S.dim * 3));          // 시간이 가며 조금씩 어두워짐(시계 없음)
-        // 잡은 손: 파리아 자리에 잠깐 옅은 온기
-        const p = actorAt('faria');
+        // [a43-play V2] 시간이 가며 조금씩 어두워짐(시계 없음): 들어올 때 0.6초만 디더(0→3/16), 그 뒤는 곱한 단색(밝기 81% → 45%) — 화면 전체 망사 없음
+        if (t < 600) g.ditherFill('#000000', Math.min(lv, Math.round(3 * t / 600)));
+        else {
+          const m = 1 - (1 - (0.81 - 0.36 * S.dim)) * Math.min(16, lv) / 16, v = Math.round(255 * m);
+          ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = 'rgb(' + v + ',' + v + ',' + v + ')'; ctx.fillRect(0, 0, g.W, g.H); ctx.restore();
+        }
+        U.drawVig(Math.round(2 * Math.min(16, lv) / 16), '#000000');   // 비네트 2단(가장자리 띠는 디더 — 조정 29)
+        // [a43-play V2] 컷(그림): 앞뒤 컷이 그림이 아니면 300ms 디더로 들고 난다
+        let picLv = 0;
+        if (cuts && t >= FADE) {
+          const e = t - FADE, ci = Math.min(nC - 1, Math.floor(e / cutMs)), k = cuts[ci], ce = e - ci * cutMs, q = MC.clamp(ce / cutMs, 0, 1);
+          if (isPic(k)) {
+            const prevPic = ci > 0 && isPic(cuts[ci - 1]), nextPic = ci < nC - 1 && isPic(cuts[ci + 1]);
+            const inK = prevPic ? 1 : MC.clamp(ce / XF, 0, 1), outK = nextPic || ci === nC - 1 ? 1 : MC.clamp((cutMs - ce) / XF, 0, 1);
+            picLv = Math.round(16 * Math.min(inK, outK) * Math.min(16, lv) / 16);
+            if (!picBuf || picBuf.width !== g.W || picBuf.height !== g.H) picBuf = g.makeCanvas(g.W, g.H);
+            if (prevPic && ce < XF) { g.withCtx(picBuf, () => drawCut(g, cuts[ci - 1], t, 1)); U.drawDither(picBuf, 0, 0, Math.min(16, lv)); picLv = Math.round(16 * ce / XF); }
+            g.withCtx(picBuf, () => drawCut(g, k, t, q));
+            if (picLv > 0) U.drawDither(picBuf, 0, 0, picLv);
+          }
+        }
+        // 잡은 손: 파리아 자리에 잠깐 옅은 온기(그림 컷이 덮고 있으면 그리지 않는다)
+        const p = picLv >= 8 ? null : actorAt('faria');
         if (p && t - S.touch < 1800) {
           const k = t - S.touch, a2 = k < 200 ? k / 200 : 1 - (k - 200) / 1600;
           ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35 * MC.clamp(a2, 0, 1) * lv / 16;
@@ -52506,6 +52834,41 @@ MC.addLang('en', {
         const fx = Math.round(sp.lamp[0] + sway * 2), fy = Math.round(sp.lamp[1]), fl = (((t / 110) | 0) & 1);
         ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.5 * lv / 16; const gw = U.glow(9 + Math.round(Math.abs(sway) * 2), '#6a4414', 10, 1.2); ctx.drawImage(gw, fx - gw.width / 2 | 0, fy - 2 - gw.height / 2 | 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
         g.ditherRect(fx, fy - 3 - fl, 1, 1, '#ff8a30', lv); g.ditherRect(fx - 1 + (sway > 0.3 ? 1 : 0), fy - 2, 2, 2, '#ffcf6a', lv); g.ditherRect(fx, fy - 1, 1, 1, '#fff6d0', lv);
+      }
+    });
+  };
+
+  /* ================================================================ bedcut — [a43-play P4] 광기의 왕에게 졌을 때: 흰빛 → 짚 침대 컷(글 없음) → 흰빛
+     인자: {ms:1500} → {ok}. 이벤트가 흰 페이드(fade 1 white)로 덮은 뒤 부른다 — 스테이지가 그 덮개를 걷고(fade 0) 스스로 흰빛에서 열고 흰빛으로 닫는다.
+     끝나면 결과를 먼저 돌려주고 흰 화면으로 남아 있다가, 이벤트가 다시 흰 덮개(fade 1)를 씌우면 스스로 빠진다(필드가 한 프레임도 비치지 않게).
+     그림: 감방 바닥 + 짚 침대(ob_bed_straw) + 누운 당테스(지금 모습 pspr_lie_0, 없으면 ch_dantes_lie_0) 3배 · 촛불 없는 새벽빛. s3Auto면 300ms */
+  ST.bedcut = function (a) {
+    const ms = Math.max(600, num(a.ms, 1500)), WH = '#e8ecf4', EDGE = 350;
+    const M = ch1.s4u && ch1.s4u.mount;
+    if (isAuto() || !M) return later(300, () => ({ ok: true }));
+    let gone = false;
+    return M({
+      name: 'mg_s3_bedcut', opaque: true, IN: 0, OUT: 0,
+      init() { try { MC.fx.fade(0, 0); } catch (_) {} },
+      update(sc) {
+        if (sc.t >= ms && !gone) { gone = true; sc.resolveNow({ ok: true }); }
+        if (gone && (!MC.fx.fadeLevel || MC.fx.fadeLevel() >= 0.99 || sc.t >= ms + 3000)) sc.end({ ok: true });
+      },
+      render(sc) {
+        const g = G(), W = g.W, H = g.H, t = sc.t;
+        g.clear('#0d0b10');
+        for (let y = Math.round(H * 0.3); y < H; y += 8) for (let x = (y >> 3) & 1 ? 0 : 8; x < W; x += 16) g.rect(x, y, 15, 7, '#16131a');   // 돌바닥 줄눈
+        const k = 3, bed = hasSpr('ob_bed_straw') ? G().getSprite('ob_bed_straw') : null;
+        const ps = (MC.state && MC.state.pspr) || 'ch_dantes', lieN = hasSpr(ps + '_lie_0') ? ps + '_lie_0' : (hasSpr('ch_dantes_lie_0') ? 'ch_dantes_lie_0' : null), lie = lieN ? G().getSprite(lieN) : null;
+        const cx = W >> 1, cy = Math.round(H * 0.56);
+        U.drawDither(U.glow(Math.round(W * 0.55), '#3a3448', 6), cx - Math.round(W * 0.55), cy - Math.round(W * 0.55), 16);   // 창빛 한 줄기(새벽)
+        if (bed) U.drawDither(bed, cx - ((bed.width * k) >> 1), cy - ((bed.height * k) >> 1), 16, k);
+        else g.rect(cx - 30, cy - 12, 60, 24, '#6a5a30');
+        const breath = Math.round(Math.sin(t * 0.004));   // 숨(가슴이 1px 오르내림)
+        if (lie) U.drawDither(lie, cx - ((lie.width * k) >> 1), cy - ((lie.height * k) >> 1) - 4 + breath, 16, k);
+        U.drawVig(6, '#000000');
+        const w = t < EDGE ? 1 - t / EDGE : t > ms - EDGE ? MC.clamp((t - (ms - EDGE)) / EDGE, 0, 1) : 0;   // 흰빛에서 열고 흰빛으로 닫는다
+        if (w > 0) g.ditherFill(WH, Math.round(16 * w));
       }
     });
   };
@@ -54718,7 +55081,9 @@ MC.addLang('en', {
       let buf = null, resolved = false;
       sc.end = res => { if (sc.out >= 0) return; if (res !== undefined) sc.res = res; sc.out = 0; sc.opaque = false; };
       // 남겨 두는 배경(ev_s4_<stage>): 결과를 먼저 돌려주고 화면은 그대로 둔다 — 이벤트가 그 위에 대사를 띄우고 나중에 clear로 걷는다
-      sc.resolveNow = res => { if (resolved) return; resolved = true; resolve(res || sc.res || { ok: true }); };
+      // [a43-play P7] 결과를 돌려주는 순간(= 다음 대사가 시작되는 자리) 400ms 입력 완충 — 끝의 휙·누름이 다음 줄을 넘기지 않게(누르던 손가락은 뗄 때까지 무시).
+      //   남겨 둔 배경을 나중에 걷을 때(finish)는 이미 돌려준 뒤라 다시 잠그지 않는다
+      sc.resolveNow = res => { if (resolved) return; resolved = true; if (MC.input && MC.input.lock) MC.input.lock(400); resolve(res || sc.res || { ok: true }); };
       sc.lv = () => (sc.out >= 0 ? MC.clamp(1 - sc.out / Math.max(1, OUT), 0, 1) : MC.clamp(sc.t / Math.max(1, IN), 0, 1)) * 16;
       function finish() {
         if (sc.done) return; sc.done = true;
@@ -54769,7 +55134,10 @@ MC.addLang('en', {
   const pnow = () => performance.now();
   function getVar(n) { try { return n && MC.game && MC.game.getVar ? MC.game.getVar(String(n)) : undefined; } catch (_) { return undefined; } }
   function toast(t, ms) { if (t) { try { MC.ui.toast(String(t), ms); } catch (_) {} } }
-  function lowpass(hz, ms) { try { if (MC.audio && typeof MC.audio.lowpass === 'function') MC.audio.lowpass(hz, ms || 0); } catch (e) { if (MC.core) MC.core.error(e, 's4.lowpass'); } }
+  function lowpass(hz, ms, q) { try { if (MC.audio && typeof MC.audio.lowpass === 'function') MC.audio.lowpass(hz, ms || 0, q); } catch (e) { if (MC.core) MC.core.error(e, 's4.lowpass'); } }
+  // [a43-play S1] 물속 먹먹함 400Hz → 700Hz · Q 1.4(소2-1: sea_sink 폰 평균 −47dB — 400Hz 아래는 폰 스피커가 거의 못 냄). 네 곳이 이 값을 쓴다
+  const SEA_LP = 700, SEA_Q = 1.4;
+  const seaLP = ms => lowpass(SEA_LP, ms, SEA_Q);
   const vib = p => U.vibrate(p);
   const dbgS = (k, v) => { if (MC.cfg && MC.cfg.debug) (ch1.s4dbg || (ch1.s4dbg = {}))[k] = v; };   // ?debug=1에서 스테이지 상태 보기(MC.ch1.s4dbg.<stage>)
   function lead() {                                       // 선두(당테스) — st가 비어 있으면(전투 전 새 상태) hp로 대신
@@ -55181,7 +55549,7 @@ MC.addLang('en', {
      ④ 1.6초: 풀린 다리가 떠오르고 빈 자루·칼이 가라앉음(공기 멈춤) ⑤ 연타로 떠오름(cu_swim_a/b 크게 — 탭마다 팔 젓기 프레임, 위 수면 빛이 커짐)
      ⑥ 횃불 빛이 4초에 걸쳐 다가옴 → 닿기 전에 길게 눌러 3초 잠수.
      공기 = air + 최대 정신력/mpDiv 초(초당 1). 실패는 공기가 바닥날 때(①②③⑤)와 ⑥ 빛에 걸림뿐 — 검정 0.5초·심장 다시·「아직!」 → 그 토막 처음(② → ①부터).
-     같은 토막 2번 실패 → 공기 ×1.5 · 4번(또는 설정 assist) → 보조(입력 한 번에 성공, 2.5초 무입력이면 저절로). LP 400(끝에 null) · 펄스 pulse140 ♩140 · 심장 */
+     같은 토막 2번 실패 → 공기 ×1.5 · 4번(또는 설정 assist) → 보조(입력 한 번에 성공, 2.5초 무입력이면 저절로). LP 700 Q1.4([a43-play S1] 예전 400 — 끝에 null) · 바다 베드 amb undersea · 펄스 pulse140 ♩140 · 심장 */
   const LIGHT_MS = 4000, DIVE_MS = 3000, KNOT_GAP = 380, PROMPT_IDLE = 4000;
   // 안내 한 줄(끌어안기 안내와 같은 body 글꼴·같은 색, 그림 위라 검은 테) — 폭 168에서 두 줄까지
   function promptImg(key) {
@@ -55194,11 +55562,19 @@ MC.addLang('en', {
       return c;
     });
   }
-  function drawPrompt(key, y, lv) {
+  function drawPrompt(key, y, lv, shadow) {
     if (!(lv > 0)) return;
-    const g = G(), img = promptImg(key);
-    g.ditherRect(0, y - 4, g.W, img.height + 6, '#000000', Math.round(lv * 0.45));   // 그림 위에서도 읽히게 옅은 띠
-    U.drawDither(img, (g.W - img.width) >> 1, y, lv);
+    const g = G(), img = promptImg(key), x = (g.W - img.width) >> 1;
+    if (shadow) U.drawDither(promptShadow(key, img), x + 1, y + 1, lv);   // [a43-play V4] 띠 없이 검은 그림자 글자(B1 자리)
+    else g.ditherRect(0, y - 4, g.W, img.height + 6, '#000000', Math.round(lv * 0.45));   // 그림 위에서도 읽히게 옅은 띠
+    U.drawDither(img, x, y, lv);
+  }
+  function promptShadow(key, img) {                       // 같은 글 모양의 검은 판(1칸 아래·오른쪽에 깔기)
+    return baked('ps|' + key + '|' + U.tf(key), () => {
+      const c = G().makeCanvas(img.width, img.height), x = c.getContext('2d');
+      x.drawImage(img, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#000000'; x.fillRect(0, 0, c.width, c.height);
+      return c;
+    });
   }
   // 토막별 안내: 토막 시작 300ms 뒤 그 토막 첫 입력까지 · 입력이 끊기고 PROMPT_IDLE ms 뒤 다시(멈추지 않게)
   const promptLv = (t, st, used, last) => { const a = !used ? t - st - 300 : t - last - PROMPT_IDLE; return a > 0 ? Math.min(16, a / 250 * 16) : 0; };
@@ -55333,6 +55709,9 @@ MC.addLang('en', {
       for (let x = 0; x < W; x += 2) g.rect(x, sy + Math.round(Math.sin(x * 0.12 + t * 0.004) * 1.5), 2, 1, '#a8c8e8');
       for (let i = 0; i < 4; i++) { const x0 = Math.round(W * (0.1 + i * 0.27) + Math.sin(t * 0.0009 + i * 2) * 8); for (let y = sy; y < H * 0.85; y += 2) g.ditherRect(x0 + Math.round((y - sy) * 0.15), y, 3, 2, '#5a8ab8', Math.max(0, 7 - Math.round((y - sy) / (H * 0.09)))); }
       const r = Math.round(30 + (1 - k) * W * 0.45); U.drawDither(U.glow(r, '#cfe4f4', 7), cx - r, sy - r, Math.round(6 + (1 - k) * 8));
+      // [a43-play V4] 떠오른 만큼 수면 빛 층이 아래로 내려온다(수면까지 얼마나 남았는지 — 진행도에 비례한 세로 길이만, 새 그림 없음)
+      const reach = Math.round((1 - k) * H * 0.24);
+      for (let y = 0; y < reach; y += 2) g.ditherRect(0, sy + 2 + y, W, 2, '#3a6a98', Math.max(1, Math.round(8 * (1 - y / Math.max(1, reach)))));
     } else {                                               // 수면 위: 밤하늘
       g.gradV(0, 0, W, sy, ['#04060c', '#070b16', '#0b1222', '#121c30']);
       g.hline(0, sy, W, '#4a6a90');
@@ -55359,7 +55738,7 @@ MC.addLang('en', {
       else { g.circle(cx, y + 8, 10, '#1a1410'); g.rect(cx - 12, y + 18, 24, 30, '#4a4742'); }
       S.headY = y + 8;
     }
-    if (!surf && (idle >= 1500 || (t - S.st > 600 && S.depth >= D0 - 1))) U.hintHand(cx + 40, Math.round(H * 0.72), 12, 'tap', '#0a1c30');
+    if (!surf && (idle >= 1500 || (t - S.st > 600 && S.depth >= D0 - 1))) U.hintHand(cx + 40, Math.round(H * 0.6), 12, 'tap', '#0a1c30');   // [a43-play V4] 0.72 → 0.6: 아래로 옮긴 안내 글(숨 게이지 위)과 겹치지 않게
   }
   // ⑤ 수면 — 숨이 터지는 순간의 말풍선(당테스 머리에서 꼬리, 흰 번쩍임 뒤 120ms부터 ms−250까지). 이벤트 인자 gasp.t(러너가 번역)
   function drawGasp(k, text, ms, hy) {
@@ -55480,7 +55859,8 @@ MC.addLang('en', {
       seg: 1, st: 0, air: 0, airMax: 1, fails: 0, segF: [0, 0, 0, 0, 0, 0, 0], usedA: ASSIST0, used: false, swHeld: false,
       p2: 0, open2: -1, sndT: -1e9, k: 0, q: 0, tugT: -1e9, cutT: -1, memoT: -1, frame: 0, headY: 0,
       depth: D0, lastKick: -1e9, surfT: -1, lightT: 0, diving: false, diveT0: 0,
-      failT: -1, failSeg: 0, reBeat: false, last: 0, pulseT: 0, beatT: 0, beatK: 0, endT: -1, flashW: -1e9, kickT: -1e9, seen: -1e9
+      failT: -1, failSeg: 0, reBeat: false, last: 0, pulseT: 0, beatT: 0, beatK: 0, endT: -1, flashW: -1e9, kickT: -1e9, seen: -1e9,
+      knotL: [], knotRow: 0, keep: null, quick: false, best5: D0, floor5: null   // [a43-play V4·P5]
     };
     dbgS('sea_sink', S);
     const assistOn = seg => ASSIST0 || S.segF[seg] >= 4;
@@ -55489,15 +55869,19 @@ MC.addLang('en', {
     function enter(sc, seg) {
       S.seg = seg; S.st = sc.t; S.last = sc.t; S.used = false;
       if (seg === 1) { S.p2 = 0; S.open2 = -1; sw.reset(); refill(2); }
+      if (seg === 2) { S.open2 = -1; sw.reset(); refill(2); }   // [a43-play P5] 둘째 실패부터 ①을 건너뛰고 ②로 바로(보통 흐름 ①→②는 update에서 enter 없이 넘어간다)
       if (seg === 3) { S.k = 0; S.q = 0; }
-      if (seg === 5) { S.depth = D0; S.lastKick = -1e9; S.surfT = -1; S.air = Math.min(S.airMax, Math.max(S.air, 6)); }   // [fixer-s4p2] QA 19: 최소 6초
+      if (seg === 5) { S.depth = D0; S.best5 = D0; S.lastKick = -1e9; S.surfT = -1; S.air = Math.min(S.airMax, Math.max(S.air, 6)); }   // [fixer-s4p2] QA 19: 최소 6초
       if (seg === 6) { S.lightT = 0; S.diving = false; }
     }
     function fail(sc, seg, kind) {                        // kind: air | seen(⑥ 빛에 걸림)
       S.fails++; S.segF[seg]++;
       S.failT = sc.t; S.failSeg = seg; S.reBeat = false;
+      // [a43-play P5] 진행의 절반은 남긴다(긋기 p2 · 매듭 k · 떠오르기 가장 높이 오른 깊이) — 조작량은 그대로, 같은 일을 처음부터 되풀이하지 않게
+      S.keep = { p2: S.p2 * 0.5, k: Math.floor(S.k / 2), depth: D0 - (D0 - Math.min(S.depth, S.best5 == null ? D0 : S.best5)) * 0.5 };
+      S.quick = S.fails >= 2;                             // 둘째 실패부터: 「아직!」·① 가라앉음 1.5초 없이 그 토막에서 바로
       if (S.diving) { S.diving = false; }
-      toast(U.tf('mg.notYet'), 900);
+      if (!S.quick) toast(U.tf('mg.notYet'), 900);
       vib([30, 60, 30]); MC.fx.shake(0.35);
       U.sfx(kind === 'seen' ? 'gasp' : 'bubble', { gain: 0.8, pitch: 0.8 });
     }
@@ -55509,12 +55893,29 @@ MC.addLang('en', {
       if (sc.t - S.sndT > 110) { S.sndT = sc.t; snd('cloth_tear', { gain: 0.35, pitch: 1.1 - S.p2 * 0.2 }, 'cloth_slip', { gain: 0.3 }); vib(8); bub.burst(G().W * 0.5, G().H * (0.35 + S.p2 * 0.3), 2); }
       if (S.p2 >= 1) open2(sc);
     }
-    // ③ 매듭 한 단계(탭마다 — 너무 빠른 연타는 쌓았다가 KNOT_GAP ms씩): 손이 당김(그림 2px 들림) · 줄이 처짐 · 토스트
+    // [a43-play V4] 매듭 글(knots 셋)은 공용 토스트 대신 화면 위에 줄을 쌓는다(+14도트) — 빠르게 탭하면 토스트 둘이 같은 자리에서 겹쳐 그려졌다(도2-8)
+    const KNOT_MS = 1700;
+    function knotLine(sc, text) {
+      if (!text) return;
+      S.knotL = S.knotL.filter(l => sc.t - l.t0 < KNOT_MS);
+      if (!S.knotL.length) S.knotRow = 0;                 // 다 사라졌으면 맨 윗줄부터
+      S.knotL.push({ text: String(text), t0: sc.t, row: S.knotRow++ });
+    }
+    function drawKnotLines(t) {
+      const g = G();
+      for (const l of S.knotL) {
+        const k = t - l.t0; if (k >= KNOT_MS) continue;
+        const lv = Math.round(16 * Math.min(1, k / 120, (KNOT_MS - k) / 250));
+        const img = baked('kl|' + l.text, () => MC.text.bake(l.text, 'body', '#f0ecf8', null, '#000000'));
+        if (img) U.drawDither(img, (g.W - img.width) >> 1, 8 + g.safe.top + l.row * 14, lv);
+      }
+    }
+    // ③ 매듭 한 단계(탭마다 — 너무 빠른 연타는 쌓았다가 KNOT_GAP ms씩): 손이 당김(그림 2px 들림) · 줄이 처짐 · 글 한 줄
     function knotStep(sc) {
       if (S.cutT >= 0 || S.k >= 3) return;
       S.tugT = sc.t;
       if (S.k < 2) {
-        S.k++; toast(knots[S.k - 1], 1100);
+        S.k++; knotLine(sc, knots[S.k - 1]);
         if (S.k === 1 && tied) U.sfx('swing', { gain: 0.5, pitch: 1.05 });   // 1막 매듭 수업의 '휙'
         snd('rope_wrap', { gain: 0.5 }, 'cloth_slip', { gain: 0.35 }); vib(12); MC.fx.shake(0.06);
         return;
@@ -55525,7 +55926,7 @@ MC.addLang('en', {
       if (S.cutT >= 0) return;
       if (assistOn(3)) S.usedA = true;
       S.k = 3; S.cutT = sc.t; S.memoT = sc.t; S.tugT = sc.t;
-      toast(knots[2], 1100);
+      knotLine(sc, knots[2]);
       snd('rope_cut', { gain: 0.8 }, 'knife_carve', { gain: 0.7 }); vib([20, 40, 20]); MC.fx.shake(0.2);
       bub.burst(G().W >> 1, G().H * 0.5, 10);
       if (memo) band.push(memo);
@@ -55546,18 +55947,19 @@ MC.addLang('en', {
     function success6(sc) {
       if (S.endT >= 0) return;
       if (assistOn(6)) S.usedA = true;
-      S.endT = sc.t; S.diving = true; S.diveT0 = Math.min(S.diveT0 || sc.t, sc.t); lowpass(400, 80); U.sfx('bubble', { gain: 0.6 }); bub.burst(G().W * 0.5, G().H * 0.7, 8);
+      S.endT = sc.t; S.diving = true; S.diveT0 = Math.min(S.diveT0 || sc.t, sc.t); seaLP(80); U.sfx('bubble', { gain: 0.6 }); bub.burst(G().W * 0.5, G().H * 0.7, 8);
     }
     const result = () => { done(S.fails, S.usedA); return { ok: true, fails: S.fails, assist: !!S.usedA }; };
     return mount({
       name: 'mg_s4_sea_sink', opaque: true,
       safe: () => { lowpass(null, 0); return result(); },
       init(sc) {                                         // ?debug=1에서만 인자 from(2~6)으로 그 토막부터(확인용)
-        lowpass(400, 60); enter(sc, 1);
+        seaLP(60); enter(sc, 1);
+        try { if (MC.amb && MC.amb.play) MC.amb.play('undersea', { fade: 500 }); } catch (_) {}   // [a43-play S1] 물속 베드(폰 대역 쉬익)
         const from = MC.cfg && MC.cfg.debug ? Math.max(1, Math.min(6, a.from | 0)) : 1;
         if (from > 1) { if (from === 4) { S.cutT = 0; S.k = 3; } enter(sc, from); if (from === 6) lowpass(null, 0); }
       },
-      exit() { lowpass(null, 200); },
+      exit() { lowpass(null, 200); try { if (MC.amb && MC.amb.current === 'undersea') MC.amb.stop(300); } catch (_) {} },
       update(sc, dt) {
         const W = G().W, H = G().H;
         const under = S.seg <= 4 || (S.seg === 5 && S.surfT < 0) || (S.seg === 6 && S.diving);
@@ -55572,18 +55974,20 @@ MC.addLang('en', {
         if (S.endT >= 0) { if (sc.t - S.endT >= 700) sc.end(result()); return; }
         if (S.failT >= 0) {                               // 검정 0.5초 → 심장이 다시 뜀 → 1초 안에 그 토막 처음
           if (!S.reBeat && sc.t - S.failT >= 500) { S.reBeat = true; U.sfx('heartbeat', { gain: 0.9 }); }
-          if (sc.t - S.failT >= 1000) {
+          if (sc.t - S.failT >= (S.quick ? 800 : 1000)) {
             S.failT = -1;
-            const fs = S.failSeg;
-            if (fs === 2) enter(sc, 1);
-            else if (fs === 3) { enter(sc, 3); refill(3); }
-            else if (fs === 5) { enter(sc, 5); refill(5); lowpass(400, 60); }
+            const fs = S.failSeg, K = S.keep || {};
+            if (fs === 2) { enter(sc, S.quick ? 2 : 1); S.p2 = Math.min(0.95, K.p2 || 0); }   // 절반 열린 틈에서 다시
+            else if (fs === 3) { enter(sc, 3); refill(3); S.k = Math.min(2, K.k || 0); }
+            else if (fs === 5) { enter(sc, 5); refill(5); seaLP(60); S.depth = S.best5 = S.floor5 = MC.clamp(K.depth == null ? D0 : K.depth, 0, D0); }
             else enter(sc, 6);
           }
           return;
         }
         const segT = sc.t - S.st, idle = sc.t - S.last;
-        if ((S.seg <= 2 || (S.seg === 3 && S.memoT < 0) || (S.seg === 5 && S.surfT < 0))) {   // 공기(④·⑤ 수면 뒤·⑥은 멈춤)
+        // [a43-play V4] 안내가 뜬 첫 1.5초(토막 시작 300ms 뒤 안내 → 1800ms까지)는 공기가 줄지 않는다 — 읽는 동안 숨이 닳지 않게(②③⑤)
+        const reading = S.seg >= 2 && segT < 1800;
+        if (!reading && (S.seg <= 2 || (S.seg === 3 && S.memoT < 0) || (S.seg === 5 && S.surfT < 0))) {   // 공기(④·⑤ 수면 뒤·⑥은 멈춤)
           S.air -= dt / 1000;
           if (S.air <= 0) { S.air = 0; fail(sc, S.seg === 1 ? 2 : S.seg, 'air'); return; }
         }
@@ -55602,7 +56006,7 @@ MC.addLang('en', {
           case 4: if (segT >= 1600) enter(sc, 5); break;   // [fixer-s4p2] 공기 멈춘 1.6초 — 빈 자루가 읽히게(QA 7)
           case 5:
             if (S.surfT >= 0) { if (sc.t - S.surfT >= SURF_MS) enter(sc, 6); break; }
-            if (sc.t - S.lastKick > 600) S.depth = Math.min(D0, S.depth + 60 * dt / 1000);   // 발차기가 끊기면 도로 가라앉는다
+            if (sc.t - S.lastKick > 600) S.depth = Math.min(S.floor5 == null ? D0 : S.floor5, S.depth + 60 * dt / 1000);   // 발차기가 끊기면 도로 가라앉는다([a43-play P5] 실패 뒤 남긴 절반 아래로는 아님)
             if (assistOn(5) && idle >= 2500) surface(sc);
             if (S.depth <= 0) surface(sc);
             break;
@@ -55643,14 +56047,14 @@ MC.addLang('en', {
             if (!press || S.surfT >= 0) return;
             S.used = true;
             if (assistOn(5)) { surface(sc); return; }
-            S.depth = Math.max(0, S.depth - 24); S.lastKick = sc.t; S.kickT = sc.t; S.frame ^= 1;   // 탭마다 팔 젓기 프레임 A↔B
+            S.depth = Math.max(0, S.depth - 24); S.best5 = Math.min(S.best5 == null ? D0 : S.best5, S.depth); S.lastKick = sc.t; S.kickT = sc.t; S.frame ^= 1;   // 탭마다 팔 젓기 프레임 A↔B
             U.sfx('swing', { gain: 0.22, pitch: 0.7 }); vib(10); bub.burst(G().W >> 1, G().H * 0.6, 4);
             return;
           case 6:
             if (!press) return;
             S.used = true;
             if (assistOn(6)) { success6(sc); return; }
-            if (!S.diving && S.lightT < LIGHT_MS) { S.diving = true; S.diveT0 = sc.t; lowpass(400, 120); U.sfx('bubble', { gain: 0.5 }); bub.burst(G().W * 0.5, G().H * 0.75, 5); }
+            if (!S.diving && S.lightT < LIGHT_MS) { S.diving = true; S.diveT0 = sc.t; seaLP(120); U.sfx('bubble', { gain: 0.5 }); bub.burst(G().W * 0.5, G().H * 0.75, 5); }
             return;
         }
       },
@@ -55667,9 +56071,11 @@ MC.addLang('en', {
         const PK = { 2: 'mg.seaCut', 3: 'mg.seaKnot', 5: 'mg.seaRise', 6: 'mg.seaDive' }[S.seg];
         const needs = (S.seg === 2 && S.open2 < 0) || (S.seg === 3 && S.cutT < 0) || (S.seg === 5 && S.surfT < 0) || (S.seg === 6 && !S.diving && S.endT < 0);
         if (PK && needs && S.failT < 0) {
-          const py = S.seg === 3 ? Math.round(H * 0.74) : Math.round(H * 0.08) + g.safe.top;   // ③은 매듭·발 아래(위는 소매), 그 밖은 위쪽(그림 얼굴·손을 가리지 않게)
-          drawPrompt(PK, py, promptLv(t, S.st, S.used, S.last));
+          // ③은 매듭·발 아래(위는 소매), ⑤는 [a43-play V4] 대화창 자리 위·숨 게이지 바로 위에 그림자 글자로(위쪽은 밝은 수면 빛이 글자를 먹었다), 그 밖은 위쪽(그림 얼굴·손을 가리지 않게)
+          const py = S.seg === 3 ? Math.round(H * 0.74) : S.seg === 5 ? H - 58 - g.safe.bottom - promptImg(PK).height - 6 : Math.round(H * 0.08) + g.safe.top;
+          drawPrompt(PK, py, promptLv(t, S.st, S.used, S.last), S.seg === 5);
         }
+        drawKnotLines(t);
         // 「숨」 게이지(프롤로그와 같은 그리기·같은 자리) — 공기가 흐르는 토막만
         const gx = (W >> 1) - 52, gy = H - 58 - g.safe.bottom;
         if (S.seg <= 3 && S.memoT < 0 || (S.seg === 5 && S.surfT < 0)) gauge(gx, gy, 104, S.air / S.airMax, { blink: S.air < 3 && (((t / 140) | 0) & 1) === 1 });
@@ -55699,6 +56105,26 @@ MC.addLang('en', {
      사건: 0% lines.start · 15% 클립 sea_storm(있을 때) 아니면 bgm · 35% luc · HP<50% 처음 또는 70% lines.best · 85% 번개(앞쪽 티불랑 바위 윤곽) · 100% 바위·흔들림·진동·장조 remap 4초.
      short:true = sec초 동안 탭만(진행도 시간, 새벽빛), HP·토스트·실패 없음. 안내 mg.seaSwim — 첫 젓기까지 · 무입력 8초면 다시(양쪽 손가락) */
   const SWIM_TOP = 8;                                      // 헤엄 그림 아랫변을 화면 아래로 몇 칸 넘길지(물보라 끝을 잘라 몸을 크게)
+  // [a43-play P1] 몸이 옆으로 밀리면 그림(184칸)의 세로 끝이 화면 안으로 들어와 물보라·팔이 곧은 세로선으로 잘려 보였다(플2-5 '직사각형 이음새').
+  //   드러나는 쪽 끝 SWIM_FEATHER칸을 Bayer 디더로 밤바다에 녹인다(형태는 그대로, 끝만 성글게). side −1 왼쪽 끝 · +1 오른쪽 끝 — 그림마다 한 번 구워 둔다
+  const SWIM_FEATHER = 30, featherMemo = new Map();
+  function swimFeather(art, side) {
+    const key = art; let m = featherMemo.get(key); if (!m) { m = {}; featherMemo.set(key, m); if (featherMemo.size > 6) featherMemo.delete(featherMemo.keys().next().value); }
+    if (m[side]) return m[side];
+    const c = G().makeCanvas(art.width, art.height), x = c.getContext('2d'); x.drawImage(art, 0, 0);
+    try {
+      const id = x.getImageData(0, 0, art.width, art.height), d = id.data, B = G().BAYER, F = SWIM_FEATHER, J = 8;
+      for (let y = 0; y < art.height; y++) {
+        const jit = Math.round(Math.sin(y * 0.21) * 4 + Math.sin(y * 0.057 + 1.3) * 3 + U.hash(y >> 1, 7, 61) * 3) + 1;   // 행마다 들쭉날쭉(곧은 세로선이 남지 않게)
+        for (let i = 0; i < Math.min(F + J + 4, art.width); i++) {
+          const col = side < 0 ? i : art.width - 1 - i, lv = Math.floor(16 * (i - jit) / F);   // 끝에서 멀어질수록 촘촘히
+          if (lv < 16 && lv <= B[(y & 3) * 4 + (col & 3)]) d[(y * art.width + col) * 4 + 3] = 0;
+        }
+      }
+      x.putImageData(id, 0, 0);
+    } catch (_) {}
+    return (m[side] = c);
+  }
   ST.sea_swim = function (a) {
     const short = a.short === true, N = Math.max(1, (a.strokes | 0) || 60), secMs = Math.max(1, num(a.sec, 15)) * 1000;
     const counts = strs(a.counts), minGap = num(a.minGap, 450), slow = a.slow && a.slow.t ? String(a.slow.t) : '';
@@ -55720,7 +56146,8 @@ MC.addLang('en', {
     const S = {
       run: 0, strokes: 0, lastStroke: -1e9, lastIn: 0, frame: 0, strokeFx: -1e9, side: 0, missFx: -1e9, scroll: 0, splash: [],
       dx: 0, hp: hpOn ? Math.max(1, L0.hp) : L0.hp, maxHp: L0.maxHp, outT: 0, hitFx: -1e9, inZone: true, kd: null, lastSide: 0,
-      fails: 0, usedA: ASSIST0, slowUsed: false, bubble: null, ev: {}, light: -1e9, failT: -1, finT: -1, autoSw: 0, steer: 0
+      fails: 0, usedA: ASSIST0, slowUsed: false, bubble: null, ev: {}, light: -1e9, failT: -1, finT: -1, autoSw: 0, steer: 0,
+      queue: null, drops: 0, dropT: -1e9, slowT: -1                        // [a43-play P1] 줄 선 탭 한 칸 · 이어 버린 탭 수 · 둘째 줄 켠 시각
     };
     dbgS('sea_swim', S);
     if (hpOn && L0.L) L0.L.hp = S.hp;
@@ -55728,17 +56155,24 @@ MC.addLang('en', {
     const zoneHalf = () => G().W * Math.max(0.08, (zone[1] - zone[0]) / 2);
     const assist = () => ASSIST0 || S.fails >= 4;
     // side: -1 왼쪽 팔(화면 왼쪽 탭) · +1 오른쪽 팔 · 0 = 번갈아(자동·확인 키·oneHand)
-    function stroke(sc, side, auto) {
+    // [a43-play P1] 연타: minGap 안에 들어온 탭은 버리지 않고 한 칸만 줄 세웠다가 minGap이 차면 그 탭으로 젓는다(update). 더 쌓인 탭만 버린다.
+    //   예전에는 헛돎 때도 기준 시각(lastStroke)을 다시 잡아서 0.45초보다 빨리 누르면 한 번도 젓지 못했다(F32 — 112번 → 1번).
+    //   버린 탭이 3번 이어지면 안내 둘째 줄(mg.seaSwimSlow) + 손가락 0.7초 박자. 바로 받아진 탭(간격 ≥ minGap)이 오면 이어짐을 끊는다.
+    function stroke(sc, side, auto, queued) {
       if (S.failT >= 0 || S.finT >= 0) return;
       if (!side) side = S.lastSide > 0 ? -1 : 1;
-      if (!auto) S.lastIn = sc.t;
+      if (!auto && !queued) S.lastIn = sc.t;
       const gap = sc.t - S.lastStroke;
-      if (!auto && S.strokes > 0 && gap < minGap) {      // 너무 빠름: 헛돎
-        S.lastStroke = sc.t; S.missFx = sc.t;
+      if (!auto && !queued && S.strokes > 0 && gap < minGap) {      // 너무 빠름: 한 칸 줄 세우기 · 이미 있으면 버림(헛돎)
+        if (!S.queue) { S.queue = { side }; return; }
+        S.missFx = sc.t; S.drops++; S.dropT = sc.t;
+        if (S.drops >= 3 && S.slowT < 0) S.slowT = sc.t;
         snd('splash', { gain: 0.12, pitch: 1.5 }, null);
         if (slow && !S.slowUsed && !short) { S.slowUsed = true; S.bubble = { t: slow, t0: sc.t, ms: 1700 }; }
         return;
       }
+      if (!auto && !queued) { S.drops = 0; if (S.slowT >= 0 && sc.t - S.slowT > 1500) S.slowT = -1; }   // 박자를 맞춘 탭 — 둘째 줄은 1.5초는 보인 뒤 거둔다
+      S.queue = null;
       // 방향: 번갈아 저으면 곧게(가운데로), 같은 쪽을 거푸 저으면 그쪽으로 틀어짐. 자동·oneHand는 조향 없이 반 되돌림
       if (auto || ONEHAND) S.dx *= 0.5;
       else if (side !== S.lastSide) S.dx *= STRAIGHT;
@@ -55759,7 +56193,7 @@ MC.addLang('en', {
       S.failT = -1;
       S.strokes = Math.floor(Math.floor(prog() * 3) / 3 * N);
       S.hp = Math.max(1, Math.ceil(S.maxHp * 0.5)); if (L0.L) L0.L.hp = S.hp;
-      S.dx = 0; S.outT = 0; S.lastStroke = sc.t; S.lastIn = sc.t;
+      S.dx = 0; S.outT = 0; S.lastStroke = sc.t; S.lastIn = sc.t; S.queue = null; S.drops = 0;
     }
     function music() {
       const C = MC.clip;
@@ -55804,7 +56238,9 @@ MC.addLang('en', {
         if (!short && S.run > 5000 && p >= 0.05) S.dx += (2 + p * 4) * dt / 1000;   // 물살(오른쪽으로 민다 — 그가 화면 오른쪽으로 밀림)
         S.dx = MC.clamp(S.dx, -W * 0.5, W * 0.5);
         S.inZone = short || Math.abs(S.dx) <= zoneHalf();
-        if ((assist() || (ONEHAND && MC.input.isDown())) && sc.t - S.lastStroke >= 900) { if (assist()) S.usedA = true; stroke(sc, 0, true); }
+        if (S.slowT >= 0 && sc.t - S.dropT > 3000 && sc.t - S.slowT > 1500) S.slowT = -1;   // 버리는 탭이 3초 없으면 둘째 줄을 거둔다
+        if (S.queue && sc.t - S.lastStroke >= minGap) stroke(sc, S.queue.side, false, true);   // [a43-play P1] 줄 선 탭을 박자에 맞춰 젓기
+        else if ((assist() || (ONEHAND && MC.input.isDown())) && sc.t - S.lastStroke >= 900) { if (assist()) S.usedA = true; stroke(sc, 0, true); }
         // [fixer-s4p2] QA 10: 무입력 15초면 0.9초 박자로 저절로(손을 대면 멈춤)
         else if (!short && !assist() && sc.t - S.lastIn >= 15000 && sc.t - S.lastStroke >= 900) { S.autoSw++; stroke(sc, 0, true); }
         else if (short && sc.t - S.lastIn >= 8000 && sc.t - S.lastStroke >= 900) stroke(sc, 0, true);
@@ -55882,7 +56318,8 @@ MC.addLang('en', {
         let wl;                                            // 그의 물낯(물보라 자리)
         if (art) {
           const top = H - art.height + SWIM_TOP + bob + lurch, x = cx - (art.width >> 1) + off;
-          ctx.drawImage(art, x, top); wl = top + SWIM_WL;
+          const edge = x >= 4 ? -1 : x + art.width <= W - 4 ? 1 : 0;   // 화면 안으로 드러난 그림 끝(4칸 넘게)
+          ctx.drawImage(edge ? swimFeather(art, edge) : art, x, top); wl = top + SWIM_WL;
         } else {
           const fr = pick2(['ch_dantes5_swim_' + S.frame]), y = Math.round(H * 0.62) + bob + lurch;
           if (fr) U.drawDither(fr, cx - fr.width * 2 + off, y - fr.height * 2, 16, 4);
@@ -55909,12 +56346,20 @@ MC.addLang('en', {
           const n = 10, on = Math.ceil(S.hp / S.maxHp * n), hy2 = H - 12 - g.safe.bottom, red = t - S.hitFx < 300;
           for (let i = 0; i < n; i++) { const x = 8 + i * 6; g.rect(x, hy2, 3, 2, i < on ? (red ? '#ff8a7a' : '#cfe0f0') : '#1a2a44'); if (i < on) g.px(x + 1, hy2 - 1, red ? '#ffd0c8' : '#ffffff'); }
         }
+        // [a43-play P1] 아래 진행 줄(2도트 두께, 화면 폭) — 티불랑까지 얼마나 왔는지. 체력 점 줄(위)과 색을 달리한다(등대 빛 색)
+        if (!short) {
+          const py = H - 5 - g.safe.bottom, pw = W - 16, fill = Math.round(pw * p);
+          g.rect(8, py, pw, 2, '#121c30'); if (fill > 0) g.rect(8, py, fill, 2, '#c8a860');
+          if (fill > 0 && t - S.strokeFx < 200) g.rect(8 + fill - 2, py, 2, 2, '#fff0c0');   // 젓는 순간 끝이 반짝
+        }
         // 안내 한 줄 + 양쪽 손가락(번갈아 깜빡) — 첫 젓기까지 · 무입력 8초
-        const idle = t - S.lastIn, showP = S.finT < 0 && (S.strokes === 0 || idle >= 8000);
+        // [a43-play P1] 너무 빨리 눌러 탭을 버리기 시작하면(3번 이어짐) 둘째 줄 「천천히, 하나… 둘…」 + 손가락이 실제 젓기 박자(0.7초)로 번갈아
+        const idle = t - S.lastIn, slowOn = S.finT < 0 && S.slowT >= 0, showP = S.finT < 0 && (S.strokes === 0 || idle >= 8000 || slowOn);
         if (showP) {
-          const lv = S.strokes === 0 ? Math.min(16, Math.max(0, (t - 300) / 250 * 16)) : Math.min(16, (idle - 8000) / 250 * 16);
+          const lv = slowOn ? Math.min(16, Math.max(0, (t - S.slowT) / 200 * 16)) : S.strokes === 0 ? Math.min(16, Math.max(0, (t - 300) / 250 * 16)) : Math.min(16, (idle - 8000) / 250 * 16);
           drawPrompt('mg.seaSwim', hy + 16, lv);           // 수평선 바로 아래(위쪽은 토스트 「하나.」 자리)
-          const leftOn = (((t / 600) | 0) & 1) === 0, yh = Math.round(H * 0.6);
+          if (slowOn) drawPrompt('mg.seaSwimSlow', hy + 16 + promptImg('mg.seaSwim').height + 6, lv);
+          const per = slowOn ? 700 : 600, leftOn = (((t / per) | 0) & 1) === 0, yh = Math.round(H * 0.6);
           U.hintHand(Math.round(W * 0.16), yh, leftOn ? 12 : 4, 'tap', '#0e182a'); U.hintHand(Math.round(W * 0.84), yh, leftOn ? 4 : 12, 'tap', '#0e182a');
         }
         // 기억 속 목소리 말풍선(faria_off) · 속마음 띠
@@ -56000,7 +56445,8 @@ MC.addLang('en', {
           if (b.first && b.si === lastSi && lastSi > 0) { music('detuneTo', -35, 6 * k); music('filterTo', 1200, 6 * k); S.log.push(['dark', Math.round(sc.t)]); }
           if (b.skip) { S.log.push(['skip', Math.round(sc.t), b.bpm]); continue; }   // 건너뛴 박: 소리·진동·원 모두 없음
           S.felt++; S.lastBeat = sc.t; S.rings.push(sc.t); if (S.rings.length > 4) S.rings.shift();
-          U.sfx('heartbeat', { gain: Math.max(0.12, 0.55 - 0.38 * prog), pitch: 0.82 - 0.06 * prog });
+          // [a43-play S2] 음 높이를 내리지 않고(0.82→0.76은 폰 대역 층까지 300Hz 아래로 끌어내렸다) 0.95 고정 · 하한 0.12 → 0.35(계획 0.25는 폰 피크 −31.5dB로 목표 −30에 모자라 0.35 — 실측 −29.6) — 느려짐은 박 간격(plan)이 맡는다
+          U.sfx('heartbeat', { gain: Math.max(0.35, 0.55 - 0.38 * prog), pitch: 0.95 });
           U.vibrate(20);
           S.log.push(['beat', Math.round(sc.t), b.bpm]);
         }
@@ -56056,16 +56502,18 @@ MC.addLang('en', {
     const ms = Math.max(300, num(a.ms, 3000)), yk = MC.clamp(num(a.y, 0.42), 0.15, 0.85), bg = a.bg || '#000000';
     // [fixer-s4p2] max(정수 배율 상한, 기본 3) · from(먼저 보일 그림 — fromMs 뒤 400ms 디더로 spr로 바뀜): 작은 필드 그림의 '바뀜'을 크게 보여 줄 때(장면 8 얼굴을 벽 쪽으로, QA 4)
     const maxS = Math.max(1, Math.min(8, num(a.max, 3) | 0)), fromImg = a.from ? spr(a.from) : null, fromMs = Math.max(0, num(a.fromMs, 500));
+    // [a43-play V2] in·out(디더 ms, 기본 450) · jolt(ms — 다 보인 뒤 그 시간 동안 그림이 좌우로 떨림: 장면 3 경련 cu_mouth_knife 0.4초). ms는 300 아래도 받는다(jolt 컷)
+    const IN = Math.max(0, num(a.in, 450)), OUT = Math.max(0, num(a.out, 450)), jolt = Math.max(0, num(a.jolt, 0)), hold = a.jolt ? Math.max(100, num(a.ms, 400)) : ms;
     let fired = false;
     return mount({
-      name: 'mg_s4_still', opaque: true, IN: 450, OUT: 450,
+      name: 'mg_s4_still', opaque: true, IN, OUT,
       update(sc) {
-        if (!fired && sc.t >= 450) {                    // 다 보인 뒤 소리·진동 함께
+        if (!fired && sc.t >= IN) {                     // 다 보인 뒤 소리·진동 함께
           fired = true;
           if (a.sfx) U.sfx(String(a.sfx), { gain: a.gain != null ? +a.gain : 0.6 });
           if (a.vib) U.vibrate(a.vib);
         }
-        if (sc.t >= 450 + ms) sc.end({ ok: true });
+        if (sc.t >= IN + hold) sc.end({ ok: true });
       },
       render(sc) {
         const g = G(), W = g.W, H = g.H;
@@ -56073,7 +56521,8 @@ MC.addLang('en', {
         // 정수 배율만(도트가 깨지지 않게). 클로즈업(≈96px)이 폭 180~216에서 1배로 작아지지 않게 양옆 12px까지는 넘쳐도 2배(가장자리는 비네트가 녹인다)
         const s = Math.max(1, Math.min(maxS, Math.floor((W + 12) / img.width), Math.floor((H * 0.7) / img.height)));
         // [art-iffar] align:'top' — 그림 윗변을 화면 위에 붙인다(그림 윗변에서 잘린 소매가 곧장 화면 밖으로 — 팔 원칙, cu_hair)
-        const w = img.width * s, h = img.height * s, x = (W - w) >> 1, y = a.align === 'top' ? 0 : Math.round(H * yk - h / 2);
+        const jt = sc.t - IN, jx = jolt && jt >= 0 && jt < jolt ? Math.round(Math.sin(sc.t * 0.11) * 2 + Math.sin(sc.t * 0.27)) : 0;   // 경련(정수 px만)
+        const w = img.width * s, h = img.height * s, x = ((W - w) >> 1) + jx, y = a.align === 'top' ? 0 : Math.round(H * yk - h / 2);
         g.ctx.imageSmoothingEnabled = false;
         if (fromImg) {
           const k = U.lvl(sc.t, 450 + fromMs, 400), fx = (W - fromImg.width * s) >> 1, fy = Math.round(H * yk - fromImg.height * s / 2);
@@ -56493,7 +56942,10 @@ MC.addLang('en', {
       const ti = S.count - autoN - 1;
       if (S.count === 11) S.reopen = t;                          // 열하나: 두 손을 다시 펴고 하나 접는다
       toast(taps[ti], 1000);
-      snd('finger_fold', { gain: 0.7 }, '_tick', { gain: 0.9 }); U.vibrate(8);
+      // [a43-play S3] 열하나~열넷은 반음씩 올린다(×1.059ⁿ) — 셈이 오르는 것이 귀에도. 열넷 뒤 바다 베드(환경음) 1.5초 −6dB
+      const semi = S.count > 10 ? Math.pow(1.059, S.count - 10) : 1;
+      snd('finger_fold', { gain: 0.7, pitch: semi }, '_tick', { gain: 0.9 }); U.vibrate(8);
+      if (S.count >= total) { try { if (MC.audio && MC.audio.duckAmb) MC.audio.duckAmb(-6, 1500, 80); } catch (_) {} }
       const fx = sfxAt[S.count]; if (fx) snd(String(fx), { gain: 0.22 });
       S.steps.push([Math.round(t), S.count, how]);
       if (S.count >= total) S.doneAt = t;
