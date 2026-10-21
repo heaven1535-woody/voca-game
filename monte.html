@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.4.5-light';
+  var VERSION = '0.4.6-sound';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -4013,7 +4013,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   const KEY = { auto: 'mc34.auto', manual: 'mc34.manual', bak: 'mc34.auto.bak', settings: 'mc34.settings', clear: 'mc34.ch1clear' };   // clear: S4 2장 인계 기록(세이브 슬롯 아님 — wipe가 지우지 않는다)
   // (S4 §D-4) assist = 손놀림 보조(등급 상한 A) · oneHand = 한 손 조작(헤엄 탭 없이 저절로 젓기) — loadSettings가 같은 타입만 받으므로 키만 더하면 된다
   // [l45-light B7-1] bright = 밝기 보정 0 / 15 / 30(%) — gfx.present가 최종 화면에 감마로
-  const DEF = { mus: 7, sfx: 8, voice: true, mute: false, textSpeed: 1, battleSpeed: 1, moveMs: 200, shake: 1, vibrate: true, hand: 'right', lang: '', assist: false, oneHand: false, bright: 0 };
+  // [s46-sound B4-2] phoneBass = 폰 스피커 저음 보강(음악 베이스 한 옥타브 위 겹침 — music.js). 기본 켬(이어폰이면 끌 수 있다)
+  const DEF = { mus: 7, sfx: 8, voice: true, mute: false, textSpeed: 1, battleSpeed: 1, moveMs: 200, shake: 1, vibrate: true, hand: 'right', lang: '', assist: false, oneHand: false, bright: 0, phoneBass: true };
   const GRADE_RANK = { S: 3, A: 2, B: 1 };
   const gradeOf = r => (r && r.escape && typeof r.escape.grade === 'string' ? r.escape.grade : (r && typeof r.grade === 'string' ? r.grade : null));
   let warned = false;
@@ -5106,6 +5107,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       if (!d.L) return null;
       if (!A.canPlay()) return null;
       o = o || {};
+      // [s46-sound B4-3] 레시피 hap(진동 패턴): 심장 = 진동 자동 결합(소5·G소1 — 소리를 끈 폰에서는 진동이 유일한 심장). 아주 작게 부른 것(gain < 0.2)·o.hap:false·오프라인 렌더는 건너뜀
+      if (d.hap && o.hap !== false && (o.gain == null || +o.gain >= 0.2) && MC.input && MC.input.vibrate) { const g0 = A.graph(); if (g0 && !g0.off) { try { MC.input.vibrate(d.hap); } catch (e) { /* */ } } }
       if (o.lp > 0) {                                      // [embrace-side] 소리 하나에만 거는 저역 통과(버스 앞) — 끝나면 떼어 냄
         const g = A.graph(), lp = A.u.biquad(g.c, 'lowpass', +o.lp, 0.7);
         lp.connect(g.cat.sfx.in);
@@ -5155,13 +5158,15 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (VS.id !== vid || now - VS.lastT > 0.7 || now < VS.lastT) { VS.id = vid; VS.n = 0; VS.last = -1; }
     VS.lastT = now;
     const k = VS.n++;
-    if (k % (V.every || 2) !== 0) return;
+    // [s46-sound B4-12] 레터박스(컷신) 동안 서술 타자음(sys·narr)은 절반으로 — 두 배 성기게, 이득 ×0.5(소16·소2-10: 조용한 장면에서 흰 잡음 틱이 정적을 긁는다)
+    const soft = (vid === 'sys' || vid === 'narr') && MC.fx && MC.fx.letterboxLevel && MC.fx.letterboxLevel() > 0.5;
+    if (k % ((V.every || 2) * (soft ? 2 : 1)) !== 0) return;
     if (VS.last >= 0 && now - VS.last < (V.cd || 40) / 1000) return;
     VS.last = now;
     const off = V.off || [0, 2, 4, 7, 9], code = c0.charCodeAt(0);
     let f = (V.f || 300) * Math.pow(2, off[code % off.length] / 12) * (1 + (rand() * 2 - 1) * (V.rp == null ? 0.015 : V.rp));
     if (V.oct && rand() < 0.5) f *= rand() < 0.5 ? 2 : 0.5;
-    const d = V.d || 28, gg = V.g || 0.07, L = [];
+    const d = V.d || 28, gg = (V.g || 0.07) * (soft ? 0.5 : 1), L = [];
     if (V.n) L.push({ n: V.n, hp: V.hp, bp: V.bp, lp: V.lp, q: V.q, a: 1, d: d, g: gg, send: V.send });
     else {
       L.push({ o: V.o || 'p25', f: f, a: V.a || 2, d: d, g: gg, lp: V.lp, vib: V.vib, send: V.send });
@@ -5562,6 +5567,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         const tg = A.u.gain(c, 1 - cd.trem[1] / 2), lg = A.u.gain(c, cd.trem[1] / 2);
         this.lfo(cd.trem[0]).connect(lg); lg.connect(tg.gain); tail.connect(tg); tail = tg; this.nodes.push(tg, lg);
       }
+      if (cd.bp) { const f = A.u.biquad(c, 'bandpass', cd.bp, cd.bq || 0.8); tail.connect(f); tail = f; this.nodes.push(f); }   // [s46-sound B4-19] 채널 bp(Hz)·bq — 폰 대역 층
       if (cd.lp) { const f = A.u.biquad(c, 'lowpass', cd.lp, cd.q || 0.707); tail.connect(f); tail = f; this.nodes.push(f); }
       if (cd.pan && c.createStereoPanner) { const p = A.u.pan(c, cd.pan); tail.connect(p); tail = p; this.nodes.push(p); }
       tail.connect(this.out);
@@ -5572,7 +5578,17 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       this.nodes.push(bus);
       this.ch[cn] = { cn, d: cd, bus, base, arp: cd.arp ? String(cd.arp).replace(/\s+/g, '') : null };
     }
+    // [s46-sound B4-2] 폰 스피커 저음 보강(설정 phoneBass, 기본 켬): 베이스 T 채널(삼각파 D2~E2 — 폰 스피커는 300Hz 아래를 거의 못 냄)의 음마다
+    //   한 옥타브 위 p50(v 0.04 × 곡 vol, LP 900)을 겹친다. 귀가 배음으로 바닥을 추론한다(missing fundamental). 징글·곡 pb:false는 제외. 설정을 바꾸면 박동마다 따라감
+    const T = s.d.ch && s.d.ch.T;
+    if (!jingle && T && !T.kit && !T.chord && s.d.pb !== false) {
+      const pd = { w: 'p50', v: 0.04, a: T.a == null ? 4 : T.a, d: T.d, s: T.s, r: T.r, gate: T.gate, lp: 900 };
+      const base = 0.04 * vol, bus = A.u.gain(c, pbOn() ? base : 0), f = A.u.biquad(c, 'lowpass', 900, 0.707);
+      bus.connect(f); f.connect(this.out); this.nodes.push(bus, f);
+      this.pb = { cn: 'T+', d: pd, bus, base };
+    }
   }
+  function pbOn() { const s = A.settings(); return !s || s.phoneBass !== false; }
   const P_ = Player.prototype;
   /** 레이어 상태 적용(시각 t): 음표 건너뛰기 + 채널 버스를 lfade로 올리고 내림(길게 끄는 패드도 자연스럽게 빠지게).
    *  (S4) 채널 unless:"이름" = 그 레이어가 켜져 있는 동안 꺼지는 채널(boss_despair P1·PAD ↔ paria) */
@@ -5749,6 +5765,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     let tt = t, det = 0;
     if (d.hum) { tt += A.rand() * d.hum[0] / 1000; det = (A.rand() * 2 - 1) * (d.hum[1] || 0); }
     synth(this, ch, tt, dur, m, vel, det);
+    // [s46-sound B4-2] 저음 보강(설정이 꺼져 있으면 음을 만들지 않음). 버스 gain.value로 가르면 안 된다 — 입력이 없는 GainNode는 처리되지 않아 값이 0에 멎는다(켬이 영영 안 됨)
+    if (this.pb && ch.cn === 'T' && (pbLast == null ? pbOn() : pbLast)) synth(this, this.pb, tt, dur, m + 12, vel, det);
     if (d.hum && d.hum[2] && A.rand() < d.hum[2]) synth(this, ch, tt + 0.03, dur, m, vel * 0.3, det);
   };
   P_.drum = function (ch, t, e) {
@@ -5860,8 +5878,16 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     loop();
   }
   M._beatInfo = () => ({ worker: !!(timer && timer.postMessage), la, wide: performance.now() < wideUntil });
+  let pbLast = null;
+  function pbSync() {                               // [s46-sound B4-2] 설정이 바뀌면 지금 곡·페이드 중인 곡의 보강 버스를 따라 바꾼다
+    const on = pbOn(); if (on === pbLast) return; pbLast = on;
+    // 이 버스는 pbSync만 자동화한다 → 예약을 모두 지우고 0.12초 직선으로(시작값은 켬이면 0, 끔이면 base — 입력 없는 노드의 gain.value는 멎어 있을 수 있어 읽지 않는다)
+    [main].concat(fading).forEach(function (p) { if (p && p.pb) { try { const t = p.c.currentTime, q = p.pb.bus.gain; q.cancelScheduledValues(0); q.setValueAtTime(on ? 0 : p.pb.base, t); q.linearRampToValueAtTime(on ? p.pb.base : 0, t + 0.12); } catch (e) { /* */ } } });
+  }
+  M._pb = function () { return { on: pbOn(), last: pbLast, main: !!(main && main.pb), gain: main && main.pb ? +main.pb.bus.gain.value.toFixed(4) : null }; };
   function loop() {
     try {
+      pbSync();
       if (main) {
         const c = main.c;
         if (c.state === 'running') {
@@ -6305,7 +6331,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     let lout = d.loopOut != null ? Math.min(+d.loopOut, dur) : dur, lin = d.loopIn != null ? Math.max(0, +d.loopIn) : 0;
     if (!(lout > lin + 0.5)) { lin = 0; lout = dur; }
     const xf = Math.max(0.01, Math.min(XF, lin > 0 ? lin : XF, (lout - lin) / 3));
-    const S = { id, d, g, c, buf, dur, loop, gain, lin, lout, xf, segs: [], out: c.createGain(), dead: false, bus: d.bus === 'amb' ? 'amb' : 'mus', fade: msArg(o.fade, 300) };
+    const S = { id, d, g, c, buf, dur, loop, gain, lin, lout, xf, segs: [], out: c.createGain(), dead: false, bus: d.bus === 'amb' ? 'amb' : 'mus', fade: msArg(o.fade, 300),
+      loops: Math.max(0, o.loops | 0), loopsFade: msArg(o.loopsFade, 4000), seams: 0 };   // [s46-sound B4-6] loops: 루프 이음매를 이만큼 지나면(처음 한 바퀴 + loops−1바퀴) 다음 바퀴 머리에서 loopsFade로 빠짐(파도만 남김)
     let at = Math.max(0, +o.at || 0);
     if (loop) { while (at >= lout - xf - 0.01) at -= (lout - lin); if (at < 0) at = 0; }
     else if (at >= dur - 0.05) at = 0;
@@ -6334,6 +6361,16 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       old.stopped = true;
       S.nextX = T + (S.lout - S.lin);
       if (S.log) S.log.push(T);
+      S.seams++;
+      if (S.loops && S.seams >= S.loops) {               // [s46-sound B4-6] 정해진 바퀴를 다 돌았다 — 이 바퀴 머리부터 loopsFade에 걸쳐 빼고 끝(되풀이하지 않는다)
+        const F = Math.max(0.05, S.loopsFade / 1000), p = S.out.gain;
+        try { p.setValueAtTime(S.gain, T); p.linearRampToValueAtTime(0, T + F); } catch (e) { /* */ }
+        try { nw.src.stop(T + F + 0.05); } catch (e) { /* */ }
+        nw.stopped = true;
+        S.loop = false; S.endT = T + F;
+        if (S.log) S.log.push('fade@' + T.toFixed(3));
+        break;
+      }
     }
     // 실시간: 끝난 옛 구간은 목록에서 뺀다(루프 길이 ≫ 예약 거리라 지금·크로스페이드 중인 앞 구간·앞서 예약한 구간, 셋이면 충분)
     if (!S.g.off && S.segs.length > 3) S.segs = S.segs.slice(-3);
@@ -6474,7 +6511,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     o = o || {};
     const b = bufs[id]; if (!b) throw new Error('디코드 안 된 클립 ' + id);
     const g = A.graph();
-    const S = build(g, id, b, { fade: o.fade != null ? o.fade : 0, loop: o.loop, gain: o.gain, at: o.at }, o.t0 != null ? o.t0 : 0.01);
+    const S = build(g, id, b, { fade: o.fade != null ? o.fade : 0, loop: o.loop, gain: o.gain, at: o.at, loops: o.loops, loopsFade: o.loopsFade }, o.t0 != null ? o.t0 : 0.01);
     S.log = [];
     sched(S, sec);
     return S;
@@ -6492,6 +6529,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       if (c.fb) o.fb = c.fb;
       if (c.gain != null) o.gain = +c.gain;
       if (c.at != null) o.at = +c.at;
+      if (c.loops != null) o.loops = +c.loops;            // [s46-sound B4-6] {loops:2, loopsFade:4000}
+      if (c.loopsFade != null) o.loopsFade = +c.loopsFade;
       C.play(c.id, o);   // 즉시 op — 디코드를 기다리지 않는다
     };
     if (E.instant && E.instant.add) E.instant.add('clip');
@@ -7104,9 +7143,15 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         if (v && seen.indexOf(sp.id) < 0) { sp.roleShow = true; seen.push(sp.id); v.roleSeen = seen.filter(Boolean).join(','); }
       }
       await openBox(sp, o);
-      const voice = o.voice !== undefined ? o.voice : sp.voice;
+      // [s46-sound B4-7] voice는 id 문자열 또는 {id, hush} — hush 글(예: 파리아의 마지막 말 「……나를 봐서.」)은 타자음 없이 글자만(번역으로 글이 달라 못 찾으면 그대로 소리)
+      let voice = o.voice !== undefined ? o.voice : sp.voice, hush = null;
+      if (voice && typeof voice === 'object') { hush = voice.hush ? String(voice.hush).replace(/\s+/g, '') : null; voice = voice.id != null ? voice.id : null; }
       for (let b = 0; b < boxes.length; b++) {
         const comp = compile(boxes[b], { align: sp.align });
+        if (hush) for (const pg of comp.pages) {
+          const gs = pg.glyphs.filter(gl => !gl.space), s = gs.map(gl => gl.ch).join(''), at = s.lastIndexOf(hush);
+          if (at >= 0) for (let i = at; i < at + hush.length; i++) gs[i].quiet = true;
+        }
         // [a43-ui P6] 정점 줄: key:true 또는 {p:1000} 이상 쉼이 있는 대사 → 빨리감기로 넘기지 않는다(auto 줄은 제외 — 끊기는 말)
         const key = o.auto == null && (!!o.key || comp.pages.some(pg => pg.tail >= KEY_P || pg.glyphs.some(gl => gl.pre >= KEY_P)));
         for (let p = 0; p < comp.pages.length; p++) {
@@ -7317,7 +7362,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       const oldN = String(from == null ? '' : nameShown(from)), newChars = Array.from(String(to == null ? '' : nameShown(to)));
       const CH = 210, T = { open: 140, crumble0: 560, crumble1: 980, write0: 1080 };
       T.settle = T.write0 + newChars.length * CH + 120; T.hold = T.settle + 1700; T.close = T.hold + 110;
-      const endSfx = o.sfx || (MC.sfx && MC.sfx.has && MC.sfx.has('orgel_note') ? 'orgel_note' : 'bell');
+      const endSfx = o.sfx || 'bell';   // [s46-sound B4-8] 기본 끝소리에서 오르골(orgel_note)을 뺀다 — 오르골 음색은 파리아의 것(소11). 실제 호출(a4m 이름 복귀)은 원래 sfx:"bell"
       const lf = lift();
       const ash = [];
       for (let i = 0; i < 14; i++) ash.push({ fx: (hash(i, 3) % 1000) / 1000, vy: 10 + (hash(i, 7) % 20), vx: ((hash(i, 11) % 9) - 4) * 1.5, d: (hash(i, 13) % 300) });
@@ -18514,12 +18559,20 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
            vib[hz,cent,지연] trem[hz,깊이] fm[hz,Hz] gate[hz최소,hz최대] wob(최소) pan send{stone,dream,echo} seq+step chord seqR pick rep+every+jit+gm+pm+rpm+rgm+rpan+panr prob tr
    별칭: {"alias":"id"} */
 MC.data.sfx = {
-  "ui_cursor": {"c":"ui","p":2,"cd":30,"L":[{"o":"p25","f":[1480,1320],"fms":30,"a":2,"d":35,"g":0.16}]},
+  /* [s46-sound B4-21·B4-19] UI 커서·확인·취소: −4dB(g ×0.63) + 3kHz 위를 둥글게(lp 3000) — 이어폰에서 귀를 찌르던 사각파 고역(영s1소·영s2b소). 전투 메뉴음도 같은 id */
+  "ui_cursor": {"c":"ui","p":2,"cd":30,"L":[{"o":"p25","f":[1480,1320],"fms":30,"lp":3000,"a":2,"d":35,"g":0.095}]},
   "ui_end": {"c":"ui","p":2,"cd":30,"L":[{"o":"p25","f":220,"a":2,"d":30,"g":0.1}]},
-  "ui_ok": {"c":"ui","p":2,"cd":25,"L":[{"o":"p50","f":1047,"a":2,"d":25,"g":0.14},{"t":30,"o":"p50","f":1568,"a":2,"d":70,"g":0.14}]},
-  "ui_cancel": {"c":"ui","p":2,"cd":25,"L":[{"o":"p25","f":784,"a":2,"d":35,"g":0.14,"lp":3500},{"t":38,"o":"p25","f":523,"a":2,"d":45,"g":0.14,"lp":3500}]},
+  "ui_ok": {"c":"ui","p":2,"cd":25,"L":[{"o":"p50","f":1047,"lp":3000,"a":2,"d":25,"g":0.084},{"t":30,"o":"p50","f":1568,"lp":3000,"a":2,"d":70,"g":0.084}]},
+  "ui_cancel": {"c":"ui","p":2,"cd":25,"L":[{"o":"p25","f":784,"a":2,"d":35,"g":0.086,"lp":3000},{"t":38,"o":"p25","f":523,"a":2,"d":45,"g":0.086,"lp":3000}]},
   "ui_ng": {"c":"ui","p":2,"cd":80,"L":[{"o":"p50","f":110,"a":3,"s":1,"h":100,"r":40,"g":0.1,"lp":1200},{"o":"p50","f":117,"a":3,"s":1,"h":100,"r":40,"g":0.1,"lp":1200}]},
-  "page": {"c":"ui","p":2,"cd":40,"L":[{"o":"p12","f":880,"a":2,"d":20,"g":0.08},{"n":"white","hp":4000,"a":2,"d":8,"g":0.05}]},
+  "page": {"c":"ui","p":2,"cd":40,"L":[{"o":"p12","f":880,"lp":3200,"a":2,"d":20,"g":0.08},{"n":"white","hp":4000,"a":2,"d":8,"g":0.03}]},
+  /* [s46-sound B4-8] ui_chime: 단서·추리 핀·카드 끝의 UI 알림(예전 orgel_note pitch 1.2~1.5 — 오르골 음색은 파리아의 것으로 아낀다).
+     유리잔 틱 + 짧은 종 배음(D6 바탕, 부르는 쪽 pitch 그대로) — 오르골(F5 사인 + ×3 + ×6.27)과 결이 다르다 */
+  "ui_chime": {"c":"ui","p":3,"cd":60,"gain":3,"L":[
+    {"n":"white","hp":2600,"lp":5000,"a":1,"d":5,"g":0.05},
+    {"o":"triangle","f":1174.7,"a":2,"d":160,"g":0.07,"send":{"stone":0.25}},
+    {"o":"sine","f":1760,"a":2,"d":260,"g":0.035,"send":{"stone":0.25}},
+    {"o":"sine","f":587.3,"a":4,"d":220,"g":0.03}]},
   "save": {"c":"ui","p":3,"cd":200,"L":[{"o":"triangle","seq":[523.3,659.3,784,1046.5],"step":70,"a":3,"d":180,"g":0.13,"send":{"stone":0.35}},{"t":210,"o":"sine","f":2093,"a":3,"d":400,"g":0.025,"send":{"stone":0.35}}]},
 
   "step_stone": {"c":"field","p":1,"cd":90,"rp":0.06,"rpan":0.12,"L":[{"n":"white","bp":1100,"q":1.4,"a":2,"d":40,"g":0.1,"send":{"stone":0.15}},{"o":"sine","f":[180,120],"a":2,"d":25,"g":0.06}]},
@@ -18560,21 +18613,28 @@ MC.data.sfx = {
     {"n":"white","bp":2300,"q":3,"lp":1400,"a":25,"s":1,"h":650,"r":90,"g":0.2,"gate":[8,14],"pan":0.4,"send":{"stone":0.5}},
     {"n":"white","bp":900,"q":1.2,"a":25,"s":1,"h":650,"r":90,"g":0.05,"gate":[9,13],"pan":0.4},
     {"n":"brown","lp":300,"a":20,"s":1,"h":650,"r":90,"g":0.08,"gate":[8,12],"pan":0.4}]},
+  /* [s46-sound B4-1] 폰 대역(250Hz~2.5kHz) 층: 돌 끌림 noise bp500 + 내려놓는 '쿵'의 삼각 260→170·bp700 */
   "stone_lift": {"c":"field","p":3,"L":[
     {"n":"brown","lp":350,"a":30,"s":1,"h":720,"r":150,"g":0.25,"wob":0.3,"send":{"stone":0.4}},
     {"n":"white","bp":900,"q":1,"a":30,"s":1,"h":720,"r":150,"g":0.05,"wob":0.2},
+    {"n":"white","bp":500,"q":0.9,"a":30,"s":1,"h":720,"r":150,"g":0.12,"wob":0.3},
     {"t":880,"o":"sine","f":[70,45],"a":2,"d":200,"g":0.35},
-    {"t":880,"n":"brown","lp":600,"a":2,"d":120,"g":0.15,"send":{"stone":0.4}}]},
+    {"t":880,"n":"brown","lp":600,"a":2,"d":120,"g":0.15,"send":{"stone":0.4}},
+    {"t":880,"o":"triangle","f":[260,170],"a":2,"d":130,"g":0.2},
+    {"t":880,"n":"white","bp":700,"q":1.2,"a":2,"d":90,"g":0.14}]},
 
   "encounter": {"gain":1.6,"c":"battle","p":3,"cd":300,"fx":{"duck":[-8,350]},"L":[
     {"n":"white","bp":[400,5000],"ffms":280,"q":1.5,"a":200,"s":1,"h":0,"r":80,"g":0.18},
     {"t":280,"o":"p25","chord":[220,261.6,311.1],"a":2,"d":220,"g":0.075},
     {"t":280,"n":"white","hp":1000,"a":2,"d":60,"g":0.1}]},
+  /* [s46-sound B4-1] 저역(sine 41·brown) −4dB, 폰 대역 층: 톱니 110 bp450 부풂 + noise bp 300→800 솟음, 반음 부딪힘 330·349 .03→.045 */
   "encounter_boss": {"c":"battle","p":4,"cd":500,"L":[
-    {"t":600,"o":"sine","f":41,"a":1200,"s":1,"h":600,"r":800,"g":0.35},
-    {"t":600,"n":"brown","lp":[200,1500],"ffms":1500,"a":1500,"s":1,"h":100,"r":800,"g":0.3},
+    {"t":600,"o":"sine","f":41,"a":1200,"s":1,"h":600,"r":800,"g":0.22},
+    {"t":600,"n":"brown","lp":[200,1500],"ffms":1500,"a":1500,"s":1,"h":100,"r":800,"g":0.22},
     {"t":600,"o":"sawtooth","f":55,"lp":300,"a":1200,"s":1,"h":600,"r":800,"g":0.06},
-    {"t":900,"o":"p50","chord":[329.6,349.2],"a":800,"s":1,"h":500,"r":900,"g":0.03,"trem":[7,0.6],"send":{"dream":0.3}}]},
+    {"t":600,"o":"sawtooth","f":110,"bp":450,"q":1.2,"a":1200,"s":1,"h":600,"r":800,"g":0.1},
+    {"t":600,"n":"white","bp":[300,800],"ffms":1500,"q":0.8,"a":1200,"s":1,"h":300,"r":800,"g":0.1},
+    {"t":900,"o":"p50","chord":[329.6,349.2],"a":800,"s":1,"h":500,"r":900,"g":0.045,"trem":[7,0.6],"send":{"dream":0.3}}]},
   "atk": {"c":"battle","p":3,"rp":0.04,"rg":1.5,"L":[
     {"n":"white","hp":2000,"a":20,"d":40,"g":0.06},
     {"t":60,"n":"white","bp":1600,"q":0.9,"a":2,"d":70,"g":0.28},
@@ -18585,7 +18645,7 @@ MC.data.sfx = {
     {"t":140,"o":"triangle","f":[523,262],"a":2,"d":280,"g":0.16,"send":{"stone":0.15}},
     {"t":140,"o":"sine","seq":[587.3,740,880,1174.7],"step":35,"a":2,"d":380,"g":0.045,"send":{"dream":0.35}},
     {"t":140,"n":"white","bp":2200,"q":1,"a":2,"d":60,"g":0.08}]},
-  "skill_thought": {"gain":2,"c":"battle","p":3,"rp":0.02,"L":[
+  "skill_thought": {"gain":1,"c":"battle","p":3,"rp":0.02,"L":[   /* [s46-sound B4-21] gain 2 → 1(−6dB): 수십 번 쓰는 주력기의 2.5~3.5kHz '삐리릭'(영s3a소) */
     {"o":"p12","f":[1047,2093],"fms":120,"a":5,"d":110,"g":0.08},
     {"t":140,"o":"p12","f":[784,392],"a":2,"d":220,"g":0.12},
     {"t":140,"o":"sine","f":1568,"vib":[9,25],"a":2,"d":260,"g":0.04},
@@ -18647,7 +18707,8 @@ MC.data.sfx = {
     {"n":"white","bp":[400,2000],"q":2,"a":500,"s":1,"h":50,"r":100,"g":0.07},
     {"t":650,"o":"p25","f":1568,"a":2,"d":120,"g":0.05}]},
 
-  "heartbeat": {"c":"story","p":4,"cd":120,"L":[
+  /* [s46-sound B4-3] hap: 소리와 함께 자동 진동(쿵 30ms 강 → 140ms 쉼 → 18ms 약 — 두 박). sfx.play가 읽는다(gain 0.2 미만·오프라인은 건너뜀) */
+  "heartbeat": {"c":"story","p":4,"cd":120,"hap":[30,140,18],"L":[
     {"o":"sine","f":[62,42],"fms":100,"lp":180,"a":4,"d":110,"g":0.45},
     {"n":"brown","lp":300,"a":3,"d":60,"g":0.1},
     {"o":"triangle","f":[110,70],"a":3,"d":60,"g":0.06},
@@ -18673,10 +18734,14 @@ MC.data.sfx = {
     {"n":"brown","lp":900,"a":10,"d":1200,"g":0.35},
     {"o":"sine","f":[180,60],"a":2,"d":300,"g":0.2},
     {"t":150,"o":"sine","f":[280,780],"fms":30,"a":2,"d":40,"g":0.05,"rep":5,"every":90,"jit":40,"rpm":0.25}]},
+  /* [s46-sound B4-1] 저역(sine 48→28·LP 잡음) −4dB, 폰 대역 층(소1-2): 몸통 noise bp400 q.8 d1600 g.3 + 균열 hp2500 d40 g.12 + 꼬리 bp300 600ms 굴림 */
   "cannon_far": {"c":"story","p":4,"cd":300,"L":[
-    {"n":"white","lp":[900,140],"ffms":900,"a":6,"d":1300,"g":0.5,"send":{"dream":0.7}},
-    {"o":"sine","f":[48,28],"a":5,"d":900,"g":0.55},
+    {"n":"white","lp":[900,140],"ffms":900,"a":6,"d":1300,"g":0.35,"send":{"dream":0.7}},
+    {"o":"sine","f":[48,28],"a":5,"d":900,"g":0.3},
+    {"n":"white","bp":400,"q":0.8,"a":6,"d":1600,"g":0.5,"send":{"dream":0.5}},
+    {"n":"white","hp":2500,"a":1,"d":40,"g":0.15},
     {"t":420,"n":"white","lp":400,"a":20,"d":900,"g":0.35,"send":{"dream":0.7}},
+    {"t":420,"n":"white","bp":300,"q":1,"wob":0.4,"a":60,"s":1,"h":250,"r":350,"g":0.22,"send":{"dream":0.5}},
     {"t":950,"n":"white","lp":250,"a":30,"d":900,"g":0.18,"send":{"dream":0.7}}]},
   "bell": {"c":"story","p":4,"cd":200,"L":[
     {"o":"sine","f":98,"a":3,"d":4500,"g":0.15,"send":{"stone":0.5}},
@@ -18718,12 +18783,17 @@ MC.data.sfx = {
     {"t":880,"n":"brown","lp":300,"a":20,"d":180,"g":0.07,"send":{"dream":0.5}}]},
   "card_tick": {"c":"story","p":2,"cd":20,"L":[{"o":"sine","f":330,"a":2,"d":25,"g":0.07},{"n":"white","bp":1500,"q":1,"a":2,"d":6,"g":0.04}]},
   "year_tick": {"c":"story","p":2,"cd":40,"L":[{"n":"white","hp":5000,"a":2,"d":4,"g":0.1},{"o":"sine","f":2000,"a":2,"d":12,"g":0.04}]},
+  /* [s46-sound B4-15] pen: 엔딩 34번 장부가 한 자씩 적힐 때의 펜촉 긁힘(아주 작게, 글자마다) — 장부·이름칸 폰 −48~−54가 크레딧보다 20dB 넘게 작던 것. 목소리가 아니다(장부 위 목소리 없음은 그대로) */
+  "pen": {"c":"story","p":1,"cd":30,"rp":0.12,"rg":2,"gain":8,"L":[
+    {"n":"white","bp":2300,"q":1.6,"gate":[30,50],"a":3,"d":55,"g":0.022},
+    {"n":"pink","bp":900,"q":1,"a":3,"d":45,"g":0.07},
+    {"n":"brown","lp":500,"a":2,"d":25,"g":0.02}]},
   "quill": {"c":"story","p":3,"cd":150,"L":[{"n":"white","bp":[3500,2500],"q":3,"a":20,"s":0.8,"h":270,"r":60,"g":0.14,"gate":[18,30]}]},
   "fire_burst": {"gain":2,"c":"story","p":4,"cd":150,"L":[
     {"n":"white","bp":[300,1200],"q":1,"a":150,"d":500,"g":0.15},
     {"n":"brown","lp":600,"a":100,"d":900,"g":0.12},
     {"n":"white","hp":1800,"a":2,"d":5,"g":0.09,"rep":30,"every":40,"jit":30,"rgm":[0.3,1]}]},
-  "paper_burn": {"gain":2.4,"c":"story","p":4,"cd":150,"L":[
+  "paper_burn": {"gain":1.2,"c":"story","p":4,"cd":150,"L":[   /* [s46-sound B4-21] gain 2.4 → 1.2(−6dB): 날카로운 흰 잡음 버스트가 배경보다 +4~6dB 튐(영s3b소) */
     {"n":"white","bp":2500,"q":0.8,"a":30,"s":1,"h":500,"r":150,"g":0.06,"gate":[20,40]},
     {"n":"brown","lp":600,"a":100,"d":700,"g":0.08},
     {"n":"white","hp":2200,"a":2,"d":4,"g":0.06,"rep":10,"every":60,"jit":40,"rgm":[0.3,1]}]},
@@ -18741,11 +18811,32 @@ MC.data.sfx = {
     {"t":90,"o":"sine","f":3140,"a":2,"d":350,"g":0.045,"send":{"stone":0.2}},
     {"t":90,"o":"sine","f":4700,"a":2,"d":220,"g":0.03},
     {"t":90,"n":"white","hp":6000,"a":2,"d":5,"g":0.035}]},
+  /* [s46-sound B4-1] 저역(sine·brown) −3dB, 폰 대역 층: noise bp420 몸통 + 삼각 330→210 '퍽' */
   "thud": {"c":"story","p":4,"cd":100,"rp":0.04,"L":[
-    {"o":"sine","f":[90,45],"a":2,"d":200,"g":0.35},
-    {"n":"brown","lp":300,"a":2,"d":150,"g":0.25},
+    {"o":"sine","f":[90,45],"a":2,"d":200,"g":0.25},
+    {"n":"brown","lp":300,"a":2,"d":150,"g":0.2},
     {"o":"triangle","f":[160,80],"a":2,"d":80,"g":0.1},
-    {"n":"white","bp":500,"q":1,"a":2,"d":60,"g":0.1}]},
+    {"n":"white","bp":500,"q":1,"a":2,"d":60,"g":0.1},
+    {"n":"white","bp":420,"q":1,"a":2,"d":170,"g":0.22},
+    {"o":"triangle","f":[330,210],"a":2,"d":90,"g":0.14}]},
+  /* [s46-sound B4-21] cough: 파리아의 기침(예전 breath pitch .7 — 이발 숟가락 소리와 같은 '바람'이었다, 영s2b소).
+     흉성 어택(삼각 150→110 + 거친 톱니 bp500) + 짧은 공기 터짐(bp 900→450) 두 번 '콜록, 콜록'(160ms 간격, 둘째가 약하게) */
+  "cough": {"c":"story","p":3,"cd":300,"rp":0.04,"gain":3.6,"L":[
+    {"o":"triangle","f":[150,110],"a":6,"d":120,"g":0.12},
+    {"o":"sawtooth","f":[140,105],"bp":520,"q":2,"a":6,"d":110,"g":0.05},
+    {"n":"white","bp":[900,450],"q":1.2,"a":5,"d":140,"g":0.1},
+    {"n":"brown","lp":400,"a":5,"d":90,"g":0.08},
+    {"t":200,"o":"triangle","f":[140,100],"a":6,"d":100,"g":0.08},
+    {"t":200,"o":"sawtooth","f":[130,100],"bp":500,"q":2,"a":6,"d":90,"g":0.035},
+    {"t":200,"n":"white","bp":[800,420],"q":1.2,"a":5,"d":120,"g":0.07},
+    {"t":200,"n":"brown","lp":400,"a":5,"d":80,"g":0.05}]},
+  /* [s46-sound B4-21] snip: 갈아 둔 숟가락으로 수염을 다듬음(예전 scratch pitch 1.5 — 기침과 구분이 안 됨). 짧고 마른 금속 마찰 '사각' 0.15초 두 번(고역) */
+  "snip": {"c":"story","p":2,"cd":150,"rp":0.05,"gain":2.2,"L":[
+    {"n":"metal","bp":3800,"q":3,"a":4,"d":70,"g":0.05},
+    {"n":"white","bp":[4200,3000],"q":2,"gate":[40,60],"a":8,"s":1,"h":60,"r":30,"g":0.05},
+    {"o":"sine","f":2900,"a":2,"d":60,"g":0.008},
+    {"t":170,"n":"metal","bp":3500,"q":3,"a":4,"d":60,"g":0.04},
+    {"t":170,"n":"white","bp":[4000,2900],"q":2,"gate":[40,60],"a":8,"s":1,"h":50,"r":30,"g":0.04}]},
   "crowd_gasp": {"gain":3.3,"c":"story","p":4,"cd":200,"L":[
     {"n":"white","bp":[900,1500],"q":1.2,"a":80,"d":400,"g":0.08},
     {"n":"white","bp":750,"q":5,"a":50,"s":1,"h":120,"r":180,"g":0.12,"rep":6,"every":20,"jit":120,"rpm":0.2,"rpan":0.7},
@@ -18803,6 +18894,35 @@ MC.data.sfx = {
     {"o":"sine","f":4379.6,"a":2,"d":230,"g":0.011},
     {"n":"white","hp":6000,"a":2,"d":4,"g":0.025},
     {"o":"sine","f":349.2,"a":8,"d":600,"g":0.015}]},
+  /* [s46-sound B4-10] villefort_motif: 빌포르 주제 A 첫 마디(D5 F5 B♭5 — bgm villefort P1과 같은 자리 ♩144: 0·0.83·1.25초)를 오르골 한 줄로, −30센트(살짝 어긋난 기억) 1.4초.
+     추리의 밤 4 「빌포르.」 직후 한 번만(events_a4c.js) — 그 이름이 장부에 적히는 순간을 귀로도 적는다 */
+  "villefort_motif": {"c":"story","p":4,"cd":2000,"gain":1.5,"L":[
+    {"o":"sine","f":577.24,"a":2,"d":1100,"g":0.12,"send":{"stone":0.5}},
+    {"o":"sine","f":1731.7,"a":2,"d":350,"g":0.026,"send":{"stone":0.5}},
+    {"o":"sine","f":3619.3,"a":2,"d":150,"g":0.008},
+    {"t":830,"o":"sine","f":686.46,"a":2,"d":1100,"g":0.12,"send":{"stone":0.5}},
+    {"t":830,"o":"sine","f":2059.4,"a":2,"d":350,"g":0.026,"send":{"stone":0.5}},
+    {"t":830,"o":"sine","f":4304.1,"a":2,"d":150,"g":0.008},
+    {"t":1250,"o":"sine","f":916.31,"a":2,"d":1500,"g":0.11,"send":{"stone":0.5}},
+    {"t":1250,"o":"sine","f":2748.9,"a":2,"d":450,"g":0.024,"send":{"stone":0.5}},
+    {"t":1250,"o":"sine","f":5745.3,"a":2,"d":200,"g":0.007}]},
+  /* [s46-sound B4-11] 건배 메아리 머리 네 음(엔딩 물에 비친 얼굴 위 메아리 줄 0.6초 뒤 한 번, orgel_note 음색·g ×0.4).
+     toast_a = marseille(D E F# A, ♩76 리듬) · toast_b = marseille_evening(같은 머리, ♩60 느리게) · toast_c = feast(G A B D, ♩96). 레이어 t는 줄이 뜨는 시간(0.1초)을 더해 700ms부터 */
+  "toast_a": {"c":"story","p":4,"cd":2000,"L":[
+    {"t":700,"o":"sine","f":587.33,"a":2,"d":1500,"g":0.096,"send":{"stone":0.5}},{"t":700,"o":"sine","f":1762,"a":2,"d":480,"g":0.021,"send":{"stone":0.5}},
+    {"t":1226,"o":"sine","f":659.26,"a":2,"d":1500,"g":0.096,"send":{"stone":0.5}},{"t":1226,"o":"sine","f":1977.8,"a":2,"d":480,"g":0.021,"send":{"stone":0.5}},
+    {"t":1489,"o":"sine","f":739.99,"a":2,"d":1500,"g":0.096,"send":{"stone":0.5}},{"t":1489,"o":"sine","f":2220,"a":2,"d":480,"g":0.021,"send":{"stone":0.5}},
+    {"t":2016,"o":"sine","f":880,"a":2,"d":1900,"g":0.096,"send":{"stone":0.5}},{"t":2016,"o":"sine","f":2640,"a":2,"d":600,"g":0.021,"send":{"stone":0.5}}]},
+  "toast_b": {"c":"story","p":4,"cd":2000,"L":[
+    {"t":700,"o":"sine","f":587.33,"a":2,"d":1700,"g":0.096,"send":{"stone":0.5}},{"t":700,"o":"sine","f":1762,"a":2,"d":540,"g":0.021,"send":{"stone":0.5}},
+    {"t":1367,"o":"sine","f":659.26,"a":2,"d":1700,"g":0.096,"send":{"stone":0.5}},{"t":1367,"o":"sine","f":1977.8,"a":2,"d":540,"g":0.021,"send":{"stone":0.5}},
+    {"t":1700,"o":"sine","f":739.99,"a":2,"d":1700,"g":0.096,"send":{"stone":0.5}},{"t":1700,"o":"sine","f":2220,"a":2,"d":540,"g":0.021,"send":{"stone":0.5}},
+    {"t":2367,"o":"sine","f":880,"a":2,"d":2200,"g":0.096,"send":{"stone":0.5}},{"t":2367,"o":"sine","f":2640,"a":2,"d":700,"g":0.021,"send":{"stone":0.5}}]},
+  "toast_c": {"c":"story","p":4,"cd":2000,"L":[
+    {"t":700,"o":"sine","f":783.99,"a":2,"d":1400,"g":0.096,"send":{"stone":0.5}},{"t":700,"o":"sine","f":2352,"a":2,"d":450,"g":0.021,"send":{"stone":0.5}},
+    {"t":1117,"o":"sine","f":880,"a":2,"d":1400,"g":0.096,"send":{"stone":0.5}},{"t":1117,"o":"sine","f":2640,"a":2,"d":450,"g":0.021,"send":{"stone":0.5}},
+    {"t":1325,"o":"sine","f":987.77,"a":2,"d":1400,"g":0.096,"send":{"stone":0.5}},{"t":1325,"o":"sine","f":2963.3,"a":2,"d":450,"g":0.021,"send":{"stone":0.5}},
+    {"t":1742,"o":"sine","f":1174.66,"a":2,"d":1800,"g":0.096,"send":{"stone":0.5}},{"t":1742,"o":"sine","f":3524,"a":2,"d":560,"g":0.021,"send":{"stone":0.5}}]},
   "candle_light": {"c":"story","p":3,"cd":200,"gain":2.3,"L":[
     {"n":"white","bp":[600,2400],"q":1.2,"a":6,"d":190,"g":0.1},
     {"n":"brown","lp":400,"a":10,"d":260,"g":0.08},
@@ -19144,10 +19264,13 @@ MC.data.sfx = {
     {"t":180,"n":"brown","lp":[260,90],"ffms":1600,"a":200,"d":1700,"g":0.12},
     {"t":180,"o":"sine","f":[60,35],"fms":1500,"a":150,"d":1500,"g":0.05}]},
   /* thunder: 천둥(번개와 같은 프레임) — 터짐 + 굴러가는 brown 2.5초 + 사인 45→30 + 돌 울림 */
+  /* [s46-sound B4-1] 저역(brown·sine) −3dB, 폰 대역 층: 고역 균열 hp2500 30ms + noise bp500 굴림 2.2초 */
   "thunder": {"c":"story","p":4,"cd":400,"rp":0.05,"L":[
     {"n":"white","hp":1500,"a":2,"d":120,"g":0.1,"send":{"stone":0.6}},
-    {"n":"brown","lp":[1200,250],"ffms":2500,"a":8,"d":2500,"g":0.42,"wob":0.4,"send":{"stone":0.6}},
-    {"o":"sine","f":[45,30],"fms":2200,"a":20,"d":2300,"g":0.3},
+    {"n":"white","hp":2500,"a":1,"d":30,"g":0.14},
+    {"n":"brown","lp":[1200,250],"ffms":2500,"a":8,"d":2500,"g":0.3,"wob":0.4,"send":{"stone":0.6}},
+    {"o":"sine","f":[45,30],"fms":2200,"a":20,"d":2300,"g":0.2},
+    {"n":"white","bp":500,"q":0.8,"wob":0.4,"a":10,"d":2200,"g":0.3,"send":{"stone":0.4}},
     {"t":300,"n":"brown","lp":500,"a":200,"d":1800,"g":0.18,"send":{"stone":0.6}}]},
   /* key_ring: 열쇠 꾸러미(아침 순회 — _keys보다 가깝고 밝게) + 자물쇠 쇠고리 */
   "key_ring": {"c":"story","p":3,"cd":200,"gain":1.6,"L":[
@@ -19305,6 +19428,11 @@ MC.data.voices = {
   /* S3: 소장(나이 든 관리, 벽 너머 — 간수보다 부드럽고 낮게, LP) · 먼 파리아(벽 너머·굴 끝의 부름 — faria와 같은 음색에 LP 900, ×0.7, 돌방 울림) */
   "governor": {"o":"p25","f":175,"off":[0,3,5,7],"d":30,"g":0.06,"lp":1400,"noise":0.2,"nlp":1200},
   "faria_far": {"o":"triangle","f":262,"d":40,"g":0.063,"vib":[6,15],"lp":900,"send":{"stone":0.35}},
+  /* [s46-sound B4-7] faria_weak: 장면 2 파리아의 마지막 말들(events_s4c.js SAYF) — 두 글자에 하나, 작게(g .09→.045), LP 1100, 떨림 깊게. 오르골(filter 1500)과 같은 대역에서 '삑삑'이 부딪치지 않게(소10) */
+  "faria_weak": {"o":"triangle","f":262,"every":2,"d":40,"g":0.045,"lp":1100,"vib":[6,25]},
+  /* [s46-sound B4-15] 아침 순회(12½ 검정·목소리 30초) 전용: 간수·소장 타자음의 가까운 판 — 같은 음색, g ×2.5(+8dB)·조금 길게. 폰에서 목소리가 이 장면의 몸이 되게 */
+  "jailer_near": {"o":"p50","f":147,"noise":0.7,"off":[0,2,3,5],"d":34,"g":0.18},
+  "governor_near": {"o":"p25","f":175,"off":[0,3,5,7],"d":34,"g":0.18,"lp":1400,"noise":0.2,"nlp":1200},
   /* S4 2차: 선장(밀수선 — 예순 안팎, 하게체. 소장 governor·간수 jailer와 겹치지 않게 덜 거칠고 느리게, 조금 막힌 소리) */
   "captain": {"o":"p50","f":165,"rp":0.025,"noise":0.3,"off":[0,2,3,5,7],"d":32,"g":0.065,"lp":1600}
 };
@@ -19344,8 +19472,10 @@ MC.data.amb = {
     "ev":[{"id":"_crackle","rate":2,"g":0.45},{"id":"_sputter","every":[14000,30000],"first":[5000,9000]},
       {"id":"drip","every":[5000,12000],"first":[2000,5000],"g":0.8},{"id":"_chain","every":[40000,80000],"first":[20000,35000]}]},
   /* tunnel: 땅굴(흙 부스러기, 낮은 물방울, 먼 발소리·열쇠, 벽 너머 바다 울림) */
+  /* [s46-sound B4-1] 폰 대역 흙 공기 층(noise bp450, 아주 작게) — brown LP180·drone은 폰에서 0이었다 */
   "tunnel": {"beds":[
       {"type":"noise","n":"brown","lp":180,"q":0.7,"g":0.05,"glfo":[0.07,0.4]},
+      {"type":"noise","n":"white","bp":450,"q":0.7,"g":0.006,"glfo":[0.05,0.5]},
       {"type":"waves","g":0.025,"lp":200,"lpv":80,"mono":true},
       {"type":"drone","f":[55,82.4],"g":0.004,"lfo":[0.09,5]}],
     "ev":[{"id":"_dirt","every":[2500,7000],"first":[800,2000]},{"id":"_drip_low","every":[4000,10000],"first":[1500,4000]},
@@ -19393,6 +19523,31 @@ MC.data.amb = {
   "undersea": {"beds":[
       {"type":"noise","n":"white","bp":600,"q":0.8,"g":0.08,"lfo":[0.08,120],"glfo":[0.07,0.35]}],
     "ev":[{"id":"_bubble_deep","every":[3000,7000],"first":[800,2000],"g":0.8}]},
+  /* [s46-sound B4-18] undersea_b: 바다(sea_sink) 실패 뒤 홀수 번째 판의 베드 — 물살 대역을 옮기고(bp 820) 먼 파도 울림을 얹어 같은 20초가 되풀이되지 않게.
+     undersea_thin: 실패 3번 뒤 — 베드 한 층(거품 이벤트)을 뺀 쉬익만 */
+  "undersea_b": {"beds":[
+      {"type":"noise","n":"white","bp":820,"q":0.9,"g":0.07,"lfo":[0.11,160],"glfo":[0.05,0.4]},
+      {"type":"noise","n":"pink","bp":380,"q":0.8,"g":0.02,"glfo":[0.09,0.5]}],
+    "ev":[{"id":"_wash","every":[4000,7000],"first":[1200,2500],"g":0.5},{"id":"_bubble_deep","every":[5000,9000],"first":[2500,4000],"g":0.6}]},
+  "undersea_thin": {"beds":[
+      {"type":"noise","n":"white","bp":680,"q":0.8,"g":0.075,"lfo":[0.06,100],"glfo":[0.08,0.3]}]},
+  /* [s46-sound B4-16] hush_room: 파리아 임종 뒤 49초('디지털 0')의 실내 공기 — 약 −60dBFS 방 공기(pink bp420·brown) + 25초 무렵 먼 파도 한 번. 물방울 없음(정적이 들리게) */
+  "hush_room": {"beds":[
+      {"type":"noise","n":"pink","bp":420,"q":0.6,"g":0.004,"glfo":[0.04,0.4]},
+      {"type":"noise","n":"brown","lp":260,"g":0.005,"glfo":[0.03,0.4]}],
+    "ev":[{"id":"_wash","every":[45000,70000],"first":[24000,26000],"g":0.4}]},
+  /* [s46-sound B4-16·B4-15] hush_day: S4 빈 하루(DAY_LOOK) — 창살 너머 낮은 바람·먼 파도 공기음 + 물방울 6~8초(측정: 폰 −52.9·무음 122초, 영s4소 '12~15초에 물방울 한 번뿐') */
+  "hush_day": {"beds":[
+      {"type":"waves","g":0.03,"lp":240,"lpv":90,"mono":true},
+      {"type":"noise","n":"pink","bp":520,"q":0.6,"g":0.034,"lfo":[0.05,160],"glfo":[0.06,0.6]},
+      {"type":"waves","g":0.045,"lp":800,"lpv":300}],
+    "ev":[{"id":"drip","every":[6000,8000],"first":[1500,3000],"g":0.85},{"id":"_wash","every":[11000,19000],"first":[5000,8000],"g":0.35}]},
+  /* [s46-sound B4-15] cell34: 아침 순회(12½, 검정 30초 — 34번 방) 바탕 — 벽 너머 파도(폰 대역 pink bp450 + 물결 lp900)와 아주 드문 물방울.
+     음악·저역통과는 여전히 없음(계약). 측정: 순회 폰 −53(녹음)·22초 무음 → 갑판(−32)과 21dB 차였다 */
+  "cell34": {"beds":[
+      {"type":"waves","g":0.09,"lp":900,"lpv":400,"mono":true},
+      {"type":"noise","n":"pink","bp":450,"q":0.6,"g":0.1,"lfo":[0.07,150],"glfo":[0.09,0.6]}],
+    "ev":[{"id":"drip","every":[7000,11000],"first":[3000,5000],"g":0.6}]},
   /* hush: 발작의 밤·한 시간·의심의 하루 — 물방울 드물게 + 아주 낮은 파도. 촛불 지글 없음(정적이 들리게) */
   "hush": {"beds":[
       {"type":"waves","g":0.03,"lp":240,"lpv":90,"mono":true}],
@@ -19421,8 +19576,10 @@ MC.data.amb = {
     "ev":[{"id":"_rope","every":[2000,5000],"first":[800,2000]},{"id":"_creak","every":[2000,5000],"first":[1500,3000]},
       {"id":"_sail","every":[4000,9000],"first":[2000,4000]},{"id":"_gull_far","every":[12000,25000],"first":[5000,9000]},{"id":"_lap","every":[1500,4000],"g":0.8}]},
   /* sea_calm: 엔딩의 잔잔한 바다(night_sea에서 노·바람을 빼고 파도만 g.05, 가끔 먼 부서짐) */
+  /* [s46-sound B4-15] 폰 대역 물결 층(pink bp600) — 장부·「열넷」(폰 −48~−54)이 크레딧(−32)보다 20dB 넘게 작던 것: 배 밑 바다가 폰에서도 들리게 */
   "sea_calm": {"beds":[
-      {"type":"waves","g":0.05,"lp":1100,"lpv":600}],
+      {"type":"waves","g":0.1,"lp":1100,"lpv":600},
+      {"type":"noise","n":"pink","bp":600,"q":0.6,"g":0.095,"lfo":[0.06,220],"glfo":[0.08,0.55]}],
     "ev":[{"id":"_wash","every":[7000,14000],"first":[2500,5000],"g":0.5}]}
 };
 
@@ -19636,6 +19793,7 @@ MC.data.bgm = {
       "P1":  {"w":"p50","v":0.15,"a":30,"d":400,"s":0.8,"r":200,"gate":0.95,"vib":[4.5,18,250],"unless":"paria","send":{"rev":0.18}},
       "P2":  {"w":"p25","v":0.12,"a":2,"d":60,"s":0.5,"r":20,"gate":0.8,"pan":-0.2},
       "PAD": {"chord":true,"pad":true,"w":"saw","v":0.05,"a":800,"d":600,"s":0.8,"r":600,"gate":1,"win":52,"lp":900,"unless":"paria","send":{"rev":0.3}},
+      "PADM": {"chord":true,"pad":true,"w":"saw","v":0.04,"a":800,"d":600,"s":0.8,"r":600,"gate":1,"win":60,"bp":500,"bq":0.8,"unless":"paria","send":{"rev":0.2}},   /* [s46-sound B4-19] 대기 드론의 폰 대역 층(bp500 g.04): 명령을 기다리는 동안 폰 −50~−58 → 절망의 공기가 빠지던 것(소2-7) */
       "PA":  {"w":"orgel","v":0.22,"d":1600,"hum":[8,4,0.05],"layer":"paria","send":{"rev":0.4}},
       "PG":  {"chord":true,"pad":true,"w":"pad","v":0.045,"a":900,"d":800,"s":0.85,"r":900,"gate":1,"win":55,"lp":1600,"layer":"paria","send":{"rev":0.35}},
       "T":   {"w":"triangle","v":0.24,"a":3,"d":200,"s":0.7,"r":40,"gate":0.8,"layer":"rhythm"},
@@ -19646,6 +19804,7 @@ MC.data.bgm = {
         "T":   "E2 - E2 - F2 - E2 - . . E2 - G2 - F2 - | E2 - E2 - F2 - E2 - . . E2 - G2 - F2 - | E2 - E2 - F2 - E2 - . . E2 - G2 - F2 - | E2 - E2 - F2 - E2 - . . E2 - G2 - F2 -",
         "P1":  "B4 - - - - - - - - - - - - - - - | C5 - - - - - - - - - - - B4 - A4 - | G4 - - - - - - - A4 - - - B4 - - - | F4 - - - - - - - - - - - E4 - - -",
         "PAD": "Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - Em - - -",
+        "PADM":"Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - Em - - -",
         "PA":  "D5 - - - G5 - - - F#5 - - - E5 - - - | D5 - - - - - - - B4 - - - - - - - | C5 - - - E5 - - - D5 - - - C5 - - - | B4 - - - - - - - - - - - - - - -",
         "PG":  "G - - - - - - - - - - - - - - - | G - - - - - - - - - - - - - - - | C - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - -",
         "N":   "k . . . s . . k k . . . s . k s | k . . . s . . k k . . . s . k s | k . . . s . . k k . . . s . k s | k . . . s . . k k . . . S S S S"
@@ -19655,6 +19814,7 @@ MC.data.bgm = {
         "P1":  "B5 - - - - - - - - - - - - - - - | C6 - - - - - - - - - - - B5 - A5 - | G5 - - - - - - - A5 - - - B5 - - - | F5 - - - - - - - - - - - E5 - - -",
         "P2":  "E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4",
         "PAD": "Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - Em - - -",
+        "PADM":"Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - Em - - -",
         "PA":  "D5 - - - G5 - - - F#5 - - - E5 - - - | D5 - - - - - - - B4 - - - - - - - | C5 - - - E5 - - - D5 - - - C5 - - - | B4 - - - - - - - - - - - - - - -",
         "PG":  "G - - - - - - - - - - - - - - - | G - - - - - - - - - - - - - - - | C - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - -",
         "N":   "kC . . . s . . k k . . . s . k s | k . . . s . . k k . . . s . k s | k . . . s . . k k . . . s . k s | k . . . s . . k k . . . S S S S"
@@ -19664,12 +19824,30 @@ MC.data.bgm = {
         "P1":  "A4 - - - C5 - - - E5 - - - D5 - C5 - | C5 - - - - - - - Ab4 - - - F4 - - - | D5 - - - F5 - - - A5 - - - G5 - F5 - | E5 - - - - - - - D5 - - - B4 - - -",
         "P2":  "A4 Bb4 A4 Bb4 A4 Bb4 A4 Bb4 A4 Bb4 A4 Bb4 A4 Bb4 A4 Bb4 | F4 Gb4 F4 Gb4 F4 Gb4 F4 Gb4 F4 Gb4 F4 Gb4 F4 Gb4 F4 Gb4 | D4 Eb4 D4 Eb4 D4 Eb4 D4 Eb4 D4 Eb4 D4 Eb4 D4 Eb4 D4 Eb4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4",
         "PAD": "Am - - - - - - - - - - - - - - - | Fm - - - - - - - - - - - - - - - | Dm - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - -",
+        "PADM":"Am - - - - - - - - - - - - - - - | Fm - - - - - - - - - - - - - - - | Dm - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - -",
         "PA":  "A4 - - - C5 - - - B4 - - - A4 - - - | A4 - - - - - - - C5 - - - - - - - | E5 - - - D5 - - - C5 - B4 - A4 - - - | G4 - - - - - - - - - - - - - - -",
         "PG":  "Am - - - - - - - - - - - - - - - | Am - - - - - - - - - - - - - - - | C - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - -",
         "N":   "kC . k . s . . k k . k . s . k s | k . k . s . . k k . k . s . k s | k . k . s . . k k . k . s . k s | k . k . s . . k S . S . S S S S"
       }
     },
     "order": ["A","A2","B","A2"], "loopTo": 1
+  },
+
+  /* [s46-sound B4-19] 최종전 자루 속 대기 드론(battle.js despair2 music.sack — 곡을 끊은 뒤 1.2초에 걸쳐): E·F 반음 부딪힘 톱니 패드를 bp500(폰 대역)으로만, 아래에 아주 낮은 패드.
+     전역 LP 650(삼켜짐) 안에서도 들린다. 선율·박 없음. [스승의 말씀](master)이 boss_despair를 다시 틀면 바뀐다 */
+  "sack_drone": {
+    "bpm": 40, "spb": 1, "bar": 4, "vol": 1,
+    "ch": {
+      "DR": {"chord":true,"pad":true,"w":"saw","v":0.05,"a":1500,"d":800,"s":0.9,"r":1500,"gate":1,"win":52,"bp":500,"bq":0.8,"vib":[0.2,8,0],"send":{"rev":0.3}},
+      "LO": {"chord":true,"pad":true,"w":"pad","v":0.03,"a":2000,"d":800,"s":0.9,"r":2000,"gate":1,"win":40}
+    },
+    "pat": {
+      "A": {
+        "DR": "Em - - - | F - - - | Em - - - | F - - -",
+        "LO": "Em - - - | F - - - | Em - - - | F - - -"
+      }
+    },
+    "order": ["A"], "loopTo": 0
   },
 
   "title": {
@@ -19767,7 +19945,7 @@ MC.data.bgm = {
     "layers": {"alert1": false, "alert2": false, "orgel": false, "tick": true, "tension": true},
     "ch": {
       "T":  {"w":"triangle","v":0.32,"a":4,"d":260,"s":0.4,"r":120,"gate":0.9},
-      "TD": {"w":"p50","v":0.06,"a":4,"d":180,"s":0.25,"r":90,"gate":0.8,"oct":1,"lp":700},
+      "TD": {"w":"p50","v":0.11,"a":4,"d":180,"s":0.25,"r":90,"gate":0.8,"oct":1,"lp":1100},   /* [s46-sound B4-1] 땅굴1 베이스(A1 두 번 — sub 70~97%, 소2 재판정 3): 한 옥타브 위 p50 .06→.11·LP 700→1100(330·550·770Hz 배음이 폰에 남게) */
       "N":  {"kit":true,"v":0.7,"layer":"tick"},
       "DR": {"chord":true,"pad":true,"w":"pad","v":0.022,"a":1800,"d":800,"s":0.9,"r":1800,"gate":1,"win":45,"lp":650,"vib":[0.15,6,0]},
       "P2": {"w":"p12","v":0.035,"a":40,"d":400,"s":0.85,"r":300,"gate":1,"trem":[7,0.85],"layer":"tension","send":{"rev":0.15}},
@@ -19981,7 +20159,7 @@ MC.data.bgm = {
   "dream_b4": {
     "bpm": 52, "spb": 2, "bar": 8, "vol": 1, "filter": 900, "echo": 0.865, "fb": 0.5, "scale": [4,11],
     "ch": {
-      "T":  {"w":"triangle","v":0.26,"a":300,"d":1500,"s":0.6,"r":900,"gate":0.95,"send":{"rev":0.25}},
+      "T":  {"w":"triangle","v":0.2,"a":300,"d":1500,"s":0.6,"r":900,"gate":0.95,"send":{"rev":0.25}},   /* [s46-sound B4-15 · 0.4.3a S4 뒤 판단] 물속 베이스 .26→.20(−2.3dB): B4 진입 저역 덩어리(이어폰의 큰 웅) — 폰은 저음 보강(T 한 옥타브 위)이 맡는다 */
       "DR": {"chord":true,"pad":true,"w":"pad","v":0.04,"a":2500,"d":800,"s":0.9,"r":3000,"gate":1,"win":40,"vib":[0.1,10,0],"send":{"rev":0.45}},
       "EC": {"w":"orgel","v":0.13,"d":2200,"hum":[20,8,0],"send":{"echo":0.7,"rev":0.5}}
     },
@@ -33801,7 +33979,7 @@ MC.data.battle = {
       //   skill의 lines에서 그 판에 처음 본 줄(bt.ln.sk.memory) — 없으면 idx번째 줄.
       "recall": { "skill": "memory", "idx": 2 },
       "music": {
-        "sack": [ ["cut"] ],
+        "sack": [ ["cut"], ["play", "sack_drone", { "fade": 1200 }] ],   // [s46-sound B4-19] 자루 속 대기(LP 650): 곡을 끊은 뒤 bp500 드론이 천천히 — 폰에서 −40 '빈 공기' → 절망의 공기가 남게(소2-7)
         "master": [ ["play", "boss_despair", { "restart": true, "fade": 0 }], ["layer", "rhythm", false, true] ],
         "regrowEnd": [ ["layer", "rhythm", true] ],
         "paria": [ ["layer", "paria", true], ["remap", { "F2": "F#2", "F4": "F#4" }] ],
@@ -33953,7 +34131,7 @@ MC.data.battle = {
    MC.data.clueQs = 열린 물음 문구(q.* flag가 켜져 있으면 메뉴 '기억' 맨 위 '신부님의 물음' 칸에 나온다)
    저장: flag mem.<id> = 되찾음, memnew.<id> = 아직 메뉴에서 안 봄(메뉴가 끔).
    op(로드 시점 등록, 즉시 op):
-     {op:"clue", id:"ledger"}                — 없으면 켜고 위쪽 알림(효과음 page + orgel_note). 이미 있으면 아무것도 안 함(멱등)
+     {op:"clue", id:"ledger"}                — 없으면 켜고 위쪽 알림(효과음 page + ui_chime — [s46-sound B4-8]). 이미 있으면 아무것도 안 함(멱등)
      {op:"clue", id:"arbor", recall:true}    — '떠올랐다!': 카드가 화면 가운데로 약 0.9초(대화창은 닫힘)
      {op:"clue", ids:[...], recall:true}     — 여러 장 차례로(둘째 밤 7장). 끝나면 다음 명령
      {op:"clue", id:"...", quiet:true}       — 소리·연출 없이(마이그레이션)
@@ -34059,7 +34237,7 @@ MC.data.battle = {
         if (FX && FX.recall) { await FX.recall(fresh, { group: list.length > 1 }); return; }
       } else if (FX && FX.note) { FX.note(fresh); return; }
       // 대체: 효과음 + 토스트
-      try { MC.sfx.play('page'); MC.sfx.play('orgel_note', { pitch: 1.5, gain: 0.6 }); } catch (_) {}
+      try { MC.sfx.play('page'); MC.sfx.play('ui_chime', { pitch: 1.0, gain: 0.6 });   /* [s46-sound B4-8] orgel_note → ui_chime */ } catch (_) {}
       if (MC.ui && MC.ui.toast) MC.ui.toast('기억 — ' + fresh.map(id => '「' + CL[id].n + '」').join(' '), 1900);
     };
     if (MC.events.instant && MC.events.instant.add) MC.events.instant.add('clue');
@@ -36666,11 +36844,11 @@ MC.addEvents({
     { "op": "move", "id": "mercedes", "path": "D2 L1", "speed": 150 },
     { "op": "wait", "ms": 500 },
     { "op": "say", "who": "mercedes", "face": "cry", "t": [ "에드몽!{p:200} 기다릴게!", "무슨 일이 있어도,{p:300} 기다릴게!" ] },
-    { "op": "sfx", "id": "heartbeat" },
+    { "op": "sfx", "id": "heartbeat", "gain": 1.4 },                      // [s46-sound B4-20] 체포 클로즈업 심장 3박 ×1.4(소2-9: 폰 피크 −40 — 앞 잔치 −32보다 작았다)
     { "op": "closeup", "who": "danglars", "face": "smirk", "t": "잔을 내려놓지 않는다.", "ms": 1500 },
-    { "op": "sfx", "id": "heartbeat" },
+    { "op": "sfx", "id": "heartbeat", "gain": 1.4 },
     { "op": "closeup", "who": "fernand", "face": "glare", "t": "메르세데스만 본다.", "ms": 1500 },
-    { "op": "sfx", "id": "heartbeat" },
+    { "op": "sfx", "id": "heartbeat", "gain": 1.4 },
     { "op": "closeup", "who": "caderousse", "face": "nervous", "t": "입을 열었다가,\n잔을 비운다.", "ms": 1800 },
     { "op": "call", "ev": "a2.villefort" }
   ],
@@ -39411,12 +39589,13 @@ MC.addEvents({
       { "op": "if", "cond": { "not": { "var": "m4phase", "eq": "mt4" } }, "then": [ { "op": "end" } ] },
       { "op": "add", "var": "knot", "n": 1 },
       { "op": "jump", "id": "player", "h": 2, "ms": 140 },
-      { "op": "sfx", "id": "swing", "pitch": 0.9 },
+      { "op": "sfx", "id": "swing", "pitch": 0.9, "gain": 0.5 },
       { "op": "fx", "kind": "dust", "at": "mt_rope", "n": 2 },
+      // [s46-sound B4-21] 매듭 조이는 swing 세 번은 gain 0.5(−6dB, 영s3a소)
       // (integrator-s2n) 중간 두 번은 대화창 대신 위쪽 알림 — 탭 세 번이 한 호흡으로 이어지게(상자를 닫느라 탭이 두 배가 되지 않게)
       { "op": "if", "cond": { "var": "knot", "eq": 1 }, "then": [ { "op": "toast", "t": "한 번 감고,", "ms": 1100 }, { "op": "end" } ] },
-      { "op": "if", "cond": { "var": "knot", "eq": 2 }, "then": [ { "op": "sfx", "id": "swing", "pitch": 1.05 }, { "op": "toast", "t": "고리 사이로 빼서,", "ms": 1100 }, { "op": "end" } ] },
-      { "op": "sfx", "id": "swing", "pitch": 1.2 },
+      { "op": "if", "cond": { "var": "knot", "eq": 2 }, "then": [ { "op": "sfx", "id": "swing", "pitch": 1.05, "gain": 0.5 }, { "op": "toast", "t": "고리 사이로 빼서,", "ms": 1100 }, { "op": "end" } ] },
+      { "op": "sfx", "id": "swing", "pitch": 1.2, "gain": 0.5 },
       { "op": "wait", "ms": 200 },
       { "op": "emote", "id": "player", "kind": "note", "ms": 800 },
       { "op": "call", "ev": "a4m.mt_end" }
@@ -40817,8 +40996,9 @@ MC.addEvents({
       { "op": "face", "id": "player", "dir": "left" },
       { "op": "grade", "sat": 0.3, "tint": "#1a2a50", "ta": 0.16, "ms": 0 },
       { "op": "fade", "to": 0, "ms": 900 },
-      { "op": "sfx", "id": "breath", "pitch": 0.7, "gain": 0.55 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 240 },
-      { "op": "sfx", "id": "breath", "pitch": 0.64, "gain": 0.5 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 700 },
+      // [s46-sound B4-21] 기침: breath(바람 결 — 이발 소리와 구분이 안 됨) → cough(흉성 '콜록, 콜록'). 들썩임·박자는 그대로
+      { "op": "sfx", "id": "cough", "gain": 0.6 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 240 },
+      { "op": "sfx", "id": "cough", "pitch": 0.93, "gain": 0.5 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 700 },
       { "op": "custom", "id": "deduce", "args": { "stage": "tap", "id": "faria", "hint": "신부님 어깨에 짚을 덮는다.", "other": "……" } },
       { "op": "walkto", "id": "player", "to": [ 5, 5 ], "speed": 260, "face": "left" },
       { "op": "face", "id": "player", "dir": "left" },
@@ -40896,6 +41076,10 @@ MC.addEvents({
       { "op": "say", "who": "faria", "face": "stern", "t": "……그 검사, 이름이 뭐였나?" },
       { "op": "say", "who": "dantes", "t": "빌포르." },
       { "op": "wait", "ms": 600 },
+      // [s46-sound B4-10] 빌포르 주제 첫 마디(D5 F5 B♭5)를 오르골 한 줄로 한 번(−30센트, 1.4초) — 1막 그의 선율이 이름과 함께 돌아온다(소13). 곡은 그동안 −8dB
+      { "op": "duck", "db": -8, "ms": 1600 },
+      { "op": "sfx", "id": "villefort_motif" },
+      { "op": "wait", "ms": 1400 },
       { "op": "emote", "id": "faria", "kind": "exclaim", "ms": 600 },
       { "op": "say", "who": "faria", "t": "하.{p:300} ……내 해시계 금보다 분명하군." },
       { "op": "say", "who": "faria", "face": "stern", "t": "누아르티에는 그자의 아버지일세.", "key": true },   // [a43-ui P6] 정점 — 빨리감기로 넘기지 않음
@@ -41787,7 +41971,7 @@ MC.addEvents({
     "s3y.cut": [
       { "op": "add", "var": "s3cut", "n": 1 },
       { "op": "jump", "id": "player", "h": 1, "ms": 90 },
-      { "op": "sfx", "id": "scratch", "pitch": 1.5, "gain": 0.3 },
+      { "op": "sfx", "id": "snip", "gain": 0.8 },                          // [s46-sound B4-21] 이발: scratch(긁는 바람 — 기침과 비슷) → snip(마른 금속 '사각' 두 번)
       { "op": "fx", "kind": "dust", "at": "faria", "n": 3 },
       when({ "var": "s3cut", "gte": 3 }, [ call("s3y.cut_talk") ], [ { "op": "glow", "id": "faria" } ])
     ],
@@ -41822,7 +42006,7 @@ MC.addEvents({
     "s3y.cut_end": [
       { "op": "letterbox", "on": true, "ms": 300 },
       { "op": "jump", "id": "player", "h": 1, "ms": 90 },
-      { "op": "sfx", "id": "scratch", "pitch": 1.6, "gain": 0.3 },
+      { "op": "sfx", "id": "snip", "pitch": 1.06, "gain": 0.8 },            // [s46-sound B4-21] 이발 마지막 한 번(수염 끝)
       { "op": "fx", "kind": "dust", "at": "faria", "n": 2 },
       { "op": "set", "var": "s3cut", "v": 5 },
       { "op": "wait", "ms": 400 },
@@ -41989,16 +42173,16 @@ MC.addEvents({
       { "op": "letterbox", "on": false, "ms": 300 },
       { "op": "glow", "id": "ladder" }
     ],
-    // 매듭 세 번(S2 몽타주와 같은 토스트 세 조각, M28)
+    // 매듭 세 번(S2 몽타주와 같은 토스트 세 조각, M28) · [s46-sound B4-21] 매듭 조이는 swing은 gain 0.5(−6dB — 주변보다 +6~8dB 튀던 흰 잡음 스윕, 영s3a소)
     "s3e.h_ladder": [
       when(NF("s3e.knot"), [
         { "op": "add", "var": "knot", "n": 1 },
         { "op": "jump", "id": "player", "h": 2, "ms": 140 },
-        { "op": "sfx", "id": "swing", "pitch": 0.9 },
+        { "op": "sfx", "id": "swing", "pitch": 0.9, "gain": 0.5 },
         { "op": "fx", "kind": "dust", "at": "ladder", "n": 2 },
         when({ "var": "knot", "eq": 1 }, [ { "op": "toast", "t": "한 번 감고,", "ms": 1100 }, { "op": "glow", "id": "ladder" }, END ]),
-        when({ "var": "knot", "eq": 2 }, [ { "op": "sfx", "id": "swing", "pitch": 1.05 }, { "op": "toast", "t": "고리 사이로 빼서,", "ms": 1100 }, { "op": "glow", "id": "ladder" }, END ]),
-        { "op": "sfx", "id": "swing", "pitch": 1.2 },
+        when({ "var": "knot", "eq": 2 }, [ { "op": "sfx", "id": "swing", "pitch": 1.05, "gain": 0.5 }, { "op": "toast", "t": "고리 사이로 빼서,", "ms": 1100 }, { "op": "glow", "id": "ladder" }, END ]),
+        { "op": "sfx", "id": "swing", "pitch": 1.2, "gain": 0.5 },
         { "op": "toast", "t": "당기면 끝.", "ms": 1100 },
         { "op": "wait", "ms": 700 },
         call("s3e.knot_done"),
@@ -42086,8 +42270,9 @@ MC.addEvents({
       { "op": "add", "var": "lessons", "n": 1 },
       // [s44-writer B3-22] 수업 끝 기침 한 번(작2-6) — ⑥ 토막(1825) 한가운데에 그 밤 발작의 고리
       { "op": "wait", "ms": 500 },
-      { "op": "sfx", "id": "breath", "pitch": 0.7, "gain": 0.55 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 240 },
-      { "op": "sfx", "id": "breath", "pitch": 0.64, "gain": 0.5 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 600 },
+      // [s46-sound B4-21] 기침: breath → cough(흉성 '콜록') — 이발 숟가락 소리(snip)와 결을 나눈다
+      { "op": "sfx", "id": "cough", "gain": 0.6 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 240 },
+      { "op": "sfx", "id": "cough", "pitch": 0.93, "gain": 0.5 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 600 },
       { "op": "say", "who": "faria", "t": "……괜찮네." },
       { "op": "narr", "t": "그해 가을, 레몬즙과 불.", "ms": 1500 }   // [s44-writer B3-23] 수업 끝 시간 카드
     ].concat(LAYERS_S2, [
@@ -45286,6 +45471,8 @@ MC.addEvents({
   /* ---------- 분위기 조각(계약 §A-2 표 — 수치는 출발점) ---------- */
   const MUS_CLEAN = [ { "op": "music", "fn": "filterTo", "args": [ null, 0 ] }, { "op": "music", "fn": "detuneTo", "args": [ 0, 0 ] } ];   // pulse_fade 뒤에도 필터·디튠이 남지 않게(S4_BUILD1 §A-5)
   const QUIET = [ { "op": "bgm", "id": null, "fade": 800 }, { "op": "amb", "id": "hush", "fade": 800 } ].concat(MUS_CLEAN);
+  // [s46-sound B4-16·B4-15] 빈 하루(DAY_LOOK)만: 창살 너머 낮은 바람·먼 파도 공기 + 물방울 6~8초(hush_day). 음악은 여전히 없음
+  const QUIET_DAY = [ { "op": "bgm", "id": null, "fade": 800 }, { "op": "amb", "id": "hush_day", "fade": 800 } ].concat(MUS_CLEAN);
   const CALL_LOOK = at => [
     { "op": "act", "v": 4, "ui": "act4" },
     { "op": "grade", "sat": 0.25, "tint": "#1a2a50", "ta": 0.22, "ms": 0 },
@@ -45307,7 +45494,7 @@ MC.addEvents({
           { "op": "light", "dark": 0.4, "r": 76, "at": "window", "color": "#fff0c8", "flicker": false, "post": false, "ms": 0 } ], [
           { "op": "grade", "sat": 0.45, "tint": "#3a2410", "ta": 0.08, "ms": 0 },
           { "op": "light", "dark": 0.45, "r": 70, "at": "window", "color": "#fff0c8", "flicker": false, "post": false, "ms": 0 } ]) ]) ])
-  ].concat(QUIET);
+  ].concat(QUIET_DAY);
   // 장면 3 끝 새벽(events_s4c.js DAWN_GRADE·DAWN_LIGHT와 같은 값 — 바꿀 땐 둘 다)
   const DAWN_LOOK = [
     { "op": "act", "v": 4, "ui": "act4" },
@@ -45538,7 +45725,8 @@ MC.addEvents({
   const LB_ON = { "op": "letterbox", "on": true, "ms": 300 }, LB_OFF = { "op": "letterbox", "on": false, "ms": 300 };
   const WARM = "#ffcf6a";
   const SLOW = 64, SLOWER = 84;                                            // 파리아의 마지막 말들 — 타자 속도(ms/자, 기본 28)
-  const SAYF = (t, face, speed) => Object.assign({ "op": "say", "who": "faria", "t": t, "speed": speed || SLOW }, face ? { "face": face } : {});
+  // [s46-sound B4-7] 장면 2의 파리아 목소리는 faria_weak(두 글자에 하나·작게·LP 1100) — 오르골(filter 1500)과 '삑삑'이 부딪치지 않게(소10)
+  const SAYF = (t, face, speed) => Object.assign({ "op": "say", "who": "faria", "t": t, "speed": speed || SLOW, "voice": "faria_weak" }, face ? { "face": face } : {});
   const MUS_CLEAN = [ { "op": "music", "fn": "filterTo", "args": [ null, 0 ] }, { "op": "music", "fn": "detuneTo", "args": [ 0, 0 ] } ];
   // 새벽 모습(장면 3 끝). 등잔 차례 이어하기(events_s4.js s4.amb_fc의 DAWN_LOOK)도 같은 값 — 바꿀 땐 둘 다
   const DAWN_GRADE = ms => ({ "op": "grade", "sat": 0.3, "tint": "#2a3448", "ta": 0.22, "ms": ms, "async": true });
@@ -45728,7 +45916,8 @@ MC.addEvents({
       W(1800),
       { "op": "say", "who": "dantes", "t": "신부님,{p:400} 제발 그만 말씀하세요." },
       W(1500),
-      SAYF("나가거든, 한 사람쯤은——{p:1000}\n벌하는 대신 구해 주게.{p:1800}\n" + LAST, "weak", SLOWER),
+      // [s46-sound B4-7] 마지막 말(LAST)은 글자만 — 소리는 오르골만(voice hush: 그 줄만 타자음 없음, 대사 글자는 그대로)
+      Object.assign(SAYF("나가거든, 한 사람쯤은——{p:1000}\n벌하는 대신 구해 주게.{p:1800}\n" + LAST, "weak", SLOWER), { "voice": { "id": "faria_weak", "hush": LAST } }),
       W(3200)
     ], GRIP_SEQ, [
       W(1400),
@@ -45787,7 +45976,9 @@ MC.addEvents({
       W(4200),
       // 맥 — 맥과 오르골이 함께 느려지다 같은 박에서 멎는다(합성, 클립 없음 — 사용자 결정). 화면은 남긴 채 「……신부님?」
       { "op": "custom", "id": "s4", "args": { "stage": "pulse_fade", "plan": PLAN, "bgm": "faria", "who": "faria", "lead": 2600, "hold": true } },
-      { "op": "bgm", "id": null, "fade": 0 }
+      { "op": "bgm", "id": null, "fade": 0 },
+      // [s46-sound B4-16] 멎은 뒤 49초를 '디지털 0'으로 두지 않는다 — 약 −60dBFS 실내 공기만 천천히(3초) 깔고, 25초 무렵 먼 파도 한 번(소2-6). 글·음악은 그대로 없음
+      { "op": "amb", "id": "hush_room", "fade": 3000 }
     ].concat(MUS_CLEAN, [
       W(1600),
       { "op": "say", "who": "dantes", "t": "……신부님?", "speed": 64 },        // 고정(REDESIGN F-3 5-1)
@@ -46268,6 +46459,29 @@ MC.addEvents({
     if (MC.events.instant && MC.events.instant.add) MC.events.instant.add('deepglow');
   }
 
+  /* bluefilm(즉시 op, [s46-sound B4-14]) — 꿈으로 잠기는 순간(G소4·G시6): 화면 아래에서 푸른 물이 ms(기본 1200) 동안 차오른다(4단 Bayer 디더 띠 + 수면 한 줄).
+     장면 위에 얹히는 비차단 씬(입력은 막지 않음). {off:true}로 걷는다(덮은 뒤 검정 fade 아래에서). 글 없음 */
+  if (MC.events && MC.events.ops && !MC.events.ops.bluefilm) {
+    let film = null;
+    MC.events.ops.bluefilm = c => {
+      if (film) { try { MC.scene.remove(film); } catch (_) {} film = null; }
+      if (c && c.off) return;
+      const ms = Math.max(100, c && c.ms != null ? +c.ms : 1200), t0 = MC.time.real, BODY = '#0a1c44', SURF = '#5a7ec8';
+      film = { name: 'ev_bluefilm', opaque: false, blocking: false,
+        update() {}, onInput() { return false; },
+        render() {
+          const g = MC.gfx, k = MC.clamp((MC.time.real - t0) / ms, 0, 1), e = 1 - (1 - k) * (1 - k);
+          const h = Math.round(g.H * e); if (h <= 0) return;
+          const top = g.H - h;
+          g.ditherRect(0, top + 8, g.W, Math.max(0, h - 8), BODY, 12);                      // 물 몸통(¾ 디더 — 아래 장면이 비친다)
+          for (let j = 0; j < 4; j++) g.ditherRect(0, top + j * 2, g.W, 2, BODY, 3 + j * 2);   // 수면 아래 경계 4단
+          g.ditherRect(0, top, g.W, 1, SURF, 8);                                               // 수면 한 줄
+        } };
+      MC.scene.push(film);
+    };
+    if (MC.events.instant && MC.events.instant.add) MC.events.instant.add('bluefilm');
+  }
+
   // 최종전 승리 문구: 전투 데이터(despair2 finale)가 이미 이 줄을 띄우면 필드에서 되풀이하지 않는다(같은 글이 두 번 — battle-s4 §E-2)
   const WON_LINE = "절망은 할 말을 잃었다.";
   const BT = (MC.data && MC.data.battle) || {};
@@ -46292,10 +46506,18 @@ MC.addEvents({
       { "op": "sfx", "id": "dream_in" },
       { "op": "if", "cond": { "not": { "flag": "s4b.dreamt" } },
         "then": [
-          { "op": "fade", "to": 1, "ms": 1400 },
+          // [s46-sound B4-14] 꿈으로 잠기는 순간: 전 버스 저역통과 3200 → 450Hz를 1.5초 동안 쓸어내리고, 화면 아래에서 푸른 물이 1.2초 동안 차오른다 → 짙은 물빛 검정
+          { "op": "lowpass", "hz": 3200, "ms": 0 },
+          { "op": "bluefilm", "ms": 1200 },
+          { "op": "wait", "ms": 40 },
+          { "op": "lowpass", "hz": 450, "ms": 1500 },
+          { "op": "wait", "ms": 1260 },
+          { "op": "fade", "to": 1, "ms": 500, "color": "#050c1e" },
+          { "op": "bluefilm", "off": true },
           { "op": "narr", "t": "눈을 감자, 물 밑이었다." },
           { "op": "set", "var": "s3hold", "v": 1 },
           { "op": "map", "id": "b4", "at": "start", "trans": "cut" },
+          { "op": "lowpass", "hz": null, "ms": 1400 },                     // 물 밑에 닿으면 귀가 열린다(B4 곡·seabed가 제 소리로)
           { "op": "fade", "to": 0, "ms": 1400 } ],
         "else": [
           { "op": "set", "var": "s3hold", "v": 1 },
@@ -47020,7 +47242,7 @@ MC.addEvents({
        → custom s4 sea_swim{short} → 머리채(암전) → set s4t.boat · s4phase boat → save ⑦ → s4t.patrol
      12½ s4t.patrol: 검정 · HUD 없음 · 음악 없음 · LP 없음 · 8상자 · wait 합 ≤30초 → 문 닫힘 → map tartane(onEnter → s4t.resume → watch → s4t.deck)
      13 s4t.deck: 자코포 「살았다!」 → 선장 문답 → ▶키(s4t.helm: custom s4 helm) → 「……손은 거짓말을 안 하는군.」 → 셔츠(grow v:6, H2-10)
-       → ▶호리병박(s4t.gourd) → 성 쪽 연기 → 200ms → cannon_far · shake 0.15 · vibrate 70 → 자코포 두 상자 → 선장이 본다 → 한 모금 더 → 「돛 올려!」 → (sardine) 「……정어리.」 → call s4e.date
+       → ▶호리병박(s4t.gourd) → 성 쪽 연기(클립 fade 250) → 1600ms([s46-sound B4-6] 예전 200) → cannon_far · shake 0.15 · vibrate 70 → 자코포 두 상자 → 선장이 본다 → 한 모금 더 → 「돛 올려!」 → (sardine) 「……정어리.」 → call s4e.date
    flags(소유): s4t.woke s4t.shelter s4t.water(빗물) s4t.wreck(번개 순간만) s4t.dawn s4t.cap s4t.boat s4t.deck s4t.helmed s4t.smoke s4t.drank(럼)
    vars(소유): s4phase(boat)
    읽는 값: sardine(값 없음 분기) · s4e.counted s4e.end(장면 14 물통 반짝임 되살리기만).
@@ -47036,7 +47258,9 @@ MC.addEvents({
   const W = ms => ({ "op": "wait", "ms": ms });
   const GLOW_OFF = { "op": "glow", "off": "all" }, WATCH_OFF = { "op": "watch", "off": "all" };
   const LB_ON = { "op": "letterbox", "on": true, "ms": 300 }, LB_OFF = { "op": "letterbox", "on": false, "ms": 300 };
-  const TOP = (who, t) => ({ "op": "say", "who": who, "pos": "top", "t": t });
+  // [s46-sound B4-15] 12½(TOP은 순회에서만 쓴다)는 '검정·목소리 30초'(계약) — 목소리가 이 장면의 몸이다: 간수·소장 타자음을 가까운 판(jailer_near·governor_near, 약 +8dB)으로
+  const NEAR = { "tguard": "jailer_near", "governor": "governor_near" };
+  const TOP = (who, t) => Object.assign({ "op": "say", "who": who, "pos": "top", "t": t }, NEAR[who] ? { "voice": NEAR[who] } : {});
   const SFX = (id, o) => Object.assign({ "op": "sfx", "id": id }, o || {});
   const GLOW = id => ({ "op": "glow", "id": id });
   const SAY = (who, t) => ({ "op": "say", "who": who, "t": t });
@@ -47061,7 +47285,11 @@ MC.addEvents({
   const SMOKE = i => (has('ob_if_smoke3_' + i) ? [ { "op": "sprite", "id": "ob_if_smoke", "sprite": 'ob_if_smoke3_' + i } ] : []);
   // [art-iffar 0.4.1-s4b] 머리채 한 컷(그록 cu_hair 96×112) — 물보라 번쩍 뒤 still(그림 윗변을 화면 위에 붙여 줄무늬 소매가 화면 밖으로). 없으면 번쩍만(예전 그대로)
   const HAIR_CUT = has('cu_hair') ? [ { "op": "custom", "id": "s4", "args": { "stage": "still", "spr": "cu_hair", "ms": 1500, "align": "top", "bg": "#0c1424", "max": 2, "vig": 0 } } ] : [];   // vig 0: 비네트가 윗변 소매를 먹지 않게(아래 가장자리는 그림 자체 디더)
-  const SMUGGLER = { "op": "clip", "id": "smuggler", "loop": true, "fade": 2000, "fb": "marseille_evening" };   // H2-15: 클립이 없거나 실패하면 bgm 폴백
+  // H2-15: 클립이 없거나 실패하면 bgm 폴백
+  // [s46-sound B4-6] 「살았다!」(14년 만의 다정한 목소리)에 음악이 먼저 깔리지 않게 — 선장의 「키나 잡아 보게.」 뒤 조작이 풀리는 순간 fade 3000으로 들어온다.
+  //   루프 2바퀴(약 71초) 뒤 4초에 걸쳐 빠지고 파도만 남는다(소9). 성 쪽 연기가 뜨는 프레임에 fade 250으로 끄고 다시 켜지 않는다(소8)
+  const SMUGGLER = { "op": "clip", "id": "smuggler", "loop": true, "fade": 3000, "fb": "marseille_evening", "loops": 2, "loopsFade": 4000 };
+  const SMUGGLER_OUT = { "op": "clip", "id": null, "fade": 250 };
 
   MC.addEvents({
 
@@ -47090,7 +47318,7 @@ MC.addEvents({
           { "op": "watch", "id": "deck", "ms": 600, "ev": "s4t.deck" }, END ]),
         when({ "any": [ F("s4e.counted"), F("s4e.end") ] }, [ END ]),     // 장면 14 물통 대기(content-s4c2 부탁): 반짝임만(s4t.glows) — 다른 장면·음악을 다시 걸지 않는다
         { "op": "amb", "id": "deck", "fade": 1200 },
-        SMUGGLER,
+        when(NF("s4t.smoke"), [ SMUGGLER ]),                             // [s46-sound B4-6] 대포 연기 뒤(s4e.date 대기)에는 다시 틀지 않는다
         when({ "all": [ F("s4t.drank"), NF("s4e.counted"), NF("s4e.end") ] }, [ { "op": "watch", "id": "date", "ms": 600, "ev": "s4e.date" } ])
       ])
     ],
@@ -47237,26 +47465,27 @@ MC.addEvents({
       GLOW_OFF, WATCH_OFF,
       { "op": "letterbox", "on": false, "ms": 0 },
       { "op": "bgm", "id": null, "fade": 0 },
-      { "op": "amb", "id": null, "fade": 0 },
+      { "op": "amb", "id": "cell34", "fade": 1500 },                     // [s46-sound B4-15] 34번 방 공기(벽 너머 파도·드문 물방울) — 음악·LP는 여전히 없음. 갑판 파도로 이어진다(폰 21dB 차 → 16dB 안)
       { "op": "weather", "off": true }
     ].concat(PATROL_NARR ? [ { "op": "narr", "t": PATROL_NARR, "ms": 1800 } ] : [], [
       W(1500),
-      SFX("key_ring", { "gain": 0.6 }), W(500),                          // 열쇠·문 — 2초 안에(귀가 먼저 감방임을 안다)
+      // [s46-sound B4-15] 순회의 손 소리(열쇠·헝겊·발소리·흔듦) ×1.8(+5dB) — 폰에서 검정 30초가 22초 무음으로 들리던 것(소2-4). 박자·순서는 그대로
+      SFX("key_ring", { "gain": 1.08 }), W(500),                          // 열쇠·문 — 2초 안에(귀가 먼저 감방임을 안다)
       SFX("door_iron"), { "op": "shake", "p": 0.15 },
       W(400),
       TOP("tguard", "34번.{p:300} 빵, 물."),                              // M41 — 1815년부터 같은 말을, 오늘 처음 죽은 사람에게
-      SFX("cloth_slip", { "gain": 0.2, "pitch": 1.2 }),
+      SFX("cloth_slip", { "gain": 0.36, "pitch": 1.2 }),
       W(1000),
-      SFX("step_stone", { "gain": 0.45, "pan": -0.2 }), W(450),
-      SFX("step_stone", { "gain": 0.45, "pan": -0.35, "pitch": 0.95 }), W(400),
-      SFX("shoulder_shake", { "gain": 0.6 }), W(450),                    // 어깨를 흔든다
-      SFX("cloth_slip", { "gain": 0.4, "pitch": 0.8 }),                  // 헝겊이 흘러내린다(장면 8에서 제 손으로 감아 준 그 헝겊)
+      SFX("step_stone", { "gain": 0.8, "pan": -0.2 }), W(450),
+      SFX("step_stone", { "gain": 0.8, "pan": -0.35, "pitch": 0.95 }), W(400),
+      SFX("shoulder_shake", { "gain": 1.08 }), W(450),                    // 어깨를 흔든다
+      SFX("cloth_slip", { "gain": 0.7, "pitch": 0.8 }),                  // 헝겊이 흘러내린다(장면 8에서 제 손으로 감아 준 그 헝겊)
       W(2000),
       TOP("tguard", "……27번?"),                                          // 장면 4의 말이 34번 방에서 거꾸로
-      SFX("step_stone", { "gain": 0.4, "pan": 0.3, "pitch": 1.1 }), W(200),
-      SFX("step_stone", { "gain": 0.4, "pan": 0.1, "pitch": 1.15 }), W(200),
-      SFX("step_stone", { "gain": 0.35, "pan": 0.4, "pitch": 1.05 }), W(200),
-      SFX("step_stone", { "gain": 0.35, "pan": 0.2, "pitch": 1.1 }), W(700),
+      SFX("step_stone", { "gain": 0.72, "pan": 0.3, "pitch": 1.1 }), W(200),
+      SFX("step_stone", { "gain": 0.72, "pan": 0.1, "pitch": 1.15 }), W(200),
+      SFX("step_stone", { "gain": 0.63, "pan": 0.4, "pitch": 1.05 }), W(200),
+      SFX("step_stone", { "gain": 0.63, "pan": 0.2, "pitch": 1.1 }), W(700),
       TOP("governor", "……굴이군. 두 방 사이에."),
       TOP("tguard", "던진 놈들 말로는,\n평소보다 무거웠답니다."),
       TOP("governor", "추는 서른여섯 파운드짜리였지?"),
@@ -47282,7 +47511,6 @@ MC.addEvents({
       { "op": "face", "id": "jacopo", "dir": "right" },
       { "op": "face", "id": "captain", "dir": "left" },
       { "op": "amb", "id": "deck", "fade": 1500 },
-      SMUGGLER,
       W(700),
       { "op": "grade", "sat": 0.55, "tint": "#c87a62", "ta": 0.14, "ms": 3000, "async": true },   // 눈을 뜨는 동안 새벽 보랏빛 → 이른 아침(QA 1)
       { "op": "vignette", "a": 0.25, "ms": 3000, "async": true },
@@ -47302,6 +47530,7 @@ MC.addEvents({
       { "op": "name", "v": "몰타 뱃사람", "anim": true },                  // [s44-writer B3-15] 그는 지금 거짓말 중이다 — 이름표도(뒤9). 엔딩 「＿＿＿＿」가 덮어쓴다
       SAY("captain", "말로야 뭘 못 하겠나.\n키나 잡아 보게."),
       { "op": "set", "flag": "s4t.deck" },
+      SMUGGLER,                                                          // [s46-sound B4-6] 조작이 풀리는 순간(그 전에는 파도·목소리만)
       LB_OFF,
       { "op": "hud", "show": true },
       GLOW("tiller")
@@ -47341,12 +47570,14 @@ MC.addEvents({
       W(900),
     ].concat(SMOKE(0), [
       { "op": "set", "flag": "s4t.smoke" },                              // 성 성벽에 연기
+      SMUGGLER_OUT,                                                      // [s46-sound B4-6] 연기가 뜨는 프레임에 클립을 250ms에 끈다 — 다시 켜지 않는다(뒤 s4e.date도 음악 없음)
       { "op": "face", "id": "player", "dir": "left" },                   // [fixer-s4p2] QA 14: 연기를 먼저 본다(빛이 소리보다 빠르다) — 시선이 화면의 연기로 간다
-      W(200),
+      W(350)
+    ], SMOKE(1), [                                                      // [art-iffar] 그록 연기 3단계: 터짐 → (350ms) 부풂 → (900ms) 흩어짐
+      W(1250),                                                           // [s46-sound B4-6] 연기 → 대포 200 → 1,600ms: 다들 연기를 보는 1.6초의 무음(소8 — '절차니까'의 차가움, 먼 거리의 빛·소리 시차)
       SFX("cannon_far"), { "op": "shake", "p": 0.15 }, { "op": "vibrate", "p": 70 },
-      W(150)
-    ], SMOKE(1), [                                                      // [art-iffar] 그록 연기 3단계: 터짐 → (350ms) 부풂 → (900ms) 흩어짐 — 기다림 합은 예전과 같다(1900ms)
-      { "op": "face", "id": "jacopo", "dir": "left" },
+      W(150),
+      { "op": "face", "id": "jacopo", "dir": "left" },                   // 소리를 듣고 모두 돌아본다
       { "op": "face", "id": "captain", "dir": "left" },
       W(550)
     ], SMOKE(2), [
@@ -47541,9 +47772,10 @@ MC.addEvents({
       { "op": "say", "who": "think", "t": "……누구지." },
       { "op": "wait", "ms": 600 },
       // 건배 메아리 1상자(M18 고정) — 값이 없으면 얼굴 4초가 2초 더 길었던 것으로 끝(글 없음)
-      { "op": "if", "cond": V("toast", "A"), "then": [ { "op": "say", "who": "think", "t": "파라옹호는……\n아직 떠 있을까." } ],   // 사용자 결정(2026-10-20 「권장대로」, QA Q5): 글자 그대로 줄만 나눔(M18)
-        "else": [ { "op": "if", "cond": V("toast", "B"), "then": [ { "op": "say", "who": "think", "t": "아버지." } ],
-          "else": [ { "op": "if", "cond": V("toast", "C"), "then": [ { "op": "say", "who": "think", "t": "메르세데스는 서른하나겠군." } ], "else": [] } ] } ] },
+      // [s46-sound B4-11] 메아리 줄이 뜬 0.6초 뒤 그 건배와 짝인 곡의 머리 네 음을 오르골 음색으로 한 번(g ×0.4 — 레시피가 700ms 늦게 시작). 「4초 무언」은 그대로(위 FACE)
+      { "op": "if", "cond": V("toast", "A"), "then": [ { "op": "sfx", "id": "toast_a" }, { "op": "say", "who": "think", "t": "파라옹호는……\n아직 떠 있을까." } ],   // 사용자 결정(2026-10-20 「권장대로」, QA Q5): 글자 그대로 줄만 나눔(M18)
+        "else": [ { "op": "if", "cond": V("toast", "B"), "then": [ { "op": "sfx", "id": "toast_b" }, { "op": "say", "who": "think", "t": "아버지." } ],
+          "else": [ { "op": "if", "cond": V("toast", "C"), "then": [ { "op": "sfx", "id": "toast_c" }, { "op": "say", "who": "think", "t": "메르세데스는 서른하나겠군." } ], "else": [] } ] } ] },
       // [s44-director B3-24 · 시2-10] 물방울 하나가 얼굴을 깨고, 깨진 상을 3초 둔 뒤 장부로(옛: 0.8초 뒤 검정)
       { "op": "custom", "id": "s4", "args": { "stage": "face", "brk": true, "ms": 3000 } },
       { "op": "set", "flag": "s4e.end" },
@@ -47832,6 +48064,7 @@ MC.addLang('ko', {
     "set.music": "음악",
     "set.sfx": "효과음",
     "set.voice": "대사음",
+    "set.phoneBass": "폰 저음 보강",
     "set.mute": "소리 끄기",
     "set.textSpeed": "대사 속도",
     "set.battleSpeed": "전투 속도",
@@ -48311,6 +48544,7 @@ MC.addLang('ko', {
     "set.sfx": { "w": 52, "font": "body", "lines": 1, "note": "설정 행(효과음 음량) — 음량 줄, 이름 칸 약 52px" },
     "set.voice": { "w": 96, "font": "body", "lines": 1, "note": "설정 행(대사 타자음 켬/끔) — 켬/끔 줄은 이름 칸 약 96px" },
     "set.mute": { "w": 96, "font": "body", "lines": 1, "note": "설정 행(모든 소리 끄기) — 켬/끔 줄, 이름 칸 약 96px" },
+    "set.phoneBass": { "w": 96, "font": "body", "lines": 1, "note": "설정 '소리' 탭 켬/끔 줄([s46-sound B4-2] 폰 스피커 저음 보강 — 이름 칸 96px에 「폰 스피커 저음 보강」(111px)이 안 들어가 「폰 저음 보강」(70px). 음악의 낮은 베이스를 한 옥타브 위로 겹쳐 작은 스피커에서도 들리게. 이어폰이면 끄는 사람도 있음). 이름 칸 약 96px" },
     "set.textSpeed": { "w": 66, "font": "body", "lines": 1, "note": "설정 행(대사 글자 속도) — ◀ 값 ▶ 줄은 오른쪽 92px(타이틀 설정 창 폭 168 기준 이름 칸 약 66px)" },
     "set.battleSpeed": { "w": 66, "font": "body", "lines": 1, "note": "설정 행(전투 진행 속도) — ◀ 값 ▶ 줄, 이름 칸 약 66px" },
     "set.moveSpeed": { "w": 66, "font": "body", "lines": 1, "note": "설정 행(걷는 속도) — ◀ 값 ▶ 줄, 이름 칸 약 66px" },
@@ -52466,7 +52700,7 @@ MC.addLang('en', {
       if (i < 0 || i >= n || closing >= 0) return;
       if (sel !== i) { sel = i; U.sfx('page', { pitch: 1.25, gain: 0.45 }); if (Mm && Mm.seen) Mm.seen(cards[i].id); }
     }
-    U.sfx('page', { gain: 0.6 }); U.sfx('orgel_note', { pitch: 1.2, gain: 0.55 });
+    U.sfx('page', { gain: 0.6 }); U.sfx('ui_chime', { pitch: 0.9, gain: 0.55 });   // [s46-sound B4-8] orgel_note → ui_chime(오르골은 파리아의 것)
     sc.update = dt => {
       sc.t += dt;
       // 카드가 차례로 놓이는 소리(장당 60ms — 읽기를 막지 않는다)
@@ -52528,7 +52762,7 @@ MC.addLang('en', {
     note(ids) {
       ids = (ids || []).filter(id => CLS()[id]);
       if (!ids.length) return;
-      U.sfx('page', { gain: 0.6 }); U.sfx('orgel_note', { pitch: 1.5, gain: 0.55 });
+      U.sfx('page', { gain: 0.6 }); U.sfx('ui_chime', { pitch: 1.0, gain: 0.55 });   // [s46-sound B4-8]
       const now = MC.time.real;
       ids.forEach((id, i) => notes.push({ id, t0: now + i * 380, ms: 2300 }));
       while (notes.length > 3) notes.shift();
@@ -52550,7 +52784,7 @@ MC.addLang('en', {
           if (sc.idx >= 0 && group) sc.pile.push(ids[sc.idx]);
           sc.idx = i;
           U.sfx('page', { gain: 0.7, pitch: 1 + i * 0.03 });
-          U.sfx('orgel_note', { pitch: group ? 1.2 + i * 0.07 : 1.5, gain: 0.6 });
+          U.sfx('ui_chime', { pitch: group ? 0.85 + i * 0.05 : 1.0, gain: 0.6 });   // [s46-sound B4-8]
           if (!group) U.vibrate(12);
         }
         if (ch1.deduceAuto && sc.t < total() - 50) sc.t = Math.max(sc.t, (sc.idx + 1) * PER - OUT - 10);
@@ -52676,7 +52910,7 @@ MC.addLang('en', {
         if (answer.indexOf(c.id) >= 0) {
           okIdx = sel; okT = sc.t; doneAt = sc.t + 800;
           MC.game.setVar(vname, c.id);
-          U.sfx('pin'); U.sfx('orgel_note', { pitch: 1.5, gain: 0.5 }); U.vibrate(15); MC.fx.shake(0.06);
+          U.sfx('pin'); U.sfx('ui_chime', { pitch: 1.0, gain: 0.5 });   // [s46-sound B4-8] U.vibrate(15); MC.fx.shake(0.06);
         } else {
           qMiss++; MC.game.addVar('dd_miss', 1);
           c.shakeT = MC.time.real; U.sfx('ui_ng'); U.vibrate(25);
@@ -57445,6 +57679,10 @@ MC.addLang('en', {
       if (!S.quick) toast(U.tf('mg.notYet'), 900);
       vib([30, 60, 30]); MC.fx.shake(0.35);
       U.sfx(kind === 'seen' ? 'gasp' : 'bubble', { gain: 0.8, pitch: 0.8 });
+      // [s46-sound B4-18] 실패 변주(소2-8: 막힌 바다가 같은 20초를 3분 되풀이 — 지문 상관 0.9↑ 86·96초): 펄스는 ♩84에서 다시 140으로 8초에 걸쳐 오르고,
+      //   물살 베드는 판마다 바꾼다(undersea ↔ undersea_b — 대역·먼 파도). 3번 진 뒤로는 거품 층을 뺀 undersea_thin
+      S.pulseR0 = sc.t + 500;
+      try { if (MC.amb && MC.amb.play) MC.amb.play(S.fails >= 3 ? 'undersea_thin' : (S.fails % 2 ? 'undersea_b' : 'undersea'), { fade: 900 }); } catch (_) {}
     }
     const gOk = () => { if (S.gd) S.gd.ok(); }, gEnd = () => { if (S.gd) S.gd.end(); };
     function open2(sc) { if (S.open2 >= 0) return; gEnd(); S.p2 = 1; S.open2 = sc.t; snd('cloth_tear', { gain: 0.9 }, 'cloth_slip', { gain: 0.8 }); vib([20, 30, 20]); bub.burst(G().W >> 1, G().H * 0.5, 14); }
@@ -57524,7 +57762,7 @@ MC.addLang('en', {
         const from = MC.cfg && MC.cfg.debug ? Math.max(1, Math.min(6, a.from | 0)) : 1;
         if (from > 1) { if (from === 4) { S.cutT = 0; S.k = 3; } enter(sc, from); if (from === 6) lowpass(null, 0); }
       },
-      exit() { lowpass(null, 200); try { if (MC.amb && MC.amb.current === 'undersea') MC.amb.stop(300); } catch (_) {} },
+      exit() { lowpass(null, 200); try { if (MC.amb && /^undersea/.test(MC.amb.current || '')) MC.amb.stop(300); } catch (_) {} },   // [s46-sound B4-18] 변주 베드(undersea_b·_thin)도
       update(sc, dt) {
         const W = G().W, H = G().H;
         const under = S.seg <= 4 || (S.seg === 5 && S.surfT < 0) || (S.seg === 6 && S.diving);
@@ -57533,7 +57771,9 @@ MC.addLang('en', {
         S.swHeld = sw.held();
         S.beatK = Math.max(0, S.beatK - dt / 300);
         if (S.failT < 0 && S.endT < 0 && under) {         // 물속: 펄스 ♩140(효과음) + 심장(공기가 줄면 빨라짐)
-          S.pulseT -= dt; if (S.pulseT <= 0) { S.pulseT += 60000 / 140; snd('pulse140', { gain: 0.45 }, null); }
+          // [s46-sound B4-18] 실패 뒤엔 ♩84 → 140(8초)
+          const pBpm = S.pulseR0 != null ? 84 + 56 * MC.clamp((sc.t - S.pulseR0) / 8000, 0, 1) : 140;
+          S.pulseT -= dt; if (S.pulseT <= 0) { S.pulseT += 60000 / pBpm; snd('pulse140', { gain: 0.45 }, null); }
           S.beatT -= dt; if (S.beatT <= 0) { const k = 1 - S.air / Math.max(0.1, S.airMax); S.beatT = 60000 / (84 + 60 * MC.clamp(k, 0, 1)); S.beatK = 1; U.sfx('heartbeat', { gain: 0.5 + 0.3 * k }); }
         }
         if (S.endT >= 0) { if (sc.t - S.endT >= 700) sc.end(result()); return; }
@@ -58761,11 +59001,15 @@ MC.addLang('en', {
       update(sc) {
         const t = sc.t;
         while (S.quill < lines.length && t >= P.tLed[S.quill]) { L.quill(S.quill); S.quill++; }
+        // [s46-sound B4-15] 글자마다 펜촉 긁힘(pen — 아주 작게). 건너뛴 글자는 소리 없이(S.pen만 맞춤)
+        if (S.pen == null) S.pen = 0;
+        { let n = 0; for (let i = 0; i < lines.length; i++) n += L.shown(Array.from(lines[i]).length, t, P.tLed, i); if (S.skipped) S.pen = n; while (S.pen < n) { S.pen++; snd('pen', { gain: 1.0 }, null); } }
         if (S.clank < 0 && tClank >= 0 && t >= tClank) { S.clank = t; snd('clank', { gain: 0.25 }, 'thud', { gain: 0.15 }); }
         if (!S.name && t >= tName) { S.name = true; snd('cannon_far', { gain: 0.15, lp: 500 }); }
         if (!S.fin && t >= tFin) {
           S.fin = true;
-          if (music) { if (U.hasSong(music)) mus('play', music, { fade: 400 }); else warn1('song.' + music, '곡 ' + music + ' 없음 — 「끝」을 음악 없이'); }
+          // [s46-sound B4-17] 크레딧 음악은 0에서 4초에 걸쳐 들어온다(소2-4: 장부·「열넷」 폰 −48~−54 → 「끝」 음악 −30.6, 한 번에 +19dB). 예전 fade 400
+          if (music) { if (U.hasSong(music)) mus('play', music, { fade: 4000 }); else warn1('song.' + music, '곡 ' + music + ' 없음 — 「끝」을 음악 없이'); }
           snd('_wash', { gain: 2.2 });
         }
         if (S.out >= 0 && t - S.out >= OUT_MS && sc.out < 0) sc.end({ ok: true });
@@ -60016,6 +60260,7 @@ MC.addLang('en', {
       { k: 'mus', label: L('set.music'), type: 'vol' },
       { k: 'sfx', label: L('set.sfx'), type: 'vol' },
       { k: 'voice', label: L('set.voice'), type: 'bool' },
+      { k: 'phoneBass', label: L('set.phoneBass'), type: 'bool' },   // [s46-sound B4-2] 폰 스피커 저음 보강(음악 베이스 한 옥타브 위 — music.js가 박동마다 따라감)
       { k: 'mute', label: L('set.mute'), type: 'bool' }] },
     { label: L('set.tabPlay'), rows: [
       { k: 'textSpeed', label: L('set.textSpeed'), type: 'opt', opts: [[0, L('set.slow')], [1, L('set.normal')], [2, L('set.fast')], [3, L('set.instant')]] },
