@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.4.3c-guide';
+  var VERSION = '0.4.4-story';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -6856,7 +6856,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       let lines = MC.text.wrap(s, CHOICE_TW, 'body');
       if (lines.length > 2) lines = [lines[0], lines.slice(1).join(' ')];
       const h = lines.length > 1 ? Math.max(rh1, 36) : rh1;
-      rows.push({ lines, h, y: total });
+      rows.push({ lines, h, y: total, dim: !!(o && o.dim) });             // [s44-writer B3-23] 흐린 선택지(오늘은 못 하는 일 — 고를 수는 있다)
       total += h;
       if (o && (o.cancel || s === '그만둔다')) cancel = i;
     });
@@ -6966,7 +6966,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       const cur = !on && c.kb && c.picked < 0 && c.cursor === i;
       if (on) g.rect(R.x + 4, ry, R.w - 8, r.h, P.W);
       else if (cur) g.rect(R.x + 4, ry, R.w - 8, r.h, g.mix(P.f, P.W, 0.14));
-      const dim = c.picked >= 0 && c.picked !== i;
+      const dim = (c.picked >= 0 && c.picked !== i) || (r.dim && c.picked < 0);
       const col = on ? P.f : (dim ? P.dim : P.text), my = ry + (r.h >> 1);
       if (on || cur) tri(R.x + 8, my - 2, on ? P.f : P.gold);
       else g.rect(R.x + 8, my - 1, 2, 2, dotC);
@@ -6979,9 +6979,17 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 
   /* ---------- 공개: 대사·선택지·닫기 ---------- */
   // o: {who, t:문자열|배열, face, auto(ms), pos:'top', voice, speed(ms/자), keep:'yes'|'grace'|'no'(마지막 뒤 창 유지)}
+  // [s44-director B5-14] holdSay용 셈: 시작한 대사 op 수 · 끝난 대사 op 수(빈 대사 op도 센다). 클로즈업 스테이지가 '다음 대사 N개가 끝날 때까지' 화면을 남길 때 읽는다(ch1.holdSay)
+  let sayN = 0, saidN = 0;
   function say(o) {
     o = o || {};
     return enqueue(async () => {
+      sayN++;
+      try { await sayBody(o); } finally { saidN++; }
+    });
+  }
+  async function sayBody(o) {
+    {
       const sp = speaker(o.who);
       const boxes = (Array.isArray(o.t) ? o.t : [o.t != null ? o.t : o.text]).filter(x => x != null);
       const tr = !!(I18() && I18().active);
@@ -7005,7 +7013,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       }
       st.keep = o.keep || 'grace';
       if (st.keep === 'no') startClose();
-    });
+    }
   }
   // o: {who, t(질문, 선택), face, pos, opts:[{t, cancel?}]} → Promise<고른 번호>
   function choice(o) {
@@ -7305,6 +7313,9 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     boxRect,              // 현재 대화창 위치 {x,y,w,h}
     get active() { return st.on || !!narrS || pending > 0 || MC.scene.find('nameplate') !== null; },
     get open() { return inStack(); },
+    get sayN() { return sayN; },        // [s44-director B5-14] 시작한 대사 op 수(holdSay)
+    get saidN() { return saidN; },      // 끝난 대사 op 수
+
     BOX_W, BOX_H, TEXT_W
   };
 })(window.MC);
@@ -7605,7 +7616,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       stopSkip();
       const opts = (c.opts || c.options || []).slice(0, 3);
       if (!opts.length) return;
-      const idx = await MC.dialogue.choice({ who: c.who, t: c.t != null ? c.t : c.text, face: c.face, pos: c.pos, speed: c.speed, opts: opts.map(o => ({ t: o.t != null ? o.t : o.text, cancel: o.cancel })) });
+      const idx = await MC.dialogue.choice({ who: c.who, t: c.t != null ? c.t : c.text, face: c.face, pos: c.pos, speed: c.speed, opts: opts.map(o => ({ t: o.t != null ? o.t : o.text, cancel: o.cancel, dim: !!(o.dim || (o.dimIf && MC.game.check(o.dimIf))) })) });   // [s44-writer B3-23] dim·dimIf: 흐리게 보이되 고를 수는 있다
       const o = opts[idx] || opts[0];
       const v = o.v !== undefined ? o.v : idx;
       if (c.var) MC.game.setVar(c.var, v);
@@ -32869,6 +32880,8 @@ const pt = n => (SPR[n] ? n : null);
    이름·대사: F-3·F-7·부록 A. 형식 설명은 docs/handoff/battle.md(S1) + docs/handoff/s2-battle-s2.md(S2 확장) + docs/handoff/s3-battle-s3.md(S3: 발작 뒤 파리아·드러냄·숨 고르기·조언·B3·B4·광기의 왕) + docs/handoff/s4-engine-s4.md(S4: 최종전 despair2·깊은 B4·seenAs).
    문자열의 {actor}{target}{name}{skill}{item}{n}은 전투가 채우고, {이/가} 같은 조사는 자동 처리. */
 (function (MC) { 'use strict';
+// [s44-writer B3-26] 추리의 밤 2(dd.n2 — 신부님이 '왼손'을 밝힘)를 지나기 전에는 적 이름·등장 문구가 '왼손'을 먼저 말하지 않는다(getter — 전투를 열 때 읽는다)
+const LEFT = () => !!(MC.state && MC.state.flags && MC.state.flags['dd.n2']);
 MC.data.battle = {
   "families": {
     "despair": { "name": "절망", "weak": "memory", "resist": "thought", "color": "#8aa0ff", "dark": "#3a4aa0", "text": "#c8d2ff", "icon": "ic_fam_despair", "act": "enemy_act_despair" },
@@ -32922,7 +32935,7 @@ MC.data.battle = {
     "cold_wrath": {
       "name": "냉정한 분노", "elem": null, "target": "all", "mp": [6, 6, 6], "power": [14, 14, 14], "tag": "전체",
       "fx": "wrath", "sfx": "skill_cold_wrath", "color": "#c8c8d8",
-      "desc": "식힌 분노. 모두에게 고르게 닿는다.",
+      "desc": "모두에게 고르게 닿는다.",                              // [s44-writer B3-9] '식힌 분노' 해석은 뺀다(효과만)
       "lines": ["차갑게. 차갑게.", "아직은. 아직은 아니다."]
     },
     "heal_word": {
@@ -33152,7 +33165,7 @@ MC.data.battle = {
     },
 
     "left_hand": {
-      "name": "왼손의 글씨", "fam": "anger", "lv": 4, "hp": 30, "mp": 0, "str": 16, "def": 4, "spd": 10, "wis": 2, "exp": 8,
+      get "name"() { return LEFT() ? "왼손의 글씨" : "비뚤어진 글씨"; }, "fam": "anger",   // [s44-writer B3-26] "lv": 4, "hp": 30, "mp": 0, "str": 16, "def": 4, "spd": 10, "wis": 2, "exp": 8,
       "sprite": "en_left_hand",
       "ai": [ { "act": "spark", "w": 60 }, { "act": "swell", "w": 40 } ],
       "drops": [ { "id": "oil", "p": 0.35 } ],
@@ -33298,13 +33311,13 @@ MC.data.battle = {
                       "tutorial": { "flag": "bt.tut_mistake", "who": "think", "t": "이 그림자는 절망과 다르다. [사색]을 써 보자." } },
     "despair1":     { "members": ["despair1"], "floor": "b1", "appear": "빗금 사이로 절망이 차오른다.", "boss": true, "canFlee": false, "bgm": "boss_despair", "script": "despair1", "stage": "despair" },
 
-    "b2_hand":         { "members": ["left_hand"], "floor": "b2", "stage": "b2", "appear": "잉크 냄새. 왼손의 글씨가 타오른다!" },
+    "b2_hand":         { "members": ["left_hand"], "floor": "b2", "stage": "b2", get "appear"() { return LEFT() ? "잉크 냄새. 왼손의 글씨가 타오른다!" : "잉크 냄새. 비뚤어진 글씨가 타오른다!"; } },   // [s44-writer B3-26]
     "b2_tally":        { "members": ["tally_half"], "floor": "b2", "stage": "b2", "appear": "세다 만 빗금이 벽에서 기어 나왔다!" },
     "b2_forgot":       { "members": ["forgotten"], "floor": "b2", "stage": "b2", "appear": "이름이 지워진 종이가 흘러내린다…" },
     "b2_knife":        { "members": ["catalan_knife"], "floor": "b2", "stage": "b2", "appear": "탁자에 꽂힌 칼이 몸을 일으켰다!" },
-    "b2_hand2":        { "members": ["left_hand", "left_hand"], "floor": "b2", "stage": "b2", "appear": "왼손의 글씨가 두 장 겹쳐 타오른다!" },
+    "b2_hand2":        { "members": ["left_hand", "left_hand"], "floor": "b2", "stage": "b2", get "appear"() { return LEFT() ? "왼손의 글씨가 두 장 겹쳐 타오른다!" : "비뚤어진 글씨가 두 장 겹쳐 타오른다!"; } },
     "b2_hand_tally":   { "members": ["left_hand", "tally_half"], "floor": "b2", "stage": "b2", "appear": "빗금 사이로 잉크 불씨가 튄다!" },
-    "b2_forgot_hand":  { "members": ["forgotten", "left_hand"], "floor": "b2", "stage": "b2", "appear": "지워진 이름 위로 왼손이 글씨를 쓴다!" },
+    "b2_forgot_hand":  { "members": ["forgotten", "left_hand"], "floor": "b2", "stage": "b2", get "appear"() { return LEFT() ? "지워진 이름 위로 왼손이 글씨를 쓴다!" : "지워진 이름 위로 누군가 글씨를 쓴다!"; } },
     "b2_knife_tally":  { "members": ["catalan_knife", "tally_half"], "floor": "b2", "stage": "b2", "appear": "칼자국을 세는 빗금이 따라붙는다!" },
     "b2_knife_forgot": { "members": ["catalan_knife", "forgotten"], "floor": "b2", "stage": "b2", "appear": "칼끝이 잊힌 이름을 겨눈다!" },
     "revenge":         { "members": ["revenge"], "floor": "b2", "appear": "복수심이 나타났다!", "boss": true, "canFlee": false, "bgm": "boss_revenge", "script": "revenge", "stage": "revenge", "clear": "clear_revenge" },
@@ -33386,12 +33399,12 @@ MC.data.battle = {
 
     /* 복수심(C-8 b, 계약 §C-9): 순환 [공격→되갚음 태세→공격→유혹], HP 40% 이하는 차지↔참격 번갈아(참격은 늘 당테스, ×2.2), 분노 스택 2면 2라운드 폭주.
        스택 원천: 되갚음에 맞음([맞선다] 50%·기술 30% 되돌림) / 유혹 실패 / 2단계 진입. 차지 라운드엔 아직 못 들은 목소리(페르낭·카드루스·복수심).
-       넷째 이름 빌포르는 등장 대사 가운데에 그의 목소리로 반드시 한 번('누가 널 여기 넣었는지' → 1막 '그 이름은 잊으시오. 내 얼굴도'의 비틀기, fixer-s2n — 유혹 순환은 그대로).
+       넷째 이름 빌포르는 등장 대사 가운데에 그의 목소리로 반드시 한 번(첫 줄 '시청은 저녁에' — s44-writer B3-8 → 1막 '그 이름은 잊으시오. 내 얼굴도'의 비틀기, fixer-s2n — 유혹 순환은 그대로).
        QA fixer-s2 sim(smart, 파리아 맡기기): Lv5 75% · Lv6 94% · Lv7 100%, Lv6 7.4라운드, 폭주 약 15%(되갚음을 치면 거의 반드시) */
     "revenge": {
       "kind": "revenge", "shakeMax": 6,
       "intro": [
-        { "who": "revenge", "t": "이제 알겠지? 누가 널 여기 넣었는지." },
+        { "who": "revenge", "t": "시청은 저녁에 가자고 했지.{p:300}\n……그 저녁은 안 와." },   // [s44-writer B3-8] 체포 때 제 말(a2.arrest)이 그대로 돌아온다 — 설명 대신 기억
         { "who": "revenge", "voice": "villefort", "t": "그 이름은 잊으라 했소.\n내 얼굴도. ……잊었소?" },
         { "who": "revenge", "t": "나도 기다렸어.{p:200}\n네가 이 문을 열 날을." }
       ],
@@ -33502,7 +33515,7 @@ MC.data.battle = {
       },
       "fold": [
         { "who": "despair", "t": "이 성을 나가는 건\n죽은 사람뿐이지." },
-        { "who": "dantes", "t": "좋아.\n그럼 죽어서 나가 주지." }
+        { "who": "dantes", "t": "좋아.{p:400}\n……그럼." }   // [s44-writer B3-13 · C4③] 꿈속 대답은 반쯤 끊는다 — '죽은 사람'은 깨어나서 처음 말로 선다(s4x.wake)
       ],
       "finale": { "text": "절망은 할 말을 잃었다.", "note": { "id": "orgel_note", "pitch": 1.0 } },
       // [b43 T5·B3-19] [살아서 나간다]를 누른 뒤 절망이 스러지기 직전, 처음 [기억]을 쓸 때 떠올렸던 그 줄을 한 번만 되살린다(단추와 묶지 않음).
@@ -35888,7 +35901,7 @@ MC.addEvents({
     { "op": "wait", "ms": 700 },
     { "op": "face", "id": "r_danglars", "dir": "right" },
     { "op": "face", "id": "r_fernand", "dir": "down" },
-    { "op": "say", "who": "danglars", "t": [ "엘바에서 편지 받는 걸 내가 봤지.", "장부에 없는 짐은{p:200} 꼭 탈이 나." ], "pos": "top" },
+    { "op": "say", "who": "danglars", "t": "장부에 없는 짐은{p:200} 꼭 탈이 나.", "pos": "top" },   // [s44-writer B3-2] '엘바에서 편지…' 삭제 — 추리의 밤이 풀 것을 먼저 말하지 않는다
     { "op": "wait", "ms": 400 },
     { "op": "say", "who": "fernand", "t": "……그래서?", "pos": "top" },
     { "op": "sfx", "id": "glass_clink", "pan": -0.2 },
@@ -36262,8 +36275,9 @@ MC.addEvents({
 
   "a2.danglars": [
     { "op": "if", "cond": { "var": "a2.t_danglars", "gte": 1 },
-      "then": [ { "op": "say", "who": "danglars", "t": "하객 서른둘에 포도주 열두 병.{p:200} 모자라겠군요." } ],
-      "else": [ { "op": "say", "who": "danglars", "face": "smirk", "t": "오늘 일은 다들 오래 기억할 겁니다.{p:300} 제가 장담하지요." } ] },
+      // [s44-writer B3-3] 미소(smirk)와 자백 같은 장담을 뺀다 — 당글라르는 장부처럼 셈으로 말한다
+      "then": [ { "op": "say", "who": "danglars", "t": "축하합니다, 선장님.{p:300}\n아직 선장님은 아니시지만." } ],
+      "else": [ { "op": "say", "who": "danglars", "t": [ "하객 서른둘에 포도주 열두 병.{p:200}\n모자라겠군요.", "……오늘은 뭐든 모자라겠어요." ] } ] },
     { "op": "add", "var": "a2.t_danglars", "n": 1 }
   ],
 
@@ -36315,7 +36329,7 @@ MC.addEvents({
     { "op": "choice", "who": "think", "t": "잔을 들까?", "var": "a2.ready", "opts": [
       { "t": "잔을 든다.", "v": "go" },
       { "t": "조금만 더 둘러본다.", "v": "wait", "cancel": true, "do": [
-        { "op": "say", "who": "mercedes", "t": "빨리 와.{p:200} 안 오면 내가 먼저 마신다." },
+        { "op": "say", "who": "mercedes", "t": "빨리 와.{p:300} ……나도 기다려." },   // [s44-writer B3-4] 카탈루냐 처녀의 목소리 — 「기다릴게」(M14)의 첫 씨앗
         { "op": "end" } ] }
     ] },
     { "op": "say", "who": "mercedes", "face": "smile", "t": "시청까지 걷는 동안 한 번도 손 놓지 마.{p:200} 약속해." },
@@ -36414,6 +36428,7 @@ MC.addEvents({
     { "op": "sfx", "id": "page" },
     { "op": "say", "who": "villefort", "t": "이 투서요. 아는 글씨요?" },
     { "op": "custom", "id": "letter", "args": {} },
+    { "op": "say", "who": "think", "t": "찬탈자라면…… 엘바의 나폴레옹.{p:300}\n그 편지가, 나를?" },   // [s44-writer B3-18] 1815년의 배경 한 줄(투서의 '찬탈자'를 풀어 준다)
     { "op": "say", "who": "dantes", "t": "……처음 봅니다. 글씨를 막 배운 사람 같네요." },
     { "op": "say", "who": "villefort", "t": "나도 그리 보오.{p:200} 이런 종이 한 장으로 사람을 가두진 않소." },
 
@@ -36435,10 +36450,12 @@ MC.addEvents({
     { "op": "silence", "ms": 2000, "async": true },
     { "op": "face", "id": "villefort", "dir": "left" },
     { "op": "sfx", "id": "card_tick" },
-    { "op": "wait", "ms": 1000 },
+    // [s44-writer B3-25 · C10②] 정적 2초 안에 굳는 얼굴 한 컷(초상 재사용) — 관계(아버지)는 S2 중간점에 남기고, '이유가 있다'는 신호만
+    { "op": "closeup", "who": "villefort", "face": "stiff", "ms": 1300 },
     { "op": "emote", "id": "villefort", "kind": "sweat", "ms": 900, "async": true },
     { "op": "sfx", "id": "card_tick" },
-    { "op": "wait", "ms": 1000 },
+    { "op": "wait", "ms": 700 },
+    { "op": "say", "who": "narr", "t": "……그 이름에,{p:300}\n검사의 얼굴이 굳었다." },   // [s44-review] think → narr: 3인칭 과거 서술이라 에드몽의 속말(「검사님」)이 아니라 서술의 목소리(글자는 C10② 그대로)
 
     { "op": "say", "who": "villefort", "face": "stiff", "t": "……이리 주시오." },
     { "op": "face", "id": "villefort", "dir": "down" },
@@ -36470,7 +36487,7 @@ MC.addEvents({
 
     { "op": "say", "who": "dantes", "face": "smile", "t": "감사합니다!{p:200} 그럼 잔치에—", "auto": 150 },
     { "op": "say", "who": "villefort", "t": "오늘 밤만 여기 있으시오.{p:200} 서류상 절차요." },
-    { "op": "say", "who": "villefort", "t": "그리고 그 이름은 오늘로 잊으시오.{p:500} ……내 얼굴도." },
+    { "op": "say", "who": "villefort", "t": "그 이름은 오늘로 잊으시오.{p:300}\n당신을 위해서요.{p:500}\n……내 얼굴도." },   // [s44-writer B3-5 · C3②] 친절한 얼굴로 감싼다(한 상자 36자 안 — '그리고'를 뺌)
     { "op": "choice", "who": "think", "t": "빌포르는 이쪽을 보지 않는다.", "var": "doubt", "opts": [
       { "t": "믿겠습니다.", "v": "A", "do": [
         { "op": "say", "who": "dantes", "t": "……믿겠습니다." },
@@ -36520,6 +36537,8 @@ MC.addEvents({
     { "op": "cam", "to": [6, 2], "ms": 2200 },
     { "op": "wait", "ms": 600 },
     { "op": "emote", "id": "player", "kind": "exclaim", "ms": 800 },
+    // [s44-director B5-3] 이프 성 외경 컷 2.4초(타이틀 그림을 로고 없이 당겨서, 등대 빛이 성 뒤를 한 번 쓴다) — 당테스의 외침은 그 성 위에서(holdSay 1, 시2-9)
+    { "op": "custom", "id": "castle", "args": { "ms": 2400, "holdSay": 1, "holdAfter": 300 } },
     { "op": "say", "who": "dantes", "face": "shock", "t": [ "저긴……{p:300} 이프 성이잖아요!", "저는 재판도 안 받았습니다!" ] },
     { "op": "say", "who": "guard", "t": "재판?{p:300} 저 안에서 기다려.{p:500} 오래." },
     { "op": "cam", "to": "player", "ms": 900 },
@@ -36550,6 +36569,8 @@ MC.addEvents({
     { "op": "wait", "ms": 1300 },
     { "op": "light", "dark": 0, "ms": 0 },
     { "op": "vignette", "a": 0, "ms": 0 },
+    // [s44-director B5-3] 입소 장부 — 철문 뒤 검정에서, 27번 장부(S3 끝)·엔딩 장부와 같은 스테이지. 다 친 뒤 이름에 줄이 그어진다(장부 3부작의 첫째)
+    { "op": "custom", "id": "s4", "args": { "stage": "ledger", "ledger": [ "34번.", "1815년 2월 28일 입소.", "이름: 에드몽 당테스" ], "strike": [ 2, 4 ], "after": 1200 } },
     { "op": "set", "flag": "a2.done", "v": true },
     { "op": "call", "ev": "a3.start" }
   ]
@@ -36569,6 +36590,68 @@ MC.addEvents({
   // S2N: 1817 만남의 밤들(파리아를 만난 뒤, 합류 전) — 조사물은 events_a4m.js의 a4m.o_*가 단계(m4phase)별로 받는다(S2_NARRATIVE_V2 §3-7)
   const M17 = { "all": [ { "flag": "a4.met" }, { "not": { "flag": "a4.joined" } } ] };
   const PRE = { "all": [ { "flag": "a3.scratch_done" }, { "not": { "flag": "a4.met" } } ] };   // 벽을 세 번 두드린 뒤, 돌이 들리기 전(발밑 소리)
+
+  /* [s44-writer B3-6] op hint {t:"…"|["…","…"], ms} — 화면 위 회색 힌트 줄(비차단, 개선 계획 2.1판 §6 B3-6·B3-20).
+     시스템 문장(조작·조건 안내)을 대화 상자의 서술 목소리에서 떼어 낸다. 필드 HUD 훅으로 그리므로 입력을 받지 않는다(걸어도 된다).
+     자리: 화면 위 배너(지명) 아래 띠 · 글 small 회색(#b8b4c8) · 들고 날 때 알파 없이 디더 띠 + 색 4단 · 새 힌트는 앞 힌트를 바꾼다 · 빨리감기 중엔 띄우지 않는다.
+     ms를 안 주면 글자 수로 정한다(최소 3.2초). 다른 events_*.js도 같은 op를 쓴다(로드 순서와 무관 — 실행 때 찾는다) */
+  (function () {
+    const OPS = MC.events && MC.events.ops;
+    if (!OPS || OPS.hint) return;
+    const H = { cur: null, hooked: false }, IN = 300, OUT = 400, BAND = '#18181f', EDGE = '#3a3a48', INK = '#b8b4c8';
+    const plain = s => (MC.dialogue && MC.dialogue.strip && MC.dialogue.prep) ? MC.dialogue.strip(MC.dialogue.prep(String(s))) : String(s).replace(/\{[^{}]*\}/g, '');
+    function hook() {
+      if (H.hooked || !MC.field || !MC.field._hook) return;
+      H.hooked = true;
+      MC.field._hook({ renderHud() {
+        const b = H.cur; if (!b) return;
+        const g = MC.gfx, q = MC.time.real - b.t0;
+        if (q >= b.ms) { H.cur = null; return; }
+        if (q < 0) return;
+        const k = q < IN ? q / IN : (q > b.ms - OUT ? (b.ms - q) / OUT : 1), lv = Math.round(MC.clamp(k, 0, 1) * 16);
+        if (lv <= 0) return;
+        if (!b.lines) { b.lines = []; for (const s of b.t) b.lines.push.apply(b.lines, MC.text.wrap(s, g.W - 24, 'small')); b.lines = b.lines.slice(0, 4); }
+        const LH = 13, h = 7 + b.lines.length * LH, y = 26 + ((g.safe && g.safe.top) || 0);
+        g.ditherRect(0, y, g.W, h, BAND, lv);
+        if (lv >= 16) { g.hline(0, y, g.W, EDGE); g.hline(0, y + h - 1, g.W, EDGE); }
+        const col = g.mix(BAND, INK, MC.clamp(Math.ceil(lv / 4), 1, 4) / 4);
+        b.lines.forEach((l, i) => MC.text.draw(l, g.W >> 1, y + 4 + i * LH, { font: 'small', color: col, align: 'center' }));
+      } });
+    }
+    OPS.hint = function (c) {
+      if (MC.events.skipping) return;
+      hook();
+      const t0 = c.t != null ? c.t : c.text, t = (Array.isArray(t0) ? t0 : [t0]).filter(x => x != null).map(s => plain(MC.i18n && MC.i18n.active ? MC.i18n.t(String(s)) : s));
+      if (!t.length) return;
+      const n = t.reduce((a, s) => a + Array.from(s).length, 0);
+      H.cur = { t, ms: c.ms != null ? +c.ms : Math.max(3200, 1600 + n * 80), t0: MC.time.real, lines: null };
+    };
+    if (MC.events.instant && MC.events.instant.add) MC.events.instant.add('hint');
+  })();
+
+  // [s44-writer B3-1] 굶기(빵 세 번 밀어 냄)와 다시 먹기에 쓰는 빵 그림(없으면 줍기 표시)
+  const SPR = (MC.data && MC.data.sprites && MC.data.sprites.spr) || {};
+  const BREAD = (SPR.ob_bread_floor || SPR.ob_bread_floor_0) ? 'ob_bread_floor' : 'ob_pickup';
+  const TAP = (id, hint) => ({ "op": "custom", "id": "deduce", "args": { "stage": "tap", "id": id, "hint": hint, "other": "……" } });
+  // 창틈의 빵 하루치: 빵이 놓임 → ▶탭(밀어 냄) → 하루가 간다(검은 카드 한 줄)
+  const BREAD_DAY = day => [
+    { "op": "spawn", "id": "bread_w", "type": "thing", "sprite": BREAD, "x": 4, "y": 1, "solid": false, "z": 20 },   // z 20: 창 아래 선 머리보다 앞(빵이 가려지지 않게)
+    TAP("bread_w", "빵을 창틈으로 민다."),
+    { "op": "jump", "id": "player", "h": 1, "ms": 110 },
+    { "op": "sfx", "id": "cloth_slip", "gain": 0.3, "pitch": 1.3 },
+    { "op": "despawn", "id": "bread_w" },
+    { "op": "fx", "kind": "dust", "at": [ 4, 1 ], "n": 2 },
+    { "op": "wait", "ms": 500 },
+    { "op": "narr", "t": day, "ms": 1100 }
+  ];
+  // 물그릇 조각으로 들뜬 돌을 한 번 긁는다(▶탭) — 숫자 없이 소리만(셈은 「하나, 둘—셋!」과 손가락 셈에 아낀다)
+  const SCRAPE = i => [
+    TAP("stone", "조각으로 들뜬 돌을 긁는다."),
+    { "op": "sfx", "id": "scratch", "pan": 0.1, "pitch": 1.2 + i * 0.04, "gain": 0.55 },
+    { "op": "shake", "p": 0.05 }, { "op": "vibrate", "p": 15 },
+    { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 },
+    { "op": "wait", "ms": 350 }
+  ];
   MC.addEvents({
 
     "a3.start": [
@@ -36851,6 +36934,19 @@ MC.addEvents({
     ],
 
     "a3.bed_menu": [
+      // [s44-director B3-21] 1815 첫 밤의 고독 6~8초(뒤2-6): 첫 잠 앞 한 번만 — 철문을 손바닥으로 짚고 1.5초 정지 → 서술 → 속마음(감찰관 「약속」의 예고)
+      { "op": "if", "cond": { "all": [ { "not": { "var": "sleeps", "gte": 1 } }, { "not": { "flag": "a3.first_night" } } ] }, "then": [
+        { "op": "set", "flag": "a3.first_night" },
+        { "op": "letterbox", "on": true, "ms": 300 },
+        { "op": "walkto", "id": "player", "to": [ 6, 2 ], "speed": 300, "face": "up" },
+        { "op": "face", "id": "player", "dir": "up" },
+        { "op": "wait", "ms": 300 },
+        { "op": "jump", "id": "player", "h": 1, "ms": 120 },
+        { "op": "sfx", "id": "blanket", "gain": 0.18, "pitch": 0.7 },
+        { "op": "wait", "ms": 1500 },
+        { "op": "say", "who": "narr", "t": "문이 닫히는 소리가, 밤새 귀에 남았다." },
+        { "op": "say", "who": "think", "t": "……내일이면 누가 오겠지." },
+        { "op": "letterbox", "on": false, "ms": 300 } ] },
       { "op": "if", "cond": { "var": "sleeps", "gte": 3 },
         "then": [ { "op": "say", "who": "think", "t": "잠들면 시간이 간다. 그거면 됐지?" } ],
         "else": [ { "op": "if", "cond": { "var": "sleeps", "gte": 2 },
@@ -36933,7 +37029,7 @@ MC.addEvents({
           { "op": "face", "id": "player", "dir": "up" },
           { "op": "wait", "ms": 400 },
           { "op": "say", "who": "dantes", "face": "shock", "t": "창,{p:150} 빗금……{p:300} 내 방?{p:300} 내 방이잖아?" },
-          { "op": "say", "who": "sys", "t": [ "검은 그림자에 닿으면 싸움이 된다. 피해서 지나갈 수도 있다.", "빛기둥을 조사하면 잠에서 깬다." ] },
+          { "op": "hint", "t": [ "검은 그림자에 닿으면 싸움이 된다. 피해서 지나갈 수도 있다.", "빛기둥을 조사하면 잠에서 깬다." ], "ms": 6500 },   // [s44-writer B3-6] 회색 힌트 줄
           { "op": "set", "flag": "a3.dream_tut" } ] }
     ],
 
@@ -37035,21 +37131,19 @@ MC.addEvents({
           { "op": "set", "flag": "a3.puddle_used" },
           { "op": "say", "who": "narr", "t": "맑은 물을 떠 마셨다. 머리가 맑아진다." },
           { "op": "if", "cond": { "not": { "flag": "a3.puddle_tut" } }, "then": [
-            { "op": "say", "who": "sys", "t": "맑은 물웅덩이는 잠들어 올 때마다 한 번 회복시켜 준다." },
+            { "op": "hint", "t": "맑은 물웅덩이는 잠들어 올 때마다 한 번 회복시켜 준다." },   // [s44-writer B3-6]
             { "op": "set", "flag": "a3.puddle_tut" } ] } ] }
     ],
 
+    // [s44-writer B3-6] 창 넷·빗금 넷: 속마음은 각각 마지막 한 번만(작6) — 서술 한 줄 뒤 같은 뜻을 되묻는 상자를 덜어 낸다
     "a3.b1_win1": [
-      { "op": "say", "who": "narr", "t": "창틈으로 빛이 샌다. 등대 불빛 같다." },
-      { "op": "say", "who": "think", "t": "빛이 드는 쪽으로…… 가 볼까?" }
+      { "op": "say", "who": "narr", "t": "창틈으로 빛이 샌다. 등대 불빛 같다." }
     ],
     "a3.b1_win2": [
-      { "op": "say", "who": "narr", "t": "빛이 조금 커졌다." },
-      { "op": "say", "who": "think", "t": "이쪽이야. 이쪽이 맞지?" }
+      { "op": "say", "who": "narr", "t": "빛이 조금 커졌다." }
     ],
     "a3.b1_win3": [
-      { "op": "say", "who": "narr", "t": "등대 불빛이 방 안까지 흘러든다." },
-      { "op": "say", "who": "think", "t": "위로. 빛은 위에서 와." }
+      { "op": "say", "who": "narr", "t": "등대 불빛이 방 안까지 흘러든다." }
     ],
     "a3.b1_win4": [
       { "op": "say", "who": "narr", "t": "창이 온통 빛이다. 따뜻하다." },
@@ -37063,16 +37157,13 @@ MC.addEvents({
       { "op": "say", "who": "think", "t": "돌아서 가야 하나? 어디로?" }
     ],
     "a3.b1_tally1": [
-      { "op": "say", "who": "narr", "t": "빗금 하나." },
-      { "op": "say", "who": "think", "t": "내가 그은 거야? 여기서도?" }
+      { "op": "say", "who": "narr", "t": "빗금 하나." }
     ],
     "a3.b1_tally2": [
-      { "op": "say", "who": "narr", "t": "빗금이 서른 개쯤." },
-      { "op": "say", "who": "think", "t": "방이 바뀌어도 빗금은 늘어나?" }
+      { "op": "say", "who": "narr", "t": "빗금이 서른 개쯤." }
     ],
     "a3.b1_tally3": [
-      { "op": "say", "who": "narr", "t": "빗금이 이백 개는 된다." },
-      { "op": "say", "who": "think", "t": "누가 긋고 있지? 누가?" }
+      { "op": "say", "who": "narr", "t": "빗금이 이백 개는 된다." }
     ],
     "a3.b1_tally4": [
       { "op": "say", "who": "narr", "t": "벽 한 면이 전부 빗금이다." },
@@ -37091,8 +37182,7 @@ MC.addEvents({
           { "op": "sfx", "id": "door_iron", "pitch": 0.7, "gain": 0.45, "pan": -0.4 },
           { "op": "shake", "p": 0.12 }, { "op": "vibrate", "p": 40 },
           { "op": "wait", "ms": 400 },
-          { "op": "say", "who": "narr", "t": "멀리서 철문이 삐걱이는 소리가 났다." },
-          { "op": "say", "who": "think", "t": "……열렸어? 어디가?" },
+          { "op": "say", "who": "narr", "t": "멀리서 철문이 삐걱이는 소리가 났다." },   // [s44-writer B3-6] 되묻는 속마음(「……열렸어? 어디가?」) 삭제 — 의문형은 장면당 한 번
           { "op": "set", "flag": "a3.gate_felt" } ] }
     ],
 
@@ -37107,7 +37197,7 @@ MC.addEvents({
               { "t": "깨어난다", "v": "wake", "do": [ { "op": "set", "flag": "a3.gate_hint_wake" }, { "op": "call", "ev": "a3.wake" } ] },
               { "t": "더 둘러본다", "v": "stay", "cancel": true, "do": [
                 { "op": "if", "cond": { "not": { "flag": "a3.gate_hint_wake" } }, "then": [
-                  { "op": "say", "who": "sys", "t": "빛기둥을 조사하면 잠에서 깬다. 깨어난 뒤 다시 잠들어 오자." },
+                  { "op": "hint", "t": "빛기둥을 조사하면 잠에서 깬다. 깨어나도 다시 잠들어 올 수 있다." },   // [s44-writer B3-6] · [s44-review] 회색 띠는 시스템 목소리 — '-자'(에드몽의 말투)를 다른 힌트 줄과 같은 평서로
                   { "op": "set", "flag": "a3.gate_hint_wake" } ] } ] }
             ] } ],
           "else": [ { "op": "if", "cond": { "any": [ { "lv": 3 }, { "var": "b1kills", "gte": 4 }, { "var": "sleeps", "gte": 3 } ] },
@@ -37120,7 +37210,7 @@ MC.addEvents({
           "else": [
             { "op": "say", "who": "narr", "t": [ "검은 철문. 문 너머에서 무언가가 기다린다.", "……아직은 발이 떨어지지 않는다." ] },
             { "op": "if", "cond": { "not": { "flag": "a3.gate_hint" } }, "then": [
-              { "op": "say", "who": "sys", "t": "그림자를 넷 물리치거나 Lv3이 되면 문이 열린다." },
+              { "op": "hint", "t": "그림자를 넷 물리치거나 Lv3이 되면 문이 열린다." },   // [s44-writer B3-6]
               { "op": "set", "flag": "a3.gate_hint" } ] } ] } ] } ] }
     ],
 
@@ -37203,9 +37293,16 @@ MC.addEvents({
       { "op": "set", "flag": "a3.year_gone" },
       { "op": "face", "id": "player", "dir": "up" },
       { "op": "say", "who": "narr", "t": "빗금이 벽 한 면을 덮었다. 더는 긋지 않는다." },
-      { "op": "say", "who": "think", "t": [ "……{p:300}오늘이 며칠이었지.", "할 일이 없다. ……눕기나 하자." ] },
+      { "op": "say", "who": "think", "t": "……{p:300}오늘이 며칠이었지." },
+      // [s44-writer B3-1] 굶기로 한 결심을 제 손으로(뒤1·뒤2-1): 창틈의 빵을 세 번 밀어 낸다 — 하루, 이틀, 사흘. 희망을 버리는 것은 플레이어의 손이다
+      { "op": "walkto", "id": "player", "to": [ 4, 2 ], "speed": 200, "face": "up" },
+      { "op": "face", "id": "player", "dir": "up" },
+      { "op": "wait", "ms": 400 }
+    ].concat(BREAD_DAY("하루."), BREAD_DAY("이틀."), BREAD_DAY("사흘."), [
+      { "op": "emote", "id": "player", "kind": "dots", "ms": 1200 },
+      { "op": "say", "who": "think", "t": "……이제 세지 않아도 된다.{p:300} 눕자." },
       { "op": "save", "slot": "auto" }
-    ],
+    ]),
 
     "a3.night": [
       { "op": "call", "ev": "a3.to_bed" },
@@ -37233,7 +37330,7 @@ MC.addEvents({
       { "op": "wait", "ms": 500 },
       { "op": "say", "who": "think", "t": "벽…… 벽 너머에서?" },
       { "op": "emote", "id": "wall_r", "kind": "question", "ms": 1600, "async": true },
-      { "op": "say", "who": "sys", "t": "소리 나는 벽을 두드려 보자." },
+      { "op": "hint", "t": "소리 나는 벽을 두드려 볼 수 있다." },   // [s44-writer B3-6] · [s44-review] '-자' → 평서(다른 힌트 줄과 같은 목소리)
       { "op": "save", "slot": "auto" }
     ],
 
@@ -37262,6 +37359,31 @@ MC.addEvents({
       { "op": "say", "who": "dantes", "face": "shock", "t": [ "누구 있어요?{p:300} 누구 있습니까?", "저는 죄수입니다.{p:300} 34번입니다!" ] },
       { "op": "silence", "ms": 2600 },
       { "op": "wait", "ms": 2200 },
+      // [s44-writer B3-1] 소리가 멎는다(원작: 두드리자 긁는 소리가 끊기고 사흘을 오지 않는다) → 다시 먹는다 → 사흘의 침묵 → 제 손으로 돌을 긁는다 → 대답
+      { "op": "emote", "id": "player", "kind": "dots", "ms": 1400 },
+      { "op": "say", "who": "think", "t": "……빵.{p:300} 먹어야 해.{p:300}\n저 소리를 만날 때까지는." },
+      { "op": "spawn", "id": "bread_e", "type": "thing", "sprite": BREAD, "x": 6, "y": 2, "solid": false, "z": -1 },   // 간수가 문 밑에 두고 간 그날 몫
+      { "op": "walkto", "id": "player", "to": [ 6, 3 ], "speed": 220, "face": "up" },
+      { "op": "face", "id": "player", "dir": "up" },
+      { "op": "fx", "kind": "sparkle", "at": [ 6, 2 ], "n": 2 },
+      TAP("bread_e", "빵을 집어 먹는다."),
+      { "op": "jump", "id": "player", "h": 1, "ms": 110 },
+      { "op": "despawn", "id": "bread_e" },
+      { "op": "sfx", "id": "cloth_slip", "gain": 0.25, "pitch": 0.8 },
+      { "op": "wait", "ms": 900 },
+      { "op": "narr", "t": "그 뒤로 사흘, 소리는 다시 오지 않았다.", "ms": 2000 },
+      { "op": "walkto", "id": "player", "to": [ 7, 3 ], "speed": 220, "face": "up" },
+      { "op": "face", "id": "player", "dir": "up" },
+      { "op": "wait", "ms": 300 },
+      { "op": "sfx", "id": "thud", "gain": 0.45, "pitch": 1.2 }, { "op": "shake", "p": 0.08 },
+      { "op": "fx", "kind": "dust", "at": "bowl", "n": 3 },
+      { "op": "say", "who": "narr", "t": "물그릇을 깼다.{p:300}\n날 선 조각 하나." },
+      { "op": "walkto", "id": "player", "to": [ 7, 5 ], "speed": 220, "face": "down" },
+      { "op": "face", "id": "player", "dir": "down" },
+      { "op": "grow", "pose": "kneel" }
+    ].concat(SCRAPE(1), SCRAPE(2), SCRAPE(3), SCRAPE(4), [
+      { "op": "grow" },
+      { "op": "wait", "ms": 1600 },
       { "op": "sfx", "id": "scratch", "pan": 0.6, "pitch": 0.9 }, { "op": "vibrate", "p": [ 15, 70, 15 ] },
       { "op": "wait", "ms": 900 },
       { "op": "sfx", "id": "scratch", "pan": 0.35 }, { "op": "vibrate", "p": [ 15, 70, 15 ] },
@@ -37280,7 +37402,7 @@ MC.addEvents({
       { "op": "spawn", "id": "trace", "type": "thing", "sprite": "ob_pickup", "x": 7, "y": 6, "solid": false, "z": 1, "event": "a4.meet" },
       { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 4 },
       { "op": "vibrate", "p": [ 15, 70, 15 ] }
-    ]
+    ])
   });
 })(window.MC);
 
@@ -37364,6 +37486,20 @@ MC.addEvents({
   const HQ1 = { "all": [ { "any": [ { "flag": "q.elba" }, { "flag": "q.hand" } ] }, { "any": [ { "not": { "flag": "mem.elba_letter" } }, { "not": { "flag": "mem.ledger" } } ] } ] };
   const HQ2 = { "all": [ { "flag": "q.love" }, { "not": { "flag": "mem.knife" } } ] };
   const HUB_LIGHT = { "op": "light", "dark": 0.4, "r": 76, "at": "candle", "color": "#ffcf6a", "flicker": true, "ms": 0 };
+  // [s44-writer B3-23] 거점 인사말: 같은 말이 연달아 되풀이되지 않게 메뉴를 열 때마다 var greetN(0~)으로 돌린다 — 의식은 덜고 세월은 더한다(작2-3·뒤2-2).
+  //   첫 번째 줄은 예전 그대로. 「수업을 듣는다」는 오늘 들을 수 없으면 흐리게(dimIf — 고를 수는 있고, 고르면 예전처럼 까닭을 말한다)
+  const LESSON_DIM = { "any": [ { "var": "lessonPts", "lt": 1 }, { "all": [ { "flag": "a4.lesson_lang" }, { "flag": "a4.lesson_hist" }, { "flag": "a4.lesson_sci" } ] } ] };
+  const GREET = (lines, opts) => {
+    let chain = { "op": "choice", "who": "faria", "t": lines[0], "opts": opts };
+    for (let i = 1; i < lines.length; i++) chain = { "op": "if", "cond": { "var": "greetN", "eq": i }, "then": [ { "op": "choice", "who": "faria", "t": lines[i], "opts": opts } ], "else": [ chain ] };
+    return [ chain, { "op": "add", "var": "greetN", "n": 1 }, { "op": "if", "cond": { "var": "greetN", "gte": lines.length }, "then": [ { "op": "set", "var": "greetN", "v": 0 } ] } ];
+  };
+  const HUB_OPTS = [
+    { "t": "수업을 듣는다", "v": "lesson", "dimIf": LESSON_DIM, "do": [ { "op": "call", "ev": "a4.lessons" } ] },
+    { "t": "이야기를 청한다", "v": "talk", "do": [ { "op": "call", "ev": "a4.talk" } ] },
+    { "t": "그만둔다", "v": "no", "cancel": true, "do": [] } ];
+  // 수업이 끝날 때마다 검은 카드 한 줄(1.5초) — 수업 하나가 한 철이다
+  const SEASON = t => ({ "op": "narr", "t": t, "ms": 1500 });
 
   MC.addEvents({
 
@@ -37538,15 +37674,18 @@ MC.addEvents({
         { "op": "say", "who": "faria", "t": [ "할 일은 많네.{p:200} 수업도 좋고,", "굴을 조금 더 파도 좋고.{p:200}\n흙 나를 손이 모자라거든." ] },
         { "op": "say", "who": "faria", "t": "잠도 자 두게.{p:200}\n꿈속에서도 공부는 되니까." },
         { "op": "set", "flag": "a4.faria_tut" } ] },
+      // [s44-writer B3-7] 추리 답 직후 처음 말을 걸면, 메뉴 앞에 다음 밤의 물음 한 줄(작7·작2 — 루프 한 바퀴의 끝을 레벨업이 아니라 물음으로)
+      { "op": "if", "cond": { "all": [ { "flag": "dd.n1" }, { "not": { "flag": "dd.n2" } }, { "not": { "flag": "a4.ask_d1" } } ] }, "then": [
+        { "op": "face", "id": "faria", "dir": "player" },
+        { "op": "say", "who": "faria", "t": "그 비뚤어진 투서,{p:200}\n정말 서툰 손이 썼을까?" },   // [s44-review] 「오른손 글씨였나?」는 D2의 답(왼손)을 먼저 말한다 — 물음만 남긴다(B3-26 '왼손' 감추기와 같은 원칙)
+        { "op": "set", "flag": "a4.ask_d1" } ] },
+      { "op": "if", "cond": { "all": [ { "flag": "dd.n2" }, { "not": { "flag": "dd.n3" } }, { "not": { "flag": "a4.ask_d2" } } ] }, "then": [
+        { "op": "face", "id": "faria", "dir": "player" },
+        { "op": "say", "who": "faria", "t": "말 없는 사람은{p:200}\n무엇으로 말하던가?" },   // [s44-review] 칼 이야기는 D3에서야 에드몽이 처음 한다(a4c.n3) — 신부님이 미리 알면 안 되고, 꿈속 조각(mem.knife)도 앞지른다. D2 끝 「말 없는 사람은 다른 걸로 말하지.」를 물음으로
+        { "op": "set", "flag": "a4.ask_d2" } ] },
       { "op": "if", "cond": { "all": [ Y22, { "not": { "flag": "a4.s2_end" } } ] },
-        "then": [ { "op": "choice", "who": "faria", "t": "……오늘은 무엇을 할 텐가?", "opts": [
-          { "t": "수업을 듣는다", "v": "lesson", "do": [ { "op": "call", "ev": "a4.lessons" } ] },
-          { "t": "이야기를 청한다", "v": "talk", "do": [ { "op": "call", "ev": "a4.talk" } ] },
-          { "t": "그만둔다", "v": "no", "cancel": true, "do": [] } ] } ],
-        "else": [ { "op": "choice", "who": "faria", "t": "자,{p:150} 오늘은 무엇을 해 볼까?", "opts": [
-          { "t": "수업을 듣는다", "v": "lesson", "do": [ { "op": "call", "ev": "a4.lessons" } ] },
-          { "t": "이야기를 청한다", "v": "talk", "do": [ { "op": "call", "ev": "a4.talk" } ] },
-          { "t": "그만둔다", "v": "no", "cancel": true, "do": [] } ] } ] }
+        "then": GREET([ "……오늘은 무엇을 할 텐가?", "……어젯밤 기침 소리 들었나?{p:300}\n신경 쓰지 말게." ], HUB_OPTS),
+        "else": GREET([ "자,{p:150} 오늘은 무엇을 해 볼까?", "또 왔군.{p:200} 오늘은 뭘 하겠나?", "눈이 맑군.{p:200}\n오늘은 머리가 잘 돌겠네.","셔츠가 또 한 장 줄었네.{p:200}\n자, 무얼 하겠나?" ], HUB_OPTS) }
     ],
 
     "a4.faria_field": [
@@ -37604,6 +37743,7 @@ MC.addEvents({
         "else": [ { "op": "say", "who": "dantes", "t": "……그리고 속이는 사람을 알아볼 수도 있겠지요." } ] },
       { "op": "learn", "skill": "whisper" },
       { "op": "set", "flag": "a4.lesson_lang" },
+      SEASON("그해 겨울 내내, 이탈리아어."),                              // [s44-writer B3-23]
       { "op": "call", "ev": "a4.lesson_after" }
     ],
 
@@ -37619,6 +37759,7 @@ MC.addEvents({
         "else": [ { "op": "say", "who": "dantes", "t": "카이사르를 찌른 것도 친구였다고 하셨지요." } ] },
       { "op": "learn", "skill": "history" },
       { "op": "set", "flag": "a4.lesson_hist" },
+      SEASON("봄이 다 가도록, 로마와 카이사르."),                          // [s44-writer B3-23]
       { "op": "call", "ev": "a4.lesson_after" }
     ],
 
@@ -37653,6 +37794,7 @@ MC.addEvents({
       { "op": "if", "cond": Y22L, "then": [ { "op": "say", "who": "dantes", "t": "길은 이미 정했습니다." } ] },
       { "op": "learn", "skill": "stars" },
       { "op": "if", "cond": { "not": FITD }, "then": [ { "op": "walkto", "id": "faria", "to": [4, 5], "speed": 280, "face": "down", "async": true } ] },
+      SEASON("여름밤마다, 한 뼘 하늘의 별."),                              // [s44-writer B3-23]
       { "op": "call", "ev": "a4.lesson_after" }
     ],
 
@@ -37681,13 +37823,22 @@ MC.addEvents({
       { "op": "if", "cond": { "all": [ { "flag": "a4d.b2_intro" }, { "not": { "flag": "a4d.gate_seen" } }, { "not": { "flag": "a4.hint_gate" } } ] }, "then": [ { "op": "call", "ev": "a4.hint_gate" }, { "op": "end" } ] },
       { "op": "if", "cond": { "all": [ { "flag": "dd.n3" }, { "not": { "flag": "a4t.clear1" } }, { "not": { "flag": "a4.hint_tunnel" } } ] }, "then": [ { "op": "call", "ev": "a4.hint_tunnel" }, { "op": "end" } ] },
       { "op": "if", "cond": { "all": [ Y22, { "not": { "flag": "a4.talk_8" } } ] }, "then": [ { "op": "call", "ev": "a4.talk_8" }, { "op": "end" } ] },
-      { "op": "if", "cond": { "all": [ { "flag": "a4d.b2_intro" }, { "flag": "a4.talk_1" }, { "not": { "flag": "a4.talk_4" } } ] }, "then": [ { "op": "call", "ev": "a4.talk_4" }, { "op": "end" } ] },
-      { "op": "if", "cond": { "not": { "flag": "a4.talk_1" } }, "then": [ { "op": "call", "ev": "a4.talk_1" }, { "op": "end" } ] },
-      { "op": "if", "cond": { "not": { "flag": "a4.talk_2" } }, "then": [ { "op": "call", "ev": "a4.talk_2" }, { "op": "end" } ] },
-      { "op": "if", "cond": { "not": { "flag": "a4.talk_3" } }, "then": [ { "op": "call", "ev": "a4.talk_3" }, { "op": "end" } ] },
-      { "op": "if", "cond": { "not": { "flag": "a4.talk_5" } }, "then": [ { "op": "call", "ev": "a4.talk_5" }, { "op": "end" } ] },
-      { "op": "if", "cond": { "not": { "flag": "a4.talk_6" } }, "then": [ { "op": "call", "ev": "a4.talk_6" }, { "op": "end" } ] },
+      // [s44-writer B3-23] 이야기 하나가 끝나면 신부님이 다음 할 일을 한 줄 권한다(a4.talk_next — 메뉴를 한 번 덜 연다)
+      { "op": "if", "cond": { "all": [ { "flag": "a4d.b2_intro" }, { "flag": "a4.talk_1" }, { "not": { "flag": "a4.talk_4" } } ] }, "then": [ { "op": "call", "ev": "a4.talk_4" }, { "op": "call", "ev": "a4.talk_next" }, { "op": "end" } ] },
+      { "op": "if", "cond": { "not": { "flag": "a4.talk_1" } }, "then": [ { "op": "call", "ev": "a4.talk_1" }, { "op": "call", "ev": "a4.talk_next" }, { "op": "end" } ] },
+      { "op": "if", "cond": { "not": { "flag": "a4.talk_2" } }, "then": [ { "op": "call", "ev": "a4.talk_2" }, { "op": "call", "ev": "a4.talk_next" }, { "op": "end" } ] },
+      { "op": "if", "cond": { "not": { "flag": "a4.talk_3" } }, "then": [ { "op": "call", "ev": "a4.talk_3" }, { "op": "call", "ev": "a4.talk_next" }, { "op": "end" } ] },
+      { "op": "if", "cond": { "not": { "flag": "a4.talk_5" } }, "then": [ { "op": "call", "ev": "a4.talk_5" }, { "op": "call", "ev": "a4.talk_next" }, { "op": "end" } ] },
+      { "op": "if", "cond": { "not": { "flag": "a4.talk_6" } }, "then": [ { "op": "call", "ev": "a4.talk_6" }, { "op": "call", "ev": "a4.talk_next" }, { "op": "end" } ] },
       { "op": "call", "ev": "a4.talk_hint" }
+    ],
+    // [s44-writer B3-23] 다음 할 일 한 줄(작2 직접 예 「……굴이 기다리네.」): 오늘 수업이 남았으면 수업, 아니면 굴
+    "a4.talk_next": [
+      { "op": "if", "cond": Y22, "then": [ { "op": "end" } ] },          // 1822(균열 — 짧아진 대답)엔 권하지 않는다: 「……기도하겠네.」 뒤에 할 일을 붙이지 않게
+      { "op": "wait", "ms": 400 },
+      { "op": "if", "cond": LESSON_DIM,
+        "then": [ { "op": "say", "who": "faria", "t": "……굴이 기다리네." } ],
+        "else": [ { "op": "say", "who": "faria", "t": "……오늘 수업이 남았네." } ] }
     ],
 
     // ① 오천 권과 백오십 권(이탈리아 원고·잉크는 둘째 밤 신부의 방에서 이미 봤다)
@@ -38849,7 +39000,10 @@ MC.addEvents({
           { "op": "say", "who": "dantes", "t": "……약속하겠습니다." } ] }
       ] },
       { "op": "wait", "ms": 400 },
-      { "op": "party", "add": "faria" },
+      // [s44-writer B3-20] 「파리아가 동료가 되었다!」(금색 시스템 상자·징글)를 이 장면에서만 끈다(뒤2-4) — 침묵 자리에 화면 위 회색 띠 한 줄
+      { "op": "party", "add": "faria", "quiet": true },
+      { "op": "hint", "t": "벽 너머에, 사람이 생겼다.", "ms": 3600 },
+      { "op": "wait", "ms": 1600 },
       { "op": "say", "who": "faria", "t": [ "여기서 나갈 수 있을지는 모르지만,", "머릿속은 아무도 가둘 수 없네." ] },
       { "op": "say", "who": "dantes", "t": [ "신부님,{p:200}\n저는 배운 게 없습니다.", "글도 겨우 읽습니다." ] },
       { "op": "say", "who": "faria", "face": "smile", "t": [ "그럼 잘됐군.{p:200}\n우리한텐 시간이 넘쳐나니까.", "자,{p:150} 불부터 두세.{p:200}\n첫 수업일세." ] },
@@ -39686,7 +39840,7 @@ MC.addEvents({
           { "op": "hud", "show": true },
           { "op": "banner", "t": "B2 · 기억의 마르세유" },
           { "op": "wait", "ms": 700 },
-          { "op": "say", "who": "sys", "t": "꿈속에서는 신부님도 함께 싸운다." },
+          { "op": "hint", "t": "꿈속에서는 신부님도 함께 싸운다." },   // [s44-writer B3-6] 회색 힌트 줄
           { "op": "set", "flag": "a4d.b2_intro" }
         ],
         "else": [
@@ -39966,7 +40120,7 @@ MC.addEvents({
           { "op": "cam", "to": "player", "ms": 400 },
           { "op": "letterbox", "on": false },
           { "op": "hud", "show": true },
-          { "op": "say", "who": "sys", "t": "빛기둥을 조사하면\n잠에서 깬다." },
+          { "op": "hint", "t": "빛기둥을 조사하면 잠에서 깬다." },   // [s44-writer B3-6] 파리아 「처음부터.」 바로 뒤 사용 설명의 낙차를 줄인다(작2-5)
           { "op": "choice", "who": "think", "t": "지금 깨어날까?", "opts": [
             { "t": "깨어난다", "v": "wake", "do": [ { "op": "call", "ev": "a4.wake" } ] },
             { "t": "조금 더 둘러본다", "v": "stay", "cancel": true, "do": [] }
@@ -40053,7 +40207,7 @@ MC.addEvents({
       { "op": "light", "dark": 0.65, "r": 56, "color": "#ff8a6a", "flicker": false, "ms": 900 },
       { "op": "say", "who": "narr", "t": "복수심이 흩어졌다.{p:500}\n……아니, 가라앉았다.{p:300}\n에드몽 안으로." },
       { "op": "wait", "ms": 500 },
-      { "op": "say", "who": "dantes", "t": "이건 버리는 게 아니다.{p:300} 때가 올 때까지 품고 있는 거다." },
+      { "op": "say", "who": "dantes", "t": "……버리는 게 아니다.{p:400}\n품는 거다." },   // [s44-writer B3-9] 같은 변화를 네 번 설명하던 것 중 가운데를 줄인다(작4·작2-2)
       { "op": "learn", "skill": "cold_wrath" },
       { "op": "closeup", "who": "dantes", "ms": 900 },
       { "op": "grow", "v": 4 },
@@ -40150,8 +40304,8 @@ MC.addEvents({
     "a4c.n2_clues": [
       { "op": "letterbox", "on": false, "ms": 200 },
       { "op": "clue", "ids": N2_CLUES, "recall": true },
-      { "op": "say", "who": "sys", "t": "이야기한 것들이 「기억」에 적혔다.\n메뉴에서 다시 볼 수 있다." },
       ask('투서를 봤다고?{p:200} 어떤 글씨였나?', 'letter', { "*": "검사가 보여 준 그 종이 말일세." }, { "help": "기억 카드를 골라 답한다." }),
+      { "op": "hint", "t": "이야기한 것들이 「기억」에 적혔다. 메뉴에서 다시 볼 수 있다." },   // [s44-writer B3-6] 회색 힌트 줄(물음 화면 뒤 — 그 화면에 가리지 않게)
       { "op": "letterbox", "on": true, "ms": 200 }
     ],
 
@@ -40181,7 +40335,7 @@ MC.addEvents({
       { "op": "set", "flag": "q.elba" },
       { "op": "set", "flag": "q.hand" },
       { "op": "sfx", "id": "page", "gain": 0.6 },
-      { "op": "say", "who": "sys", "t": "신부님의 물음이\n메뉴 「기억」 맨 위에 적혔다." },
+      { "op": "hint", "t": "신부님의 물음이 메뉴 「기억」 맨 위에 적혔다." },   // [s44-writer B3-6]
       { "op": "set", "flag": "dd.n1" },
       { "op": "save", "slot": "auto" }
     ]),
@@ -40221,7 +40375,7 @@ MC.addEvents({
       { "op": "set", "flag": "q.hand", "v": false },
       { "op": "set", "flag": "q.love" },
       { "op": "sfx", "id": "page", "gain": 0.6 },
-      { "op": "say", "who": "sys", "t": "신부님의 새 물음이 「기억」에 적혔다." },
+      { "op": "hint", "t": "신부님의 새 물음이 「기억」에 적혔다." },   // [s44-writer B3-6]
       { "op": "set", "flag": "dd.n2" },
       { "op": "save", "slot": "auto" }
     ]),
@@ -40610,7 +40764,8 @@ MC.addEvents({
       { "op": "set", "flag": "dd.n4" },
       { "op": "save", "slot": "auto" },
       { "op": "wait", "ms": 400 },
-      { "op": "fade", "to": 0, "ms": 1200 }
+      { "op": "fade", "to": 0, "ms": 1200 },
+      { "op": "glow", "id": "bed" }                                       // [s44-writer B3-23] D4 뒤 '아침 메뉴 → 다시 잠' 한 바퀴를 줄인다: 그 밤 그대로 침대가 반짝인다(영s2b작)
     ],
 
     /* ============================================================ 옛 세이브 마이그레이션(a4m.migrate가 부름, 멱등) */
@@ -41223,6 +41378,13 @@ MC.addEvents({
   const call = ev => ({ "op": "call", "ev": ev });
   const when = (cond, then, els) => els ? { "op": "if", "cond": cond, "then": then, "else": els } : { "op": "if", "cond": cond, "then": then };
   const F = f => ({ "flag": f }), NF = f => ({ "not": { "flag": f } });
+  // [s44-writer B3-23] 거점 인사말 돌리기(var greetN — events_a4.js GREET와 같은 규칙) · 오늘 들을 수업이 없으면 「수업을 듣는다」를 흐리게(dimIf)
+  const GREET = (lines, opts) => {
+    let chain = { "op": "choice", "who": "faria", "t": lines[0], "opts": opts };
+    for (let i = 1; i < lines.length; i++) chain = when({ "var": "greetN", "eq": i }, [ { "op": "choice", "who": "faria", "t": lines[i], "opts": opts } ], [ chain ]);
+    return [ chain, { "op": "add", "var": "greetN", "n": 1 }, when({ "var": "greetN", "gte": lines.length }, [ { "op": "set", "var": "greetN", "v": 0 } ]) ];
+  };
+  const NO_LESSON = { "var": "lessonPts", "lt": 1 };
   const END = { "op": "end" };
   const NIGHT = { "all": [ { "var": "s3phase", "eq": "fit" }, NF("s3f.call") ] };
   const LAYERS_S2 = [
@@ -41621,12 +41783,11 @@ MC.addEvents({
     "s3e.h_faria": [
       when(NF("a4.lesson_chem"), [ call("s3e.lesson_chem"), END ]),
       when(NF("s3e.talk_kin"), [ call("s3e.talk_kin"), END ]),
-      { "op": "face", "id": "faria", "dir": "player" },
-      { "op": "choice", "who": "faria", "t": "자,{p:150} 오늘은 무엇을 해 볼까?", "opts": [
-        { "t": "수업을 듣는다", "v": "lesson", "do": [ call("s3h.lessons") ] },
+      { "op": "face", "id": "faria", "dir": "player" }
+    ].concat(GREET([ "자,{p:150} 오늘은 무엇을 해 볼까?", "……기침 소리, 또 들었나?{p:300}\n신경 쓰지 말라니까.", "또 왔군.{p:200} 오늘은 뭘 하겠나?", "삼 년 만에 웃더니,{p:200}\n요즘은 자주 웃는군." ], [
+        { "t": "수업을 듣는다", "v": "lesson", "dimIf": NO_LESSON, "do": [ call("s3h.lessons") ] },
         { "t": "이야기를 청한다", "v": "talk", "do": [ call("s3e.hint") ] },
-        { "t": "그만둔다", "v": "no", "cancel": true, "do": [] } ] }
-    ],
+        { "t": "그만둔다", "v": "no", "cancel": true, "do": [] } ])),
     // E3 화학: 보이지 않는 글씨는 불 앞에서 드러난다(드러냄 unveil — 보물 공개·거울 환영의 복선). 포인트를 쓰지 않는다
     "s3e.lesson_chem": [
       { "op": "face", "id": "faria", "dir": "player" },
@@ -41641,7 +41802,13 @@ MC.addEvents({
       { "op": "say", "who": "dantes", "t": "숨긴 글씨도\n불 앞에선 못 숨는군요." },
       { "op": "learn", "skill": "unveil" },
       { "op": "set", "flag": "a4.lesson_chem" },
-      { "op": "add", "var": "lessons", "n": 1 }
+      { "op": "add", "var": "lessons", "n": 1 },
+      // [s44-writer B3-22] 수업 끝 기침 한 번(작2-6) — ⑥ 토막(1825) 한가운데에 그 밤 발작의 고리
+      { "op": "wait", "ms": 500 },
+      { "op": "sfx", "id": "breath", "pitch": 0.7, "gain": 0.55 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 240 },
+      { "op": "sfx", "id": "breath", "pitch": 0.64, "gain": 0.5 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 600 },
+      { "op": "say", "who": "faria", "t": "……괜찮네." },
+      { "op": "narr", "t": "그해 가을, 레몬즙과 불.", "ms": 1500 }   // [s44-writer B3-23] 수업 끝 시간 카드
     ].concat(LAYERS_S2, [
       { "op": "save", "slot": "auto" }
     ]),
@@ -42271,7 +42438,8 @@ MC.addEvents({
       { "op": "letterbox", "on": true, "ms": 300 },
       { "op": "say", "who": "faria", "face": "weak", "t": "……들어 보게.{p:300} 이 팔." },
       // ▶ 팔 들기 — 헤엄 때와 같은 자리·같은 글자 「하나.」, 「둘.」은 오지 않는다
-      { "op": "custom", "id": "s3", "args": { "stage": "lift", "n": 3, "toast": "하나.", "idle": 3 } },
+      // [s44-director B5-14] 떨어진 팔 그림을 디더로 어둡게 둔 채 앞 두 상자를 그 위에서(시2-1) — 셋째 상자가 시작될 때 와이드로
+      { "op": "custom", "id": "s3", "args": { "stage": "lift", "n": 3, "toast": "하나.", "idle": 3, "holdSay": 2, "holdDim": 6 } },
       { "op": "wait", "ms": 500 },
       { "op": "say", "who": "faria", "t": "자네는 뱃사람이니 알지." },
       { "op": "say", "who": "faria", "t": "이런 짐을 지면\n등대까지 반도 못 가네." },
@@ -42377,14 +42545,27 @@ MC.addEvents({
       { "op": "say", "who": "think", "t": "숨을 세고 있었다.{p:300}\n신부님이 멈추실까 봐." },
       { "op": "set", "flag": "s3f.breaths" },
       { "op": "set", "var": "fillN", "v": 0 },
-      { "op": "grow" },
       { "op": "save", "slot": "auto" },
-      { "op": "fade", "to": 1, "ms": 1600 },
+      // [s44-director B5-15] 여운(시2-6): 줄 뒤 등잔만 3초(글 없음) → 페이드 2.4초 → 굴(음악 없이) → 페이드인 2초 뒤 「보초 발밑 굴」 → tunnel 음악은 첫 흙더미 때나 조작 6초 뒤
+      { "op": "wait", "ms": 3000 },
+      { "op": "fade", "to": 1, "ms": 2400 },
+      { "op": "grow" },
       { "op": "letterbox", "on": false, "ms": 0 },
       { "op": "map", "id": "tunnel2", "at": "room", "trans": "cut" },
+      { "op": "bgm", "id": null, "fade": 0 },                             // 진입 분위기(s3k.t2_look)가 튼 tunnel 곡을 곧바로 걷는다(환경음은 그대로)
       { "op": "fade", "to": 0, "ms": 1200 },
-      { "op": "wait", "ms": 300 },
-      { "op": "say", "who": "think", "t": "보초 발밑 굴.{p:300}\n비어 울리면, 들킨다." }   // fixer-s3: 스승의 지시가 아니라 남기로 한 제자의 판단으로(맹세 뒤 할 일 목록을 옮김)
+      { "op": "wait", "ms": 2000 },
+      { "op": "say", "who": "think", "t": "보초 발밑 굴.{p:300}\n비어 울리면, 들킨다." },   // fixer-s3: 스승의 지시가 아니라 남기로 한 제자의 판단으로(맹세 뒤 할 일 목록을 옮김)
+      { "op": "watch", "id": "t2mus", "ms": 6000, "ev": "s3f.t2_music" }
+    ],
+    // [s44-director B5-15] 숨 일곱 뒤 굴 음악(늦게) — 첫 흙더미(s3f.fill) 또는 조작 6초(watch t2mus). s3k.t2_look 밤 갈래와 같은 소리
+    "s3f.t2_music": [
+      when(F("s3f.t2mus"), [ END ]),
+      { "op": "set", "flag": "s3f.t2mus" },
+      { "op": "watch", "id": "t2mus", "off": true },
+      { "op": "bgm", "id": "tunnel", "fade": 2400 },
+      { "op": "music", "fn": "detuneTo", "args": [ 0, 0 ] },
+      { "op": "music", "fn": "filterTo", "args": [ 900, 0.5 ] }
     ],
 
     /* ================================================================ F8 굴 메우기 */
@@ -42394,6 +42575,7 @@ MC.addEvents({
     "s3f.fill_d4": [ { "op": "set", "flag": "s3f.d4" }, call("s3f.fill") ],
     // 흙더미 하나 — 삽질을 거꾸로
     "s3f.fill": [
+      when(NF("s3f.t2mus"), [ call("s3f.t2_music") ]),                    // [s44-director B5-15] 첫 흙더미에 굴 음악
       { "op": "add", "var": "fillN", "n": 1 },
       { "op": "jump", "id": "player", "h": 1, "ms": 110 },
       { "op": "sfx", "id": "dig", "pitch": 0.8, "gain": 0.5 },
@@ -43019,6 +43201,7 @@ MC.addEvents({
       { "op": "say", "who": "faria", "face": "wry", "t": "그래서 벽에 엉터리로 그렸지." },
       { "op": "say", "who": "faria", "t": "셋에 하나는 타 버렸네.\n나머진 밤마다 채웠지." },
       { "op": "say", "who": "faria", "t": "그 길로 로마를 떴다가,\n피옴비노에서 붙잡혔지." },
+      { "op": "say", "who": "dantes", "t": "……그럼 스파다의 재산이,{p:300}\n지금도 그 바위섬에." },   // [s44-writer B3-10] 그림자극 일곱 장을 에드몽의 말로 한 줄 요약(플5·6·플2-9)
       { "op": "letterbox", "on": false, "ms": 200 },
       call("s3t.join")
     ],
@@ -43418,6 +43601,13 @@ MC.addEvents({
   const call = ev => ({ "op": "call", "ev": ev });
   const when = (cond, then, els) => els ? { "op": "if", "cond": cond, "then": then, "else": els } : { "op": "if", "cond": cond, "then": then };
   const F = f => ({ "flag": f }), NF = f => ({ "not": { "flag": f } });
+  // [s44-writer B3-23] 거점 인사말 돌리기(var greetN — events_a4.js GREET와 같은 규칙) · 오늘 들을 수업이 없으면 「수업을 듣는다」를 흐리게(dimIf)
+  const GREET = (lines, opts) => {
+    let chain = { "op": "choice", "who": "faria", "t": lines[0], "opts": opts };
+    for (let i = 1; i < lines.length; i++) chain = when({ "var": "greetN", "eq": i }, [ { "op": "choice", "who": "faria", "t": lines[i], "opts": opts } ], [ chain ]);
+    return [ chain, { "op": "add", "var": "greetN", "n": 1 }, when({ "var": "greetN", "gte": lines.length }, [ { "op": "set", "var": "greetN", "v": 0 } ]) ];
+  };
+  const NO_LESSON = { "var": "lessonPts", "lt": 1 };
   const V = (v, eq) => ({ "var": v, "eq": eq });
   const END = { "op": "end" };
   const SAVE = { "op": "save", "slot": "auto" };
@@ -43507,9 +43697,9 @@ MC.addEvents({
       { "op": "letterbox", "on": true, "ms": 300 },
       { "op": "face", "id": "faria", "dir": "player" },
       { "op": "say", "who": "faria", "t": "원고 마지막 장일세.{p:200} 받아 적게." },
-      { "op": "say", "who": "faria", "t": "'한 나라는 한 사람 손으로\n되지 않는다.'" },
+      { "op": "say", "who": "faria", "t": "'한 나라를 세우는 일은\n한 사람 손으로\n끝나지 않는다.'" },   // [s44-writer B3-11] 원작 파리아의 이탈리아 통일론과 어긋나지 않게(뒤11)
       LB_OFF,                                                              // fixer-s3: 받아쓰기 카드·원고가 검은 띠에 잘리지 않게
-      { "op": "custom", "id": "s3", "args": { "stage": "order", "cards": "한 나라는|한 사람|손으로|되지 않는다", "var": "recite_miss", "sfx": "quill", "miss": DICT_MISS } },
+      { "op": "custom", "id": "s3", "args": { "stage": "order", "cards": "한 나라를|세우는 일은|한 사람 손으로|끝나지 않는다", "var": "recite_miss", "sfx": "quill", "miss": DICT_MISS } },
       LB_ON,
       { "op": "say", "who": "faria", "t": "한 줄 더.{p:200}\n'이 장은 내 오른손이 적었다.'" },
       LB_OFF,
@@ -43539,6 +43729,7 @@ MC.addEvents({
       { "op": "learn", "skill": "breathe" },
       { "op": "set", "flag": "a4.lesson_med" },
       { "op": "letterbox", "on": false, "ms": 300 },
+      { "op": "narr", "t": "그 겨울 내내, 서로의 맥.", "ms": 1500 },   // [s44-writer B3-23] 수업 끝 시간 카드
       call("a4.lesson_after")
     ],
 
@@ -43930,12 +44121,11 @@ MC.addEvents({
       when({ "all": [ V("s3cnt", 1), { "item": "sea_flake" }, NF("s3s.flake_given") ] }, [ call("s3s.count2"), END ]),
       when(NF("s3s.arrive"), [ call("s3h.d_faria"), END ]),
       when(NF("s3s.dictate"), [ call("s3s.dictate"), END ]),
-      { "op": "face", "id": "faria", "dir": "player" },
-      { "op": "choice", "who": "faria", "t": "자,{p:150} 오늘은 무엇을 해 볼까?", "opts": [
-        { "t": "수업을 듣는다", "v": "lesson", "do": [ call("s3h.lessons") ] },
+      { "op": "face", "id": "faria", "dir": "player" }
+    ].concat(GREET([ "자,{p:150} 오늘은 무엇을 해 볼까?", "왔나.{p:300} ……이리 앉게.", "한 손으로도{p:200}\n가르칠 건 남았네.", "오른손이 오늘은{p:200}\n좀 덜 무겁네." ], [
+        { "t": "수업을 듣는다", "v": "lesson", "dimIf": NO_LESSON, "do": [ call("s3h.lessons") ] },
         { "t": "이야기를 청한다", "v": "talk", "do": [ call("s3s.talk") ] },
-        { "t": "그만둔다", "v": "no", "cancel": true, "do": [] } ] }
-    ],
+        { "t": "그만둔다", "v": "no", "cancel": true, "do": [] } ])),
     // 이야기: 첫 번째 = 두려움(set s3.knife), 그 뒤 = 귀띔 하나
     "s3s.talk": [
       when(NF("s3s.fear"), [ call("s3s.fear"), END ]),
@@ -45083,8 +45273,9 @@ MC.addEvents({
   for (let i = 0; i < KNOCKS; i++) { if (i) KNOCK_SEQ.push(W(760)); KNOCK_SEQ.push.apply(KNOCK_SEQ, knock(i)); }
 
   // 축복(머리 위 늙은 왼손) — 그림이 있으면 화면형 한 장, 없으면 필드
+  // [s44-director B5-14] 클로즈업 무언 2.6초 → 그 위에 「……내 아들에게, 복을 비네.」(holdSay 1) → 1.6초 뒤(「섬 이름.」 자리)에서 와이드로(시2-1). 옛: 무언 7초 → 와이드 2.6초 → 말
   const BLESS_SEQ = CU_BLESS
-    ? [ { "op": "sprite", "id": "faria", "sprite": BLESS }, { "op": "custom", "id": "s4", "args": { "stage": "still", "spr": CU_BLESS, "ms": 7000, "sfx": "blanket", "gain": 0.2 } } ]
+    ? [ { "op": "sprite", "id": "faria", "sprite": BLESS }, { "op": "custom", "id": "s4", "args": { "stage": "still", "spr": CU_BLESS, "ms": 2600, "sfx": "blanket", "gain": 0.2, "holdSay": 1, "holdAfter": 1600 } } ]
     : [ { "op": "sprite", "id": "faria", "sprite": BLESS }, { "op": "sfx", "id": "blanket", "gain": 0.2 }, { "op": "jump", "id": "player", "h": 1, "ms": 90 }, W(2600) ];
   // 쥐는 손 — 세게 쥐었다가 풀린다
   const GRIP_SEQ = CU_GRIP
@@ -45234,7 +45425,7 @@ MC.addEvents({
       { "op": "music", "fn": "layer", "args": [ "counter", false, true ] },
       { "op": "music", "fn": "filterTo", "args": [ 1500, 0 ] },
       W(1800)
-    ], BLESS_SEQ, [
+    ], BLESS_SEQ, CU_BLESS ? [] : [                                         // [s44-director B5-14] 클로즈업 판은 무언을 still 2.6초가 맡는다
       W(2600)                                                              // 오르골만(말 없이 손이 머리 위에 있는 동안)
     ], CU_BLESS
       // fixer-s4p1: 클로즈업이 토막을 끊어 주므로(축복 뒤 8상자) 축복을 한 상자로 따로 — 정점이 '섬 이름.' 문답에 묻히지 않게. 폴백 판은 10상자를 지키려 합친 채
@@ -45244,7 +45435,7 @@ MC.addEvents({
       W(1400),
       { "op": "say", "who": "dantes", "t": "……몬테크리스토.", "speed": 52 },
       W(1300),
-      SAYF("좋아. 거기 있네.{p:600}\n이제 그건 자네 것일세.", "smile"),
+      SAYF("좋아.", "smile"),                                              // [s44-writer B3-12] 「거기 있네. 이제 그건 자네 것일세.」(상속 절차) 정리 — 쉼 W(3600)은 그대로(뒤2)
       W(3600),
       SAYF("나는 이 방에서 날을 세다가,\n자네를 만난 뒤로 그만뒀네.", "weak"),
       W(1800),
@@ -45284,7 +45475,7 @@ MC.addEvents({
       W(1100),
       { "op": "grow", "pose": "kneel" },
       W(2000),
-      { "op": "say", "who": "narr", "t": "칼로 이를 벌렸다." },
+      { "op": "say", "who": "narr", "t": "칼등으로 이를 벌렸다." },          // [s44-writer B3-17] 날이 아니라 등(G뒤3)
       // 열두 방울 — 숫자 없음(세는 것은 플레이어). 칼날 판 입
       { "op": "custom", "id": "s3", "args": { "stage": "drops", "n": 12, "cut": true, "mouth": "cu_mouth_knife" } },
       W(5000),
@@ -46105,7 +46296,7 @@ MC.addEvents({
                "start": [ "라토노와 포메그엔 사람이 산다.", "……티불랑이다.", "등대를 오른쪽에." ] },
     "luc": luc, "short": false, "sec": null, "hp": true, "var3": "s4_try3", "varHp": "s4_swimHp" });
   const SINK = tied => ({ "stage": "sea_sink", "air": 12, "mpDiv": 20, "knotWin": 180, "var2": "s4_try2", "tied": tied,
-    "gasp": { "who": "dantes", "t": "하아!" } });                              // ⑤ 수면에서 숨이 터지는 순간의 말풍선(QA 2 — 예전 say 상자 대신)
+    "gasp": { "who": "dantes", "t": "하아!", "after": "……횃불." } });     // [s44-writer B3-27] after: ⑥ 첫머리 생각 말풍선 — 수면에서 다시 잠수하는 까닭(영s4뒤)                              // ⑤ 수면에서 숨이 터지는 순간의 말풍선(QA 2 — 예전 say 상자 대신)
 
   MC.addEvents({
 
@@ -46119,7 +46310,15 @@ MC.addEvents({
       KNEEL,
       W(1200),
       { "op": "say", "who": "narr", "t": "눈을 뜨니, 창빛이 붉었다." },
-      W(700),
+      // [s44-writer B3-13 · C4③] 시선 컷 1.5초 안(작2-8): 자루 → 구멍(그 너머 제 침대). 꿈속 「좋아. ……그럼.」의 끊긴 뒷말을 깨어나서 잇는다
+      W(300),
+      { "op": "face", "id": "player", "dir": "left" },
+      W(450),
+      { "op": "face", "id": "player", "dir": "down" },
+      { "op": "cam", "to": "hole", "ms": 350 },
+      W(150),
+      { "op": "cam", "to": "player", "ms": 250 },
+      { "op": "face", "id": "player", "dir": "left" },
       { "op": "say", "who": "think", "t": "여기서 나가는 방법은 하나뿐이다." },
       { "op": "say", "who": "think", "t": "죽은 사람이 되는 것.", "key": true },   // [a43-play P6] 결심의 정점 — 누르고 있기 빨리감기로 넘기지 않음
       W(500),
@@ -46642,6 +46841,10 @@ MC.addEvents({
       SFX("drip", { "gain": 0.5, "pitch": 1.2 }), W(450),
       SFX("drip", { "gain": 0.45, "pitch": 0.9 }), W(900),
       { "op": "set", "flag": "s4t.water" },
+      // [s44-writer B3-14 · C7③] 섭리: 무릎 꿇은 채, 스승의 하느님께 처음으로(뒤3) — 2장 '신의 대리인'의 뿌리
+      W(600),
+      SAY("think", "……신부님의 하느님.{p:400} 오늘은, 고맙습니다."),
+      W(500),
       STAND,
       call("s4t.dawn")
     ],
@@ -46662,13 +46865,15 @@ MC.addEvents({
     ], WRECK(2), FLASH(0.6), [
       { "op": "set", "flag": "s4t.wreck" }, BOLT_LIT, W(WRECK_MS), { "op": "set", "flag": "s4t.wreck", "v": false }, BOLT_DARK,
       W(2600),
+      SAY("think", "저 배에도 사람이 있었다.{p:300} 바다는 나를 남겼다."),   // [s44-writer B3-14 · C7③] 난파선 번개 뒤 — 살아남은 것이 섭리임을(뒤3)
+      W(800),
       { "op": "weather", "rain": 0.25 },
       { "op": "narr", "t": "새벽 다섯 시쯤이었다.", "ms": 2400 }
     ], DAWN_LOOK(4000), [
       { "op": "set", "flag": "s4t.dawn" },                               // 붉은 모자·널빤지 · 수평선의 타르탄선
       W(1400),
       SAY("think", "지금쯤, 내 침대의 신부님을 찾았겠지."),
-      SAY("think", "헝겊을 풀면, 알겠지.\n자루에 누가 있었는지."),
+      // [s44-writer B3-14] 「헝겊을 풀면, 알겠지. 자루에 누가 있었는지.」 삭제 — 바로 다음 12½이 소리로 보여 준다(작11)
       SAY("think", "……배가 뜨겠지.\n무장한 배가."),
       SAY("think", "……칼마저 잃었다."),
       W(800),
@@ -46778,6 +46983,7 @@ MC.addEvents({
       SAY("dantes", "모르지우 곶에서 부서졌습니다."),
       W(500),
       SAY("captain", "흠. 몰타 뱃사람이라."),
+      { "op": "name", "v": "몰타 뱃사람", "anim": true },                  // [s44-writer B3-15] 그는 지금 거짓말 중이다 — 이름표도(뒤9). 엔딩 「＿＿＿＿」가 덮어쓴다
       SAY("captain", "말로야 뭘 못 하겠나.\n키나 잡아 보게."),
       { "op": "set", "flag": "s4t.deck" },
       LB_OFF,
@@ -46849,6 +47055,7 @@ MC.addEvents({
         { "op": "face", "id": "jacopo", "dir": "player" },
         SFX("cloth_slip", { "gain": 0.2, "pitch": 1.1 }),                // 자코포가 건넨 빵 사이 절인 생선
         W(500),
+        SAY("narr", "자코포가 마른 빵에\n절인 생선을 끼워 내밀었다."),     // [s44-writer B3-27] 화면만으로 안 보이는 것 — 건네는 것이 무엇인지(영s4뒤) · [s44-review] 이름은 에드몽이 붙인다(「……정어리.」가 알아봄이 되게 — 서술이 먼저 말하지 않는다)
         SAY("think", "……정어리.") ], [
         W(400) ]),
       call("s4e.date")
@@ -46878,7 +47085,7 @@ MC.addEvents({
          ▶bucket(tartane 오브젝트 — event s4e.face, cond s4e.counted && !s4e.end) → s4e.face: custom s4 face 4초(keep — s4_shadow≥2면 눈 그늘 판, 건배 값이 없으면 2초 더)
            → 물에 비친 얼굴 위에 건배 메아리 1상자 → set s4e.end · s4phase end · s4grade · writeClear(mc34.ch1clear) · save ⑧ → s4e.ledger
          s4e.ledger(⑧ 이어하기도 s4.resume의 watch로 여기부터 — H2-4): 파도(sea_calm) → custom s4 ending(장부 3줄·「익」 앞 0.8초·clank·이름칸 커서·크레딧·「끝」)
-           → name ＿＿＿＿ → set s4.clear → save → s4e.record: custom s4 record(9줄·등급) → custom title(목록 맨 끝 — validate 8-6)
+           → name ＿＿＿＿ → set s4.clear → save → custom title(목록 맨 끝 — validate 8-6). [0.4.4 C2③] 기록(custom s4 record)은 타이틀 「＿＿＿＿ · 끝」 탭으로(title.js, RECORD 공유)
    flags(소유): s4e.counted(손가락 셈 끝 — 물통이 보임) s4e.end s4.clear · var(소유): s4phase 'end' · s4_grade · s4_promise('pending').
    읽는 값: s3_year toast s4_shadow s4_try2 s4_try3 s4_swimHp s4_assist(등급·기록) · 인계 기록은 §F-2 전부. 무음 자리(얼굴 4초·장부 뒤 2초)에 안내 글 없음. 2장 예고·막·장 번호·연도 카드 없음. */
 (function (MC) { 'use strict';
@@ -46966,12 +47173,13 @@ MC.addEvents({
     "ledger": [ "34번.", "1815년 2월 입소.", "비고: 탈옥 중 익사." ],
     "pause": [ [ 2, 9, 800 ] ], "clankAt": [ 2, 9 ],
     "credit": [ "원작", "알렉상드르 뒤마 『몬테크리스토 백작』" ], "fin": "끝",
-    "cursorMs": 3000, "music": "orgel_end" };
+    "cursorMs": 7000, "music": "orgel_end" };                        // [s44-director B3-24] 빈 이름칸 3초 → 7초(뒤2-3: 열네 해를 닫는 빈칸에 머물 시간). 크레딧은 커서가 멎고 1.5초 뒤(스테이지)
   // 기록(H2-16): [라벨 키, 값 키] — 값 안의 {…}는 스테이지가 채운다. 맨 아래 등급은 grade(var 이름)로
   const RECORD = { "stage": "record", "grade": "s4_grade",
     "lines": [ [ "rec.days", "rec.daysV" ], [ "rec.age", "rec.ageV" ], [ "rec.tally", "rec.tallyV" ], [ "rec.counted", "rec.countedV" ],
                [ "rec.nights", "rec.nightsV" ], [ "rec.learned", "rec.learnedV" ], [ "rec.escape", "rec.escapeV" ], [ "rec.time", "rec.timeV" ] ],   // 통합: 걸린 시간 값은 rec.timeV(fmt.play면 「플레이 1:05」로 겹침)
     "bell": "bell" };
+  MC.ch1.s4e.RECORD = RECORD;                                            // [s44-director C2③] 타이틀 「＿＿＿＿ · 끝」 탭이 같은 줄로 기록을 연다(title.js)
 
   MC.addEvents({
 
@@ -47013,11 +47221,15 @@ MC.addEvents({
       { "op": "if", "cond": { "var": "s4_shadow", "gte": 2 },            // 복수의 그림자 ≥2 — 눈 그늘 한 단계(H2-7)
         "then": [ { "op": "if", "cond": TOAST_ANY, "then": [ FACE(1, 0) ], "else": [ FACE(1, 2000) ] } ],
         "else": [ { "op": "if", "cond": TOAST_ANY, "then": [ FACE(0, 0) ], "else": [ FACE(0, 2000) ] } ] },
+      // [s44-writer B3-16] 알아보지 못함(원작 리보르노 이발소의 거울, 뒤8·뒤2) — 1815년 감방 「누구지? ……34번?」과 운을 맞춰 「누구지 → 아버지」로 잇는다
+      { "op": "say", "who": "think", "t": "……누구지." },
+      { "op": "wait", "ms": 600 },
       // 건배 메아리 1상자(M18 고정) — 값이 없으면 얼굴 4초가 2초 더 길었던 것으로 끝(글 없음)
       { "op": "if", "cond": V("toast", "A"), "then": [ { "op": "say", "who": "think", "t": "파라옹호는……\n아직 떠 있을까." } ],   // 사용자 결정(2026-10-20 「권장대로」, QA Q5): 글자 그대로 줄만 나눔(M18)
         "else": [ { "op": "if", "cond": V("toast", "B"), "then": [ { "op": "say", "who": "think", "t": "아버지." } ],
           "else": [ { "op": "if", "cond": V("toast", "C"), "then": [ { "op": "say", "who": "think", "t": "메르세데스는 서른하나겠군." } ], "else": [] } ] } ] },
-      { "op": "wait", "ms": 800 },
+      // [s44-director B3-24 · 시2-10] 물방울 하나가 얼굴을 깨고, 깨진 상을 3초 둔 뒤 장부로(옛: 0.8초 뒤 검정)
+      { "op": "custom", "id": "s4", "args": { "stage": "face", "brk": true, "ms": 3000 } },
       { "op": "set", "flag": "s4e.end" },
       { "op": "set", "var": "s4phase", "v": "end" },
       { "op": "s4grade", "var": "s4_grade" },
@@ -47040,11 +47252,13 @@ MC.addEvents({
       { "op": "name", "v": "＿＿＿＿", "anim": false },                    // H2-26 — dispName만(state.name은 그대로)
       { "op": "set", "flag": "s4.clear" },
       { "op": "save", "slot": "auto" },                                  // 엔딩 뒤 이어하기 = 이 장부부터(H2-4), 타이틀은 「＿＿＿＿ · 끝」
-      { "op": "call", "ev": "s4e.record" }
+      // [s44-director C2③ · B3-24] 기록 카드는 엔딩 흐름에서 뺐다 — 「끝」과 오르골로 닫고 곧장 타이틀. 기록은 타이틀 「＿＿＿＿ · 끝」을 탭하면(title.js)
+      { "op": "custom", "id": "title", "args": { "keepMusic": true, "xfade": 4000 } }   // 목록 맨 끝(validate 8-6). 「끝」의 오르골을 끊지 않고 4초에 타이틀 곡으로
     ],
 
     /* ───────────── 장면 15 — 기록 ───────────── */
     // 장부 뒷면: '세어 온 것들' 8줄 + 등급(종 1회) → 탭 → 타이틀(오르골이 이어진다)
+    // [s44-director] 0.4.4부터 엔딩에서는 부르지 않는다(타이틀 탭이 같은 RECORD로 스테이지를 직접 연다). 디버그·validate 필수 목록용으로 남김
     "s4e.record": [
       { "op": "custom", "id": "s4", "args": RECORD },
       { "op": "custom", "id": "title", "args": { "keepMusic": true, "xfade": 4000 } }   // 목록 맨 끝(validate 8-6). 통합: 「끝」의 오르골을 끊지 않고 4초에 타이틀 곡으로
@@ -47524,7 +47738,7 @@ MC.addLang('ko', {
     "recap.p.s4_rock": "바다를 헤엄쳐 바위섬에 닿았다",
     "recap.p.s4_needle": "신부님 방에서 바늘을 찾았다",
     "recap.p.s4_laid": "신부님을 내 침대에 눕혔다",
-    "recap.p.s4_resolve": "죽은 사람이 되기로 했다",
+    "recap.p.s4_resolve": "죽은 사람이 되어 나가기로 했다",
     "recap.p.s4_won": "꿈속 철문 안의 절망을 이겼다",
     "recap.p.s4_sit": "자루 곁에서 눈을 감았다",
     "recap.p.s4_day": "신부님 침대에 자루가 놓였다",
@@ -47686,19 +47900,24 @@ MC.addLang('ko', {
     "rec.age": "나이",
     "rec.ageV": "들어갈 때 열아홉 · 나올 때 서른셋",
     "rec.tally": "그은 빗금",
-    "rec.tallyV": "{n}줄",
+    "rec.tallyV": "{n} 줄",
     "rec.counted": "센 것",
     "rec.countedV": "발소리 열둘 · 숨 일곱 · 방울 열, 열둘",
     "rec.nights": "싸운 밤 · 쓰러진 밤 · 피한 밤",
     "rec.nightsV": "{a} · {b} · {c}",
     "rec.learned": "배운 것 · 찾아낸 약점",
-    "rec.learnedV": "{a}과목 · {b}/{n}",
+    "rec.learnedV": "{a} · {n} 중 {b}",
     "rec.escape": "탈출",
-    "rec.escapeV": "다시 {n}번 · 헤엄 끝 기운 {hp}%",
-    "rec.escapeV0": "단번에 · 헤엄 끝 기운 {hp}%",
+    "rec.escapeV": "다시 {n} 번 · 남은 숨 {hp}",
+    "rec.escapeV0": "단번에 · 남은 숨 {hp}",
     "rec.time": "걸린 시간",
-    "rec.timeV": "{h}시간 {m}분",
-    "rec.timeV0": "{m}분",
+    "rec.timeV": "{h} 시간 {m} 분",
+    "rec.timeV0": "{m} 분",
+    "rec.timeVh": "{h} 시간",
+    "rec.none": "없음",
+    "rec.subject": "과목",
+    "rec.tenth": "할",
+    "rec.hpNone": "거의 없음",
     "rec.grade": "등급",
     "rec.gradeS": "파도가 등을 밀어 주었다.",
     "rec.gradeA": "거친 바다를 끝내 건넜다.",
@@ -48145,20 +48364,25 @@ MC.addLang('ko', {
     "rec.age": { "w": 86, "font": "small", "lines": 1, "note": "기록 라벨 — 나이" },
     "rec.ageV": { "w": 168, "font": "small", "lines": 1, "note": "기록 값(고정): 들어갈 때 19세 · 나올 때 33세" },
     "rec.tally": { "w": 86, "font": "small", "lines": 1, "note": "기록 라벨 — 벽에 그은 날짜 빗금 수" },
-    "rec.tallyV": { "w": 80, "font": "small", "lines": 1, "note": "기록 값. {n} = 빗금 수(숫자) — 단위를 붙여 연도로 읽히지 않게" },
+    "rec.tallyV": { "w": 120, "font": "small", "lines": 1, "note": "기록 값. {n} = 빗금 수 — 한국어는 장부 말투 한글 셈말(칠백사십오, 0.4.4 C2③). 단위를 붙여 연도로 읽히지 않게" },
     "rec.counted": { "w": 86, "font": "small", "lines": 1, "note": "기록 라벨 — 게임 내내 세어 온 것들" },
     "rec.countedV": { "w": 168, "font": "small", "lines": 1, "note": "기록 값(고정): 간수 발소리 12 · 숨 7 · 약 방울 10, 12 — 각 장의 숫자 모티프와 같은 낱말로" },
     "rec.nights": { "w": 120, "font": "small", "lines": 1, "note": "기록 라벨 — 싸운 밤 · 쓰러진 밤 · 피한 밤(전투 수 · 패배 수 · 도망 수)" },
-    "rec.nightsV": { "w": 80, "font": "small", "lines": 1, "note": "기록 값. {a} {b} {c} = 숫자 셋" },
+    "rec.nightsV": { "w": 168, "font": "small", "lines": 1, "note": "기록 값. {a} {b} {c} = 수 셋 — 한국어는 고유어 셈말(서른여덟), 0이면 rec.none" },
     "rec.learned": { "w": 120, "font": "small", "lines": 1, "note": "기록 라벨 — 파리아에게 배운 과목 · 찾아낸 적 약점" },
-    "rec.learnedV": { "w": 100, "font": "small", "lines": 1, "note": "기록 값. {a} = 과목 수, {b} = 찾아낸 약점 수, {n} = 찾을 수 있는 약점 전체(일반 적 + 보스 — 지금 19)" },
+    "rec.learnedV": { "w": 168, "font": "small", "lines": 1, "note": "기록 값 「다섯 과목 · 열아홉 중 열둘」. {a} = 과목 수(한국어는 「다섯 과목」까지 — rec.subject), {b} = 찾아낸 약점 수, {n} = 찾을 수 있는 약점 전체(일반 적 + 보스 — 지금 19). 0이면 rec.none" },
     "rec.escape": { "w": 86, "font": "small", "lines": 1, "note": "기록 라벨 — 탈출" },
-    "rec.escapeV": { "w": 168, "font": "small", "lines": 1, "note": "기록 값. {n} = 탈출 손놀림 다시 한 횟수(1 이상), {hp} = 헤엄 끝 체력 %" },
-    "rec.escapeV0": { "w": 168, "font": "small", "lines": 1, "note": "기록 값(다시 한 횟수 0일 때 rec.escapeV 대신). {hp} = 헤엄 끝 체력 %" },
+    "rec.escapeV": { "w": 168, "font": "small", "lines": 1, "note": "기록 값 「다시 세 번 · 남은 숨 칠 할」. {n} = 탈출 손놀림 다시 한 횟수(1 이상, 관형 셈말), {hp} = 헤엄 끝 체력을 할로(칠 할 — rec.tenth, 0이면 rec.hpNone)" },
+    "rec.escapeV0": { "w": 168, "font": "small", "lines": 1, "note": "기록 값(다시 한 횟수 0일 때 rec.escapeV 대신). {hp} = 헤엄 끝 체력을 할로(칠 할)" },
     "rec.time": { "w": 86, "font": "small", "lines": 1, "note": "기록 라벨 — 플레이 시간(값은 rec.timeV)" },
-    "rec.timeV": { "w": 90, "font": "small", "lines": 1, "note": "기록 값 — 플레이 시간 '2시간 41분'(0.4.2 A6: '2:41'은 0:01이 1초로 읽혀 바꿈). {h}=시간, {m}=분(앞 0 없음). 1시간 미만이면 rec.timeV0" },
-    "rec.timeV0": { "w": 60, "font": "small", "lines": 1, "note": "기록 값 — 플레이 시간이 1시간 미만일 때 '41분'. {m}=분" },
-    "rec.grade": { "w": 60, "font": "small", "lines": 1, "note": "기록 맨 아래 등급 라벨(값은 금색 큰 S/A/B)" },
+    "rec.timeV": { "w": 120, "font": "small", "lines": 1, "note": "기록 값 — 플레이 시간 「두 시간 사십일 분」(0.4.4 C2③ 장부 말투 — 시간은 고유어 관형, 분은 한자어). {h}=시간, {m}=분. 1시간 미만이면 rec.timeV0, 분이 0이면 rec.timeVh" },
+    "rec.timeV0": { "w": 80, "font": "small", "lines": 1, "note": "기록 값 — 플레이 시간이 1시간 미만일 때 「사십일 분」. {m}=분" },
+    "rec.timeVh": { "w": 80, "font": "small", "lines": 1, "note": "기록 값 — 플레이 시간의 분이 0일 때 「두 시간」. {h}=시간" },
+    "rec.none": { "w": 40, "font": "small", "lines": 1, "note": "기록 값 안의 0(「없음」) — 싸운 밤·과목·약점 수가 0일 때" },
+    "rec.subject": { "w": 30, "font": "small", "lines": 1, "note": "기록 값 rec.learnedV의 {a} 뒤 단위(「다섯 과목」)" },
+    "rec.tenth": { "w": 20, "font": "small", "lines": 1, "note": "기록 값 rec.escapeV의 {hp} 단위 — 열에 몇(「칠 할」 = 70%)" },
+    "rec.hpNone": { "w": 60, "font": "small", "lines": 1, "note": "기록 값 rec.escapeV의 {hp}가 5% 미만일 때(「남은 숨 거의 없음」)" },
+    "rec.grade": { "w": 60, "font": "small", "lines": 1, "note": "기록 맨 아래 등급 라벨(값은 금색 S/A/B — 0.4.4부터 본문 크기, 라벨 오른쪽)" },
     "rec.gradeS": { "w": 168, "font": "small", "lines": 1, "note": "탈출 등급 S 문구(바다가 도왔다 — 담담하게)" },
     "rec.gradeA": { "w": 168, "font": "small", "lines": 1, "note": "탈출 등급 A 문구(거친 바다를 끝내 건넜다)" },
     "rec.gradeB": { "w": 168, "font": "small", "lines": 1, "note": "탈출 등급 B 문구(살아남은 것만으로 충분하다 — 위로하는 투가 아니라 담담하게)" }
@@ -48664,6 +48888,9 @@ MC.addLang('en', {
     "그림자 쥐 떼가 몰려왔다!": "A swarm of Shade Rats rushes in!",
     "문 앞에 그림자 쥐가 웅크리고 있다!": "A Shade Rat crouches before the door!",
     "그림자 쥐들이 문을 지키고 있다!": "Shade Rats are guarding the door!",
+    // [s44-writer B3-26] B2 적 이름 갈래(추리의 밤 2 전 = 비뚤어진 글씨 / 뒤 = 왼손의 글씨) — 번역 담당 검수 대상
+    "비뚤어진 글씨": { "t": "Crooked Script", "g": { "art": "a", "pl": "Crooked Scripts" } },
+    "왼손의 글씨": { "t": "Left-Handed Script", "g": { "art": "a", "pl": "Left-Handed Scripts" } },
     "누군가 속삭인다. …착오라는 말이다.": "Someone is whispering.\n...“Mistake.”",
     "이 그림자는 절망과 다르다. [사색]을 써 보자.": "This shadow isn’t like Despair. Let me try [Reason].",
     "빗금 사이로 절망이 차오른다.": "Despair wells up between the marks.",
@@ -50153,6 +50380,32 @@ MC.addLang('en', {
   C.breath = function (args) {
     if (ch1.minigames && ch1.minigames.breath) return ch1.minigames.breath(args || {});
     U.warn('breath', 'minigames.breath 없음'); return Promise.resolve({ ok: true });
+  };
+
+  /* ================================================================ [s44-director B5-14] holdSay — 클로즈업을 다음 대사가 끝날 때까지 남긴다
+     지금까지는 '스테이지 끝 → 대사' 순서라 정점의 말이 늘 와이드(16px 인물) 위에서 나왔다(시2-1). 스테이지 인자 holdSay:N이면
+     스테이지가 끝날 자리에서 결과를 먼저 돌려주고(이벤트가 다음 대사로 감) 화면은 막지 않는 배경(blocking false)으로 남긴다.
+     걷힘(먼저 오는 것): 대사 op N개가 끝나고 holdAfter ms(기본 1200) · N+1번째 대사 op가 시작 · 위에 다른 불투명 화면 · 페이드 검정 · 이벤트가 끝남 · 60초.
+     쓰는 쪽: s4escape.js·s3night.js mount의 hold 옵션(still·lift·castle). 대사 셈은 MC.dialogue.sayN/saidN(dialogue.js). */
+  ch1.holdSay = function (n, after) {
+    const D = MC.dialogue, n0 = Math.max(1, n | 0), aft = after != null && isFinite(+after) ? Math.max(0, +after) : 1200;
+    const base = D ? D.sayN : 0, done0 = D ? D.saidN : 0, t0 = MC.time.real;
+    let doneAt = -1, idle = 0;
+    return {
+      // 걷을 때인가(true면 스테이지가 디더로 나간다)
+      check(sc) {
+        const now = MC.time.real, started = (D ? D.sayN : 0) - base, done = (D ? D.saidN : 0) - done0;
+        if (done >= n0 && doneAt < 0) doneAt = now;
+        if (doneAt >= 0 && now - doneAt >= aft) return 'after';
+        if (started > n0) return 'next';
+        const stk = MC.scene.stack, i = stk.indexOf(sc);
+        if (i >= 0 && stk.slice(i + 1).some(o => o.opaque)) return 'covered';
+        if (MC.fx.fadeLevel && MC.fx.fadeLevel() >= 0.99) return 'black';
+        if (MC.events && !MC.events.running) { if (++idle > 40) return 'idle'; } else idle = 0;
+        if (now - t0 > 60000) return 'cap';
+        return false;
+      }
+    };
   };
 
   /* ================================================================ [a43-ui P8-3] 첫 자유 이동 안내(부두) */
@@ -52499,43 +52752,63 @@ MC.addLang('en', {
   function mount(o) {
     return new Promise(resolve => {
       const g = G();
-      const sc = { name: o.name, opaque: false, blocking: !!o.opaque, t: 0, out: -1, res: null, done: false, cover: false };
-      let buf = null;
-      sc.end = res => { if (sc.out >= 0) return; sc.res = res; sc.out = 0; sc.opaque = false; };
+      const sc = { name: o.name, opaque: false, blocking: !!o.opaque, t: 0, out: -1, res: null, done: false, cover: false, held: null };
+      let buf = null, resolved = false;
+      const settle = r => { if (resolved) return; resolved = true; resolve(r || { ok: true }); };
+      // [s44-director B5-14] o.hold = holdSay N(다음 대사 N개가 끝날 때까지 화면을 남김 — ch1.holdSay) · o.holdAfter ms · o.holdDim(0~16, 남는 동안 검정 디더로 어둡게)
+      const holdN = Math.max(0, (+o.hold || 0) | 0);
+      sc.end = res => {
+        if (sc.out >= 0) return; sc.res = res;
+        if (holdN > 0 && !sc.held && sc.heldT == null && ch1.holdSay && !isAuto()) {   // 첫 끝 = 결과만 돌려주고(입력 400ms 완충) 막지 않는 배경으로 남는다
+          sc.held = ch1.holdSay(holdN, o.holdAfter); sc.heldT = sc.t; sc.blocking = false; sc.name = 'ev_hold_' + o.name;
+          if (MC.input && MC.input.lock) MC.input.lock(400);
+          settle(res);
+          return;
+        }
+        sc.out = 0; sc.opaque = false;
+      };
       sc.lv = () => (sc.out >= 0 ? MC.clamp(1 - sc.out / FADE, 0, 1) : MC.clamp(sc.t / FADE, 0, 1)) * 16;
       function finish() {
         if (sc.done) return; sc.done = true;
         try { if (o.exit) o.exit(sc); } catch (e) { MC.core.error(e, o.name + '.exit'); }
         MC.scene.remove(sc);
-        if (MC.input && MC.input.lock) MC.input.lock(400);   // [a43-play P7] 조작 → 대사 이음새 400ms 완충(끝의 휙·누름이 다음 줄을 넘기지 않게, 누르던 손가락은 뗄 때까지 무시)
+        if (!resolved && MC.input && MC.input.lock) MC.input.lock(400);   // [a43-play P7] 조작 → 대사 이음새 400ms 완충(끝의 휙·누름이 다음 줄을 넘기지 않게, 누르던 손가락은 뗄 때까지 무시)
         if (sc.cover) U.coverEnd();
-        resolve(sc.res || { ok: true });
+        settle(sc.res || { ok: true });
       }
+      sc.dropHold = () => { if (!sc.held) return; sc.held = null; finish(); };
       sc.enter = () => { if (o.opaque) { U.coverBegin(); sc.cover = true; } };
       sc.update = dt => {
         sc.t += dt;
         if (sc.out >= 0) { sc.out += dt; if (sc.out >= FADE) finish(); return; }
         if (o.opaque && sc.t >= FADE) sc.opaque = true;
+        if (sc.held) {                                         // holdSay: 그림만 남기고 걷힐 때를 본다(스테이지 진행 없음)
+          const why = sc.held.check(sc);
+          if (why) { sc.heldWhy = why; sc.held = null; sc.out = why === 'covered' || why === 'black' ? FADE - 1 : 0; sc.opaque = false; }
+          return;
+        }
         try { if (o.update) o.update(sc, dt); }
         catch (e) { MC.core.error(e, o.name + '.update'); sc.end(o.safe ? o.safe() : { ok: true }); }
       };
       sc.onInput = ev => {
-        if (sc.out < 0 && o.input) { try { o.input(sc, ev); } catch (e) { MC.core.error(e, o.name + '.input'); } }
+        if (sc.out < 0 && !sc.held && sc.heldT == null && o.input) { try { o.input(sc, ev); } catch (e) { MC.core.error(e, o.name + '.input'); } }
         return true;
       };
       sc.onBack = () => {};
+      const dim = () => { if (sc.heldT == null || !o.holdDim) return; const d = Math.round(MC.clamp((sc.t - sc.heldT) / 400, 0, 1) * (+o.holdDim || 6)); if (d > 0) G().ditherFill('#000000', d); };
       sc.render = () => {
         const lv = sc.lv();
         if (!o.opaque) { o.render(sc, lv); return; }
-        if (lv >= 16) { o.render(sc, 16); return; }
+        if (lv >= 16) { o.render(sc, 16); dim(); return; }
         if (!buf || buf.width !== g.W || buf.height !== g.H) buf = g.makeCanvas(g.W, g.H);
         g.withCtx(buf, bx => {
           bx.setTransform(1, 0, 0, 1, 0, 0); bx.globalAlpha = 1; bx.globalCompositeOperation = 'source-over'; bx.imageSmoothingEnabled = false;
-          o.render(sc, 16);
+          o.render(sc, 16); dim();
         });
         U.drawDither(buf, 0, 0, lv);
       };
       if (o.init) o.init(sc);
+      for (const s of MC.scene.stack.slice()) if (s.held && typeof s.dropHold === 'function') s.dropHold();
       MC.scene.push(sc);
     });
   }
@@ -53438,6 +53711,7 @@ MC.addLang('en', {
     const wrist = (L, p) => { const ang = -p * ANG, lx = (L.wr[0] - L.piv[0]) * L.s, ly = (L.wr[1] - L.piv[1]) * L.s; return [L.px + lx * Math.cos(ang) - ly * Math.sin(ang), L.py + lx * Math.sin(ang) + ly * Math.cos(ang)]; };
     return mount({
       name: 'mg_s3_lift', opaque: true,
+      hold: a.holdSay, holdAfter: a.holdAfter, holdDim: a.holdDim,   // [s44-director B5-14] 떨어진 팔을 어둡게 둔 채 다음 대사 N개를 그 위에서(시2-1)
       safe: () => ({ lifts: Math.max(1, S.lifts) }),
       update(sc, dt) {
         const L = layout(), s = dt / 1000;
@@ -55945,9 +56219,20 @@ MC.addLang('en', {
   function mount(o) {
     return new Promise(resolve => {
       const g = G(), IN = o.IN == null ? FADE : o.IN, OUT = o.OUT == null ? FADE : o.OUT;
-      const sc = { name: o.name, opaque: false, blocking: !!o.opaque, t: 0, out: -1, res: null, done: false, cover: false };
+      const sc = { name: o.name, opaque: false, blocking: !!o.opaque, t: 0, out: -1, res: null, done: false, cover: false, held: null };
       let buf = null, resolved = false;
-      sc.end = res => { if (sc.out >= 0) return; if (res !== undefined) sc.res = res; sc.out = 0; sc.opaque = false; };
+      // [s44-director B5-14] o.hold = holdSay N(대사 N개가 끝날 때까지 화면을 남김) · o.holdAfter ms · o.holdDim(0~16 — 남아 있는 동안 검정 디더로 어둡게)
+      const holdN = Math.max(0, num(o.hold, 0) | 0);
+      sc.end = res => {
+        if (sc.out >= 0) return;
+        if (res !== undefined) sc.res = res;
+        if (holdN > 0 && !sc.held && ch1.holdSay && !isAuto()) {         // 첫 끝 = 결과만 돌려주고 남는다
+          sc.held = ch1.holdSay(holdN, o.holdAfter); sc.heldT = sc.t; sc.blocking = false; sc.name = 'ev_hold_' + o.name;
+          sc.resolveNow(sc.res);
+          return;
+        }
+        sc.out = 0; sc.opaque = false;
+      };
       // 남겨 두는 배경(ev_s4_<stage>): 결과를 먼저 돌려주고 화면은 그대로 둔다 — 이벤트가 그 위에 대사를 띄우고 나중에 clear로 걷는다
       // [a43-play P7] 결과를 돌려주는 순간(= 다음 대사가 시작되는 자리) 400ms 입력 완충 — 끝의 휙·누름이 다음 줄을 넘기지 않게(누르던 손가락은 뗄 때까지 무시).
       //   남겨 둔 배경을 나중에 걷을 때(finish)는 이미 돌려준 뒤라 다시 잠그지 않는다
@@ -55965,29 +56250,38 @@ MC.addLang('en', {
         sc.t += dt;
         if (sc.out >= 0) { sc.out += dt; if (sc.out >= OUT) finish(); return; }
         if (o.opaque && sc.t >= IN) sc.opaque = true;
+        if (sc.held) {                                                  // holdSay: 그림만 남기고(스테이지 진행 없음) 걷힐 때를 본다
+          const why = sc.held.check(sc);
+          if (why) { sc.heldWhy = why; sc.held = null; sc.out = why === 'covered' || why === 'black' ? OUT - 1 : 0; sc.opaque = false; }
+          return;
+        }
         try { if (o.update) o.update(sc, dt); }
         catch (e) { MC.core.error(e, o.name + '.update'); sc.end(o.safe ? o.safe() : { ok: true }); }
       };
       sc.onInput = ev => {
-        if (sc.out < 0 && o.input) { try { o.input(sc, ev); } catch (e) { MC.core.error(e, o.name + '.input'); } }
+        if (sc.out < 0 && !sc.held && o.input) { try { o.input(sc, ev); } catch (e) { MC.core.error(e, o.name + '.input'); } }
         return true;
       };
       sc.onBack = () => {};
+      const dimOf = () => (sc.heldT != null && o.holdDim ? Math.round(MC.clamp((sc.t - sc.heldT) / 400, 0, 1) * num(o.holdDim, 6)) : 0);
+      sc.dropHold = () => { if (!sc.held) return; sc.held = null; finish(); };   // 다른 스테이지가 열리면 남은 클로즈업은 곧바로 걷는다
       sc.render = () => {
         const lv = sc.lv();
         try {
           if (!o.opaque) { o.render(sc, lv); return; }
-          if (lv >= 16) { o.render(sc, 16); return; }
+          if (lv >= 16) { o.render(sc, 16); const dm = dimOf(); if (dm > 0) g.ditherFill('#000000', dm); return; }
           if (!buf || buf.width !== g.W || buf.height !== g.H) buf = g.makeCanvas(g.W, g.H);
           g.withCtx(buf, bx => {
             bx.setTransform(1, 0, 0, 1, 0, 0); bx.globalAlpha = 1; bx.globalCompositeOperation = 'source-over'; bx.imageSmoothingEnabled = false;
             bx.clearRect(0, 0, g.W, g.H);
             o.render(sc, 16);
+            const dm = dimOf(); if (dm > 0) g.ditherFill('#000000', dm);
           });
           U.drawDither(buf, 0, 0, lv);
         } catch (e) { MC.core.error(e, o.name + '.render'); sc.end(o.safe ? o.safe() : { ok: true }); }
       };
       if (o.init) o.init(sc);
+      for (const s of MC.scene.stack.slice()) if (s.held && typeof s.dropHold === 'function') s.dropHold();
       MC.scene.push(sc);
     });
   }
@@ -56635,13 +56929,13 @@ MC.addLang('en', {
     if (!surf && (idle >= 1500 || (t - S.st > 600 && S.depth >= D0 - 1))) U.hintHand(cx + 40, Math.round(H * 0.6), 12, 'tap', '#0a1c30');   // [a43-play V4] 0.72 → 0.6: 아래로 옮긴 안내 글(숨 게이지 위)과 겹치지 않게
   }
   // ⑤ 수면 — 숨이 터지는 순간의 말풍선(당테스 머리에서 꼬리, 흰 번쩍임 뒤 120ms부터 ms−250까지). 이벤트 인자 gasp.t(러너가 번역)
-  function drawGasp(k, text, ms, hy) {
+  function drawGasp(k, text, ms, hy, think) {          // [s44-writer B3-27] think: 생각 말풍선(⑥ 「……횃불.」)
     if (k < 120 || k > ms - 120) return;
     const g = G(), W = g.W, cx = W >> 1;
     const lines = [text], w = Math.min(W - 16, MC.text.width(text, 'body') + 12), bh = U.bubbleH(1, 'body');
     const bx = MC.clamp(cx + 24, 4, W - w - 4), by = Math.max(4, hy - bh - 18);
     const lv = Math.round(16 * Math.min(1, (k - 120) / 100, (ms - 120 - k) / 150));
-    const c = baked('gp2|' + text + '|' + w, () => { const cv = g.makeCanvas(w + 2, bh + 12); g.withCtx(cv, () => U.bubble(0, 0, w, lines, { font: 'body', tail: [6, bh + 10] })); return cv; });
+    const c = baked('gp2|' + (think ? 't|' : '') + text + '|' + w, () => { const cv = g.makeCanvas(w + 2, bh + 12); g.withCtx(cv, () => U.bubble(0, 0, w, lines, { font: 'body', tail: [6, bh + 10], think: !!think })); return cv; });
     U.drawDither(c, bx, by, lv);
   }
   const flameMemo = new WeakMap();
@@ -56743,6 +57037,7 @@ MC.addLang('en', {
     const memo = a.memo === false ? '' : (a.memo != null ? String(a.memo) : U.tf('story.knotMemory'));
     // [fixer-s4p2] QA 2: 「하아!」는 ⑤ 수면에서 숨을 들이켜는 그 순간 말풍선으로
     const gaspT = a.gasp && a.gasp.t ? String(a.gasp.t) : (typeof a.gasp === 'string' ? a.gasp : ''), SURF_MS = gaspT ? 1500 : 900;
+    const torchT = a.gasp && a.gasp.after ? String(a.gasp.after) : '', TORCH_MS = 1700;   // [s44-writer B3-27] ⑥ 첫머리 생각 말풍선(다시 잠수하는 까닭 — 횃불)
     const tied = a.tied === true, var2 = a.var2 || null, varA = a.varAssist || 's4_assist', base2 = +getVar(var2) || 0;
     const ASSIST0 = settings().assist === true;
     const done = (fails, usedA) => { if (var2) setVar(var2, base2 + fails); if (usedA) setVar(varA, 1); };
@@ -56967,7 +57262,7 @@ MC.addLang('en', {
         if (S.seg <= 2) drawCut(t, S, idle);
         else if (S.seg <= 4) drawKnot(t, S, idle);
         else if (S.seg === 5) { drawRise(t, S, D0, idle); if (gaspT && S.surfT >= 0) drawGasp(t - S.surfT, gaspT, SURF_MS, S.headY); }
-        else drawSurface(t, S, idle);
+        else { drawSurface(t, S, idle); if (torchT && !S.diving && S.segF[6] === 0) drawGasp(t - S.st, torchT, TORCH_MS, Math.round(H * 0.7) - 26, true); }
         bub.draw(t, 12);
         // [c43-guide B1] 토막마다 안내 한 줄 = 공통 안내(U.guide — 화면 아래 대화창 자리 위, 숨 게이지 바로 위 · 가장 밝은 단 · 검은 그림자 · 디더 없음).
         //   토막 첫머리 300ms 뒤 → 그 토막 첫 입력에 사라짐 → 4초 손이 없으면 다시. ⑥만 물 위로 내민 머리를 가리지 않게 물결 고리 아래
@@ -57411,6 +57706,7 @@ MC.addLang('en', {
     let fired = false;
     return mount({
       name: 'mg_s4_still', opaque: true, IN, OUT,
+      hold: a.holdSay, holdAfter: a.holdAfter, holdDim: a.holdDim,      // [s44-director B5-14] 클로즈업 위에 다음 대사 N개(축복 「내 아들에게」 — 시2-1)
       update(sc) {
         if (!fired && sc.t >= IN) {                     // 다 보인 뒤 소리·진동 함께
           fired = true;
@@ -57548,14 +57844,19 @@ MC.addLang('en', {
     const CH = Math.max(10, num(a.CH, 48)) * U.typeMul(), after = Math.max(0, num(a.after, 2000));
     const T_IN = 400, tHead = 700, P = L.plan(lines, tHead + 700, CH, 260, a.pause), red = L.redFrom(lines);
     const tLast = P.tTyped + CH, OUT_MS = 600;
+    // [s44-director B5-3] strike:[줄, 글자 index] — 다 친 뒤 0.7초에 그 글자부터 줄 끝까지 펜으로 줄을 긋는다(입소 장부 「이름: 에드몽 당테스」 → 이름이 지워진다).
+    //   긋는 데 0.45초 + scratch, 그 뒤 1.6초 머문 다음 after 규칙대로 나간다
+    const stk = Array.isArray(a.strike) && lines[a.strike[0] | 0] != null ? [a.strike[0] | 0, Math.max(0, a.strike[1] | 0)] : null;
+    const tStrike = stk ? tLast + 700 : -1, STRIKE_MS = 450, tOut = stk ? Math.max(tLast + after, tStrike + STRIKE_MS + 1600) : tLast + after;
     const g = G(), dust = new U.Motes(10, () => [0, 0, g.W, g.H]);
-    const S = { quill: 0, out: -1 };
+    const S = { quill: 0, out: -1, struck: false };
     return mount({
       name: 'mg_s4_ledger', opaque: true, IN: 1, OUT: 1,
       update(sc, dt) {
         dust.update(dt);
         while (S.quill < lines.length && sc.t >= P.tLed[S.quill]) { L.quill(S.quill); S.quill++; }
-        if (S.out < 0 && sc.t >= tLast + after) S.out = sc.t;
+        if (stk && !S.struck && sc.t >= tStrike) { S.struck = true; U.sfx('scratch', { gain: 0.45, pitch: 1.15 }); }
+        if (S.out < 0 && sc.t >= tOut) S.out = sc.t;
         if (S.out >= 0 && sc.t - S.out >= OUT_MS) sc.end({ ok: true });
         dbg('ledger', { tLed: P.tLed.slice(), tLast, after, out: S.out, t: Math.round(sc.t) });
       },
@@ -57576,6 +57877,12 @@ MC.addLang('en', {
           g.ditherRect(cx - 60, ly + 14, 120, 1, '#3a3848', lv);
         }
         L.draw(g, lines, t, P.tLed, cx - 58, ly, red);
+        if (stk && t >= tStrike) {                                   // 줄 긋기(왼쪽에서 오른쪽으로, 1px 줄 + 아래 그림자)
+          const line = lines[stk[0]], chars = Array.from(line), pre = chars.slice(0, stk[1]).join(''), rest = chars.slice(stk[1]).join('');
+          const x0 = cx - 58 + MC.text.width(pre, 'body'), w = MC.text.width(rest, 'body'), y = ly + 20 + stk[0] * 16 + 7;
+          const k = MC.clamp((t - tStrike) / STRIKE_MS, 0, 1), ww = Math.round((w + 2) * MC.ease.outCubic(k));
+          if (ww > 0) { g.rect(x0 - 1, y, ww, 1, '#e8e4f0'); g.rect(x0 - 1, y + 1, ww, 1, '#2a2632'); }
+        }
         if (t < T_IN) g.ditherFill('#000', 16 - t / T_IN * 16);
         if (S.out >= 0) g.ditherFill('#000', MC.clamp((t - S.out) / OUT_MS, 0, 1) * 16);
       }
@@ -57857,10 +58164,13 @@ MC.addLang('en', {
     }
     // [art-iffar 0.4.1-s4b] cu_fingers_10 = 그록 주먹(다 접은 두 주먹 — _0~_9와 시점이 다름): _9 ↔ _10은 FIST_MS 디더로 잇고(튀지 않게),
     //   마지막 탭(열넷) 뒤 FIST_AT ms에 두 손이 다시 꽉 쥐어 주먹으로(같은 디더) — 끝 대기 1500 → 2000ms(주먹이 자리 잡을 시간)
-    const FIST_MS = 260, FIST_AT = 450, fistArt = art && !!spr('cu_fingers_10');
+    // [s44-director B3-24 · 도2-9] 시점이 다른 주먹(_10)으로 디더하면 소매 폭·팔 각도가 한 번 튀어 보였다 — 새 원본(그림 목록 11)이 오기 전까지는
+    //   앞 그림을 0.4초 더 두고 디더 없이 바로 컷(FIST_HOLD). 열째(_9 → _10)와 열넷 뒤 주먹 모두
+    const FIST_MS = 260, FIST_HOLD = 400, FIST_AT = 450 + FIST_HOLD, FIST_CUT = true, fistArt = art && !!spr('cu_fingers_10');
     const frameAt = t => {
       if (fistArt && S.doneAt >= 0 && t - S.doneAt >= FIST_AT) return 10;
       if (S.reopen >= 0 && t - S.reopen < REOPEN) return Math.max(0, 10 - Math.round((t - S.reopen) / REOPEN * 10));
+      if (fistArt && S.count === 10 && t - S.lastStep < FIST_HOLD) return 9;
       return S.count <= 10 ? S.count : S.count - 10;
     };
     return mount({
@@ -57869,7 +58179,7 @@ MC.addLang('en', {
         const t = sc.t;
         while (S.count < autoN && t >= tStart + S.count * 250) { S.count++; snd('finger_fold', { gain: 0.45 }, '_tick', { gain: 0.5 }); }
         if (t >= tWait) {
-          if (S.doneAt >= 0) { if (t - S.doneAt >= (fistArt ? 2000 : 1500) && sc.out < 0) sc.end({ ok: true }); }
+          if (S.doneAt >= 0) { if (t - S.doneAt >= (fistArt ? 2000 + FIST_HOLD : 1500) && sc.out < 0) sc.end({ ok: true }); }
           else if (S.count >= total) S.doneAt = t;
           else {
             if (t - S.lastIn >= 10000 && t - S.lastStep >= 1200 && !S.pending) { S.pending = 1; S.autoSteps++; }
@@ -57923,7 +58233,7 @@ MC.addLang('en', {
         };
         if (S.shown == null) S.shown = fr;
         if (fr !== S.shown) {                                   // _9 ↔ 주먹(_10)이 바뀔 때만 디더(나머지 손가락 접기는 예전처럼 곧바로)
-          if (fistArt && (fr === 10 || S.shown === 10) && !S.trans) S.trans = { from: S.shown, t0: t };
+          if (fistArt && !FIST_CUT && (fr === 10 || S.shown === 10) && !S.trans) S.trans = { from: S.shown, t0: t };
           S.shown = fr;
         }
         if (S.trans && t - S.trans.t0 >= FIST_MS) S.trans = null;
@@ -57951,7 +58261,14 @@ MC.addLang('en', {
      물결 띠가 1.8초 동안 가라앉으며 얼굴이 맞춰짐 → ms 무언(음악·효과음 없음 — 시작 때 음악을 걷는다, 파도 amb만) → extra ms → 끝. 탭 무시. s3Auto 600ms */
   //   keep:true(content-s4c2 부탁) — 끝나면 결과만 먼저 돌려주고 얼굴 화면(ev_s4_face)을 남긴다: 다음 say 상자(건배 메아리)가 검정이 아니라 물에 비친 얼굴 위에 뜬다.
   //   걷힘: 다음 불투명 화면(custom s4 ending 등)이 위에 올라오거나 · 페이드가 검정(≥0.99)이 되거나 · {stage:"face", clear:true}(디더 700ms) · 이벤트가 끝나 있으면 스스로.
+  //   [s44-director B3-24 · 시2-10] {stage:"face", brk:true, ms:3000}: 남겨 둔 얼굴에 물방울 하나 — 얼굴이 깨진 채(물결이 남음) ms 동안 머문 뒤 돌려준다(장부는 그다음).
+  //   남은 얼굴이 없으면 곧바로 끝. s3Auto면 바로
   ST.face = function (a) {
+    if (a.brk) {
+      const h = MC.scene.find('ev_s4_face');
+      if (!h || !h.brk || isAuto()) return Promise.resolve({ ok: true, missing: !h });
+      return h.brk(Math.max(0, num(a.ms, 3000)));
+    }
     if (a.clear) {
       const h = MC.scene.find('ev_s4_face');
       if (h && h.release) return h.release();
@@ -57962,14 +58279,20 @@ MC.addLang('en', {
     if (isAuto()) return later(500, () => ({ ok: true, auto: true }));
     const art = pick(shadow ? ['cu_face_water_dark', 'cu_face_water'] : ['cu_face_water']), fb = pick(['pt_dantes_d5', 'pt_dantes_d4', 'pt_dantes']);
     const IN = 600, SETTLE = 1800, tEnd = IN + SETTLE + ms + extra;
-    const S = { held: false, idle: 0, relRes: null };
+    const S = { held: false, idle: 0, relRes: null, brk: -1, brkMs: 0, brkRes: null };
     return mount({
       name: 'mg_s4_face', opaque: true, IN, OUT: 700,
-      init() {                                                    // 정점에서는 음악을 뺀다(파도 amb는 그대로)
+      init(sc) {                                                  // 정점에서는 음악을 뺀다(파도 amb는 그대로)
         try { if (MC.music && MC.music.current) mus('stop', 1200); } catch (_) {}
         try { if (MC.clip && typeof MC.clip.stop === 'function' && (!MC.clip.current || MC.clip.current())) MC.clip.stop(1200); } catch (_) {}
+        sc.brk = ms => new Promise(r => {                         // 물방울 하나가 얼굴을 깬다(남겨 둔 화면에서만)
+          if (S.brkRes) S.brkRes({ ok: true });
+          S.brk = sc.t; S.brkMs = ms; S.brkRes = r;
+          snd('drip', { gain: 0.5, pitch: 1.05 }, 'splash', { gain: 0.15, pitch: 1.6 });
+        });
       },
       update(sc) {
+        if (S.brkRes && S.brk >= 0 && sc.t - S.brk >= S.brkMs) { const r = S.brkRes; S.brkRes = null; r({ ok: true, brk: Math.round(sc.t - S.brk) }); }
         if (S.held) {
           const stk = MC.scene.stack, i = stk.indexOf(sc), covered = i >= 0 && stk.slice(i + 1).some(o => o.opaque);
           const black = MC.fx.fadeLevel && MC.fx.fadeLevel() >= 0.99;
@@ -57990,14 +58313,24 @@ MC.addLang('en', {
         }
         dbg('face', { t: Math.round(sc.t), tEnd, art, shadow, keep, held: S.held, name: sc.name });
       },
-      exit() { if (S.relRes) { const r = S.relRes; S.relRes = null; r({ ok: true }); } },
+      exit() {
+        if (S.relRes) { const r = S.relRes; S.relRes = null; r({ ok: true }); }
+        if (S.brkRes) { const r = S.brkRes; S.brkRes = null; r({ ok: true }); }
+      },
       render(sc) {
-        const g = G(), W = g.W, H = g.H, cx = W >> 1, t = sc.t, p = MC.clamp((t - 200) / SETTLE, 0, 1), A = 6 * (1 - p) * (1 - p);
+        const g = G(), W = g.W, H = g.H, cx = W >> 1, t = sc.t, p = MC.clamp((t - 200) / SETTLE, 0, 1);
+        // 깨진 상: 물방울 뒤 물결이 크게 일었다가 반쯤만 가라앉아 그대로 남는다(맞춰지지 않음)
+        const bk = S.brk >= 0 ? t - S.brk : -1, A = bk >= 0 ? 4 + 6 * Math.exp(-bk / 700) : 6 * (1 - p) * (1 - p);
         g.clear('#0a0d14');
         const img = art ? spr(art) : null;
+        const rings = (x0, y0) => {                                // 물방울 자리에서 퍼지는 동심원 셋(1.6초)
+          if (bk < 0 || bk > 2400) return;
+          for (let k = 0; k < 3; k++) { const q = bk - k * 260; if (q < 0) continue; const rr = Math.round(3 + q * 0.045); if (rr < 90) g.ring(x0, y0, rr, k ? '#2a3a56' : '#5a76a0'); }
+        };
         if (img) {
-          const s = fitScale(img, W + 12, H * 0.8), w = img.width * s, h = img.height * s;
-          drawRipple(img, cx - (w >> 1), Math.round(H * 0.46 - h / 2), s, A, t);
+          const s = fitScale(img, W + 12, H * 0.8), w = img.width * s, h = img.height * s, y = Math.round(H * 0.46 - h / 2);
+          drawRipple(img, cx - (w >> 1), y, s, A, t);
+          rings(cx + 6, y + Math.round(h * 0.38));
           U.drawVig(5, '#000000');
           return;
         }
@@ -58036,7 +58369,8 @@ MC.addLang('en', {
     const IN = 300, PAPER_MS = 800, tHead = IN + PAPER_MS + 200, tL0 = tHead + 700;
     const P = L.plan(lines, tL0, CH, GAP, Array.isArray(a.pause) ? a.pause : null), red = L.redFrom(lines);
     const tClank = ca && lines[ca[0]] != null && ca[1] < Array.from(lines[ca[0]]).length ? L.charAt(P.tLed, ca[0], ca[1]) : -1;
-    const tTyped = P.tTyped, tName = tTyped + 2000, tDark = tName + cursorMs, DARK_MS = 900, tCred = tDark + DARK_MS + 400;
+    // [s44-director B3-24] 크레딧은 커서가 멎고(= 어두워지기 시작) 1.5초 뒤(뒤2-3). 옛: 0.9 + 0.4 = 1.3초
+    const tTyped = P.tTyped, tName = tTyped + 2000, tDark = tName + cursorMs, DARK_MS = 900, tCred = tDark + 1500;
     const tFin = tCred + credit.length * 1000, tMark = tFin + 5000, OUT_MS = 700;
     const INK = '#2b2218', RED = '#b03a2e', PAPER = '#d6c9a8';
     const S = { quill: 0, clank: -1, name: false, fin: false, out: -1, skipped: false };
@@ -58130,10 +58464,28 @@ MC.addLang('en', {
     if (v('s4_assist') === 1 && gr === 'S') gr = 'A';
     return gr;
   }
+  /* [s44-director C2③ 장부 말투] 기록 숫자를 한글 셈말로(제미나이·a42-snd 남은 것 4): 「12/19」→「열아홉 중 열둘」, 「기운 72%」→「남은 숨 칠 할」, 「2시간 20분」→「두 시간 이십 분」.
+     한국어일 때만(번역 언어는 숫자 그대로 — en.js에는 rec.* 키가 아직 없다). 셈하는 것(밤·과목·번·시간)은 고유어, 100 넘는 수·분·할은 한자어 */
+  const KO_U = ['', '하나', '둘', '셋', '넷', '다섯', '여섯', '일곱', '여덟', '아홉'], KO_UA = ['', '한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉'];
+  const KO_T = ['', '열', '스물', '서른', '마흔', '쉰', '예순', '일흔', '여든', '아흔'], KO_D = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
+  function sino(n) {                                              // 한자어 수(0~9999): 745 → 칠백사십오
+    n = Math.max(0, Math.floor(n)); if (n === 0) return '영';
+    let out = ''; const P = [[1000, '천'], [100, '백'], [10, '십']];
+    for (const [u, w] of P) { const d = Math.floor(n / u) % 10; if (d) out += (d === 1 ? '' : KO_D[d]) + w; }
+    return out + KO_D[n % 10];
+  }
+  function nat(n, adn) {                                          // 고유어 수(1~99, 넘으면 한자어): adn이면 관형(한·두·세·네·스무)
+    n = Math.max(0, Math.floor(n)); if (n >= 100) return sino(n);
+    const t = Math.floor(n / 10), u = n % 10;
+    if (adn && t === 2 && u === 0) return '스무';
+    return KO_T[t] + (adn ? KO_UA[u] : KO_U[u]);
+  }
+  const koNum = () => !(MC.i18n && MC.i18n.active);
   function recParams(k) {
-    const st = MC.state || {}, stats = st.stats || {}, v = n => +getVar(n) || 0;
-    if (k === 'rec.tallyV') return { n: 730 + v('s3days') };
-    if (k === 'rec.nightsV') return { a: stats.battles | 0, b: stats.lose | 0, c: stats.flee | 0 };
+    const st = MC.state || {}, stats = st.stats || {}, v = n => +getVar(n) || 0, ko = koNum();
+    const cnt = n => (!ko ? n : n > 0 ? nat(n) : U.tf('rec.none'));                  // 서른여덟 · 없음
+    if (k === 'rec.tallyV') { const n = 730 + v('s3days'); return { n: ko ? (n >= 100 ? sino(n) : nat(n, true)) : n }; }
+    if (k === 'rec.nightsV') return { a: cnt(stats.battles | 0), b: cnt(stats.lose | 0), c: cnt(stats.flee | 0) };
     if (k === 'rec.learnedV') {
       let n = 0; const f = st.flags || {};
       for (const id in f) if (f[id] && /^a4\.lesson_/.test(id) && id !== 'a4.lesson_rest') n++;
@@ -58144,12 +58496,23 @@ MC.addLang('en', {
           const BC = MC.battle.core; if (BC && typeof BC.knowAll === 'function') all = MC.battle.weakCount(BC.knowAll()) | 0 || all;
         }
       } catch (_) {}
-      return { a: n, b: Math.min(w, all), n: all };
+      const b = Math.min(w, all);
+      if (!ko) return { a: n, b, n: all };
+      return { a: n > 0 ? nat(n, true) + ' ' + U.tf('rec.subject') : U.tf('rec.none'), b: b > 0 ? nat(b) : U.tf('rec.none'), n: nat(all) };   // 다섯 과목 · 열아홉 중 열둘
     }
-    if (k === 'rec.escapeV') return { n: v('s4_try2') + v('s4_try3'), hp: v('s4_swimHp') };
+    if (k === 'rec.escapeV' || k === 'rec.escapeV0') {
+      const n = v('s4_try2') + v('s4_try3'), hp = v('s4_swimHp');
+      if (!ko) return { n, hp: hp + '%', raw: n };
+      const r = Math.round(MC.clamp(hp, 0, 100) / 10);                               // 남은 숨 칠 할(72%) — 0이면 「거의 없음」
+      return { n: nat(n, true), hp: r > 0 ? sino(r) + ' ' + U.tf('rec.tenth') : U.tf('rec.hpNone'), raw: n };
+    }
     if (k === 'fmt.play') { const pm = Math.floor((st.playMs || 0) / 60000); return { h: Math.floor(pm / 60), m: String(pm % 60).padStart(2, '0') }; }
     // [a42-snd 0.4.2 A6] 「2시간 20분」 — 분은 앞 0 없이. 1시간 미만이면 ST.record가 rec.timeV0(「41분」)으로 바꾼다
-    if (k === 'rec.timeV' || k === 'rec.timeV0') { const pm = Math.max(1, Math.floor((st.playMs || 0) / 60000)); return { h: Math.floor(pm / 60), m: pm % 60 }; }
+    // [s44-director] 장부 말투: 「두 시간 이십 분」(시간은 고유어 관형, 분은 한자어) · 분이 0이면 rec.timeVh 「두 시간」
+    if (k === 'rec.timeV' || k === 'rec.timeV0' || k === 'rec.timeVh') {
+      const pm = Math.max(1, Math.floor((st.playMs || 0) / 60000)), h = Math.floor(pm / 60), m = pm % 60;
+      return ko ? { h: nat(h, true), m: sino(m), rawH: h, rawM: m } : { h, m, rawH: h, rawM: m };
+    }
     return null;
   }
   ST.record = function (a) {
@@ -58159,10 +58522,13 @@ MC.addLang('en', {
     dropKept();
     const vals = rows.map(r => {
       let vk = String(r[1]); const prm = recParams(vk);
-      if (vk === 'rec.escapeV' && prm && prm.n === 0) vk = 'rec.escapeV0';   // [fixer-s4p2] QA 23: 「다시 0번」 대신 「단번에」
-      if (vk === 'rec.timeV' && prm && prm.h === 0) vk = 'rec.timeV0';       // [a42-snd 0.4.2 A6] 1시간 미만: 「0시간 41분」 대신 「41분」
+      if (vk === 'rec.escapeV' && prm && prm.raw === 0) vk = 'rec.escapeV0';   // [fixer-s4p2] QA 23: 「다시 0번」 대신 「단번에」
+      if (vk === 'rec.timeV' && prm && prm.rawH === 0) vk = 'rec.timeV0';       // [a42-snd 0.4.2 A6] 1시간 미만: 「0시간 41분」 대신 「41분」
+      else if (vk === 'rec.timeV' && prm && prm.rawM === 0) vk = 'rec.timeVh';  // [s44-director] 「두 시간 영 분」 대신 「두 시간」
       return [U.tf(String(r[0])), U.tf(vk, prm)];
     });
+    // [s44-director C2③] back:true = 타이틀 「＿＿＿＿ · 끝」에서 연 기록 — 닫으면 검정이 아니라 타이틀 위로 디더로 걷힌다(엔딩 흐름에서는 더 부르지 않는다)
+    const back = a.back === true;
     const IN = 400, tRow0 = 600, ROW = 160, tGrade = tRow0 + rows.length * ROW + 500, tMark = tGrade + 900, OUT_MS = 600;
     const INK = '#2b2218', LAB = '#6a5a48', BACK = '#c9bb9a';
     const S = { bell: false, out: -1 };
@@ -58198,26 +58564,26 @@ MC.addLang('en', {
         });
         return { items, h: y - gap };
       };
-      const GH = 72, room = H - g.safe.top - g.safe.bottom - 64 - GH;                      // 아래 30px는 nextMark 자리
+      const GH = 56, room = H - g.safe.top - g.safe.bottom - 64 - GH;                      // 아래 30px는 nextMark 자리 · [s44-director] 등급 묶음 72 → 56(금색 글자를 본문 크기로)
       let b = build(6); if (b.h > room) b = build(3); if (b.h > room) b = build(0);
       const top = Math.max(g.safe.top + 10, Math.round((H - 30 - (b.h + 16 + GH)) / 2));
       lay = { W, H, rev: MC.i18n.rev, mL, wid, items: b.items, top, gy: top + b.h + 16 };
       return lay;
     }
     return mount({
-      name: 'mg_s4_record', opaque: true, IN, OUT: 1,
+      name: 'mg_s4_record', opaque: true, IN, OUT: back ? 450 : 1,
       update(sc) {
         const t = sc.t;
         if (!S.bell && t >= tGrade) { S.bell = true; snd(a.bell ? String(a.bell) : 'bell', { gain: 0.8 }); }   // 등급과 함께 종 한 번(REDESIGN E-18)
-        if (S.out >= 0 && t - S.out >= OUT_MS && sc.out < 0) sc.end({ ok: true, grade });
-        dbg('record', { t: Math.round(t), grade, vals, tGrade, tMark });
+        if (S.out >= 0 && t - S.out >= (back ? 0 : OUT_MS) && sc.out < 0) sc.end({ ok: true, grade });
+        dbg('record', { t: Math.round(t), grade, vals, tGrade, tMark, back });
       },
       input(sc, ev) {
         if (ev.type !== 'tap' && ev.type !== 'long') return;
         if (sc.t > IN && sc.t < tGrade) sc.t = tGrade;              // 줄을 한꺼번에(종은 이때 울림)
         else if (sc.t >= tMark && S.out < 0) { S.out = sc.t; snd('page', { gain: 0.5 }); }
       },
-      exit: leaveBlack,
+      exit: back ? null : leaveBlack,
       render(sc) {
         const g = G(), W = g.W, H = g.H, cx = W >> 1, t = sc.t, L2 = layout(g);
         g.clear(BACK);
@@ -58230,7 +58596,7 @@ MC.addLang('en', {
             const y = L2.top + it.y; cover(MC.text.bake(it.lab, 'small', LAB), L2.mL, y);
             it.vl.forEach((v, j) => { const img = MC.text.bake(v, 'small', INK); cover(img, L2.mL + L2.wid - img.width, y + (it.one ? 0 : 13 * (j + 1))); });
           });
-          if (t >= tGrade) gaps.push([L2.gy - 10, L2.gy + 54 + 16]);
+          if (t >= tGrade) gaps.push([L2.gy - 10, L2.gy + 46]);
           gaps.sort((p, q) => p[0] - q[0]);
           let yy = 0;
           for (const [a0, b0] of gaps) { if (a0 > yy) g.vline(cx, yy, a0 - yy, '#c0b090'); yy = Math.max(yy, b0); }
@@ -58245,14 +58611,15 @@ MC.addLang('en', {
         if (t >= tGrade) {
           const lv = U.lvl(t, tGrade, 500), gy = L2.gy;
           g.ditherRect(cx - 50, gy - 8, 100, 1, '#a89878', lv);
-          const lab = MC.text.bake(U.tf('rec.grade'), 'small', LAB), big = MC.text.bake(grade, 'big', '#d8a428', { outline: '#3a2a10' }), ph = MC.text.bake(U.tf('rec.grade' + grade), 'small', INK);
-          U.drawDither(lab, cx - (lab.width >> 1), gy, lv);
-          U.drawDither(big, cx - (big.width >> 1), gy + 16, lv);
-          U.drawDither(ph, cx - (ph.width >> 1), gy + 54, lv);
+          // [s44-director C2③] 금색 등급 글자는 본문 크기(옛 big — 1장에서 가장 큰 글자였다, 작2), 주인공은 문구 한 줄(본문 글꼴)
+          const lab = MC.text.bake(U.tf('rec.grade'), 'small', LAB), big = MC.text.bake(grade, 'bold', '#b8860e'), phT = U.tf('rec.grade' + grade), ph = MC.text.bake(phT, MC.text.width(phT, 'body') <= W - 16 ? 'body' : 'small', INK);
+          U.drawDither(lab, cx - ((lab.width + 6 + big.width) >> 1), gy + 1, lv);
+          U.drawDither(big, cx - ((lab.width + 6 + big.width) >> 1) + lab.width + 6, gy, lv);
+          U.drawDither(ph, cx - (ph.width >> 1), gy + 22, lv);
         }
         if (t >= tMark && S.out < 0) MC.ui.nextMark(W - 14 - g.X0, H - 14 - g.safe.bottom);      // 오른쪽 아래(작은 화면에서 등급 문구와 겹치지 않게)
         if (t < IN) g.ditherFill('#000000', 16 - t / IN * 16);
-        if (S.out >= 0) g.ditherFill('#000000', MC.clamp((t - S.out) / (OUT_MS * 0.8), 0, 1) * 16);
+        if (S.out >= 0 && !back) g.ditherFill('#000000', MC.clamp((t - S.out) / (OUT_MS * 0.8), 0, 1) * 16);
       }
     });
   };
@@ -58483,6 +58850,116 @@ MC.addLang('en', {
     g.px(L.lampX, L.lampY, flash > 0.3 ? '#ffffff' : '#ffe9a0');
   }
 
+  /* ---------- [s44-director C1③] 클리어 뒤 수평선 끝의 작은 바위섬(글 없음, 코드 그림) ----------
+     1장을 끝까지 본 세이브일 때만. 등대 오른쪽 수평선 끝(자리가 없으면 왼쪽)에 폭 9px·높이 3px — 눈여겨봐야 보이는 크기. 달빛을 받는 윗변만 한 단 밝게 */
+  function drawIsle(L) {
+    const g = G(), W = g.W, ISLE = [1, 2, 2, 3, 3, 3, 2, 1, 1];
+    let x0 = L.lampX + 16;
+    if (x0 + ISLE.length > W - 3) x0 = L.lampX - 16 - ISLE.length;
+    for (let i = 0; i < ISLE.length; i++) {
+      const h = ISLE[i];
+      g.rect(x0 + i, L.hz - h, 1, h, '#0b0e18');
+      g.px(x0 + i, L.hz - h, i >= 3 && i <= 6 ? '#1c2840' : '#141c2c');
+    }
+  }
+
+  /* ---------- 바다·하늘·성·등대 한 장(로고·단추 없이) — 타이틀과 B5-3 이프 성 외경 컷이 함께 쓴다 ---------- */
+  function drawWorld(t, L, o) {
+    const g = G(), W = g.W, H = g.H, ctx = g.ctx;
+    ctx.drawImage(bakeBg(), 0, 0);
+    // 반짝이는 별
+    for (let i = 0; i < 14; i++) {
+      const x = Math.floor(U.hash(i, 7, 32) * W), y = Math.floor(U.hash(i, 8, 32) * (L.hz - 40));
+      if (Math.hypot(x - L.moonX, y - L.moonY) < 22) continue;
+      const ph = Math.sin(t * 0.0017 * (0.6 + U.hash(i, 9, 32)) + i * 1.7);
+      if (ph > 0.55) { g.px(x, y, '#c8d4ec'); if (ph > 0.93) { g.px(x - 1, y, '#44547a'); g.px(x + 1, y, '#44547a'); g.px(x, y - 1, '#44547a'); g.px(x, y + 1, '#44547a'); } }
+      else if (ph > 0) g.px(x, y, '#44547a');
+    }
+    // 구름(달 앞을 천천히)
+    const cl = bakeClouds();
+    for (let i = 0; i < cl.length; i++) {
+      const w = cl[i].width, span = W + w, x = Math.round(W - ((t * (0.0021 + i * 0.0012) + i * 97) % span));
+      ctx.drawImage(cl[i], x, i === 0 ? L.moonY - 2 : Math.max(6, L.moonY - 22));
+    }
+    if (o && o.isle) drawIsle(L);
+    // 등대 빛 → [a42-ui A3] 그 위에 성(등대는 성 뒤)
+    const bt = o && o.beamT != null ? o.beamT : t;
+    drawBeam(bt, L);
+    if (o && o.under) o.under(g, L);                                        // 외경 컷: 성 뒤를 쓸고 가는 빛(성보다 먼저)
+    if (castleC) ctx.drawImage(castleC, 0, 0);
+    // 성의 창 하나(촛불빛)
+    const ix = L.X0 + 64, fl = Math.sin(t * 0.011) + Math.sin(t * 0.027);
+    g.rect(ix + 10, L.hz - 32, 1, 2, fl > 1.2 ? '#ffcf6a' : fl > -0.8 ? '#c8923a' : '#7a5424');
+    // 물결 3층
+    const wv = makeWaves();
+    for (const r of wv) {
+      const off = ((t / 1000 * r.speed) % r.P + r.P) % r.P;
+      const yy = r.y + (r.layer ? Math.round(Math.sin(t * 0.0011 + r.ph) * 0.8) : 0);
+      ctx.drawImage(r.strip, -Math.round(off), yy);
+    }
+    // 섬 기슭의 물거품
+    const q = (t / 130) | 0, qf = (t / 260) | 0;
+    for (let x = ix - 64; x <= ix + 64; x += 2) {
+      const hv = U.hash(x, qf, 53);
+      if (hv < 0.45) g.rect(x, L.hz + 1 + (hv < 0.12 ? 1 : 0), hv < 0.2 ? 2 : 1, 1, hv < 0.1 ? '#6a82b0' : '#33507a');
+    }
+    // 달 그림자(물 위 반짝임)
+    for (let k = 0; k < 44; k++) {
+      const y = L.hz + 2 + k * 2, depth = k / 44;
+      if (y >= H - 2) break;
+      if (U.hash(k, q, 51) < 0.28) continue;
+      const w = 1 + Math.floor(U.hash(k, q + 7, 52) * (2 + depth * 7));
+      const x = L.moonX - (w >> 1) + Math.round(Math.sin(t * 0.0023 + k * 0.9) * (1 + depth * 2));
+      g.ditherRect(x, y, w, 1, depth < 0.25 ? '#c8d4ec' : '#6a82b0', 16 - depth * 10);
+    }
+  }
+
+  /* ---------- [s44-director B5-3] 이프 성 외경 컷 — custom id "castle" ----------
+     호송 「저긴…… 이프 성이잖아요!」 직전(시1-3·시2-9). 타이틀 그림(로고 없이)을 성 가운데로 정수 배율(폭 180 이상이면 2배)로 당겨 화면 가득.
+     등대 빛이 한 번 성 뒤를 쓸고 간다(번쩍 → 왼쪽으로). 인자 {ms:2400, holdSay?, holdAfter?} — holdSay면 그 대사가 성 위에 뜬다(B5-14). 입력 없음. s3Auto 300ms */
+  let cutC = null;
+  ch1.custom = ch1.custom || {};
+  ch1.custom.castle = function (a) {
+    a = a || {};
+    const S4 = ch1.s4u;
+    if (!S4 || !S4.mount) return Promise.resolve({ ok: true, missing: true });
+    if (S4.isAuto()) return S4.later(300, () => ({ ok: true, auto: true }));
+    const ms = Math.max(300, S4.num(a.ms, 2400)), IN = 450;
+    return S4.mount({
+      name: 'mg_castle', opaque: true, IN, OUT: 450,
+      hold: a.holdSay, holdAfter: a.holdAfter,
+      init() { U.sfx('_wash', { gain: 1.8 }); },                       // 파도 한 번(엔딩 「끝」과 같은 소리)
+      update(sc) { if (sc.t >= IN + ms) sc.end({ ok: true }); },
+      render(sc) {
+        const g = G(), W = g.W, H = g.H, L = layout(), t = sc.t;
+        // 성 뒤 하늘을 한 번 쓸고 가는 등대 빛줄기(등대 → 왼쪽 위로 비스듬히): 0.3초부터 차올라 1.0초에 가장 밝고 2.2초에 사라짐. 2톤(심·바깥 띠), 'lighter'
+        const sweep = (g2, L2) => {
+          const k = MC.clamp((t - 300) / 700, 0, 1) * MC.clamp((2200 - t) / 1200, 0, 1);
+          if (k <= 0) return;
+          const c2 = g2.ctx, x1 = L2.lampX, y1 = L2.hz - 26, x0 = L2.X0 - 10, y0 = L2.hz - 70, n = x1 - x0;   // 성 머리 바로 위 하늘을 지나게(실루엣이 빛 앞에 선다)
+          c2.save(); c2.globalCompositeOperation = 'lighter'; c2.fillStyle = '#ffe9a0';
+          for (let i = 0; i <= n; i++) {
+            const f = i / n, x = x1 - i, yc = Math.round(y1 + (y0 - y1) * f), hh = Math.round(3 + 10 * f);
+            c2.globalAlpha = 0.16 * k * (0.55 + 0.45 * (1 - f)); c2.fillRect(x, yc - hh, 1, hh * 2 + 1);
+            const ch = Math.max(1, Math.round(hh * 0.4)); c2.globalAlpha = 0.22 * k * (1 - 0.5 * f); c2.fillRect(x, yc - ch, 1, ch * 2 + 1);
+          }
+          c2.restore();
+        };
+        bakeBg();
+        if (!cutC || cutC.width !== W || cutC.height !== H) cutC = g.makeCanvas(W, H);
+        // 빛이 성 뒤를 지날 때 번쩍(th≈0.5π) → 왼쪽으로 쓸며 옅어짐: 한 바퀴 6초 중 0.45π~1.25π 구간
+        g.withCtx(cutC, () => { g.ctx.clearRect(0, 0, W, H); drawWorld(t + 3000, L, { beamT: t + 1350, under: sweep }); });
+        const s = MC.clamp(Math.floor((W + 16) / 96), 1, 3), sw = Math.ceil(W / s), sh = Math.ceil(H / s);
+        const cx0 = L.X0 + 64, cy0 = L.hz - 18;
+        const sx = MC.clamp(Math.round(cx0 - sw / 2), 0, Math.max(0, W - sw)), sy = MC.clamp(Math.round(cy0 - sh * 0.56), 0, Math.max(0, H - sh));
+        g.clear('#03050b');
+        g.ctx.imageSmoothingEnabled = false;
+        g.ctx.drawImage(cutC, sx, sy, sw, sh, 0, 0, sw * s, sh * s);
+        U.drawVig(3, '#000000');
+      }
+    });
+  };
+
   /* ---------- 씬 ---------- */
   /* ---------- [c43-ui B8-4] 이어하기 '지난 이야기' + '할 일' ----------
      저장 상태(깃발·vars·맵)로 구간 하나를 고른다 — 뒤 구간부터 검사, 처음 맞는 줄. 글은 data/lang/ko.js recap.p.<id>(지난 이야기)·recap.g.<id>(할 일).
@@ -58623,6 +59100,28 @@ MC.addLang('en', {
   };
   ensureHook();
 
+  /* ---------- [s44-director C2③ · B3-24] 기록 카드(장부 뒷면)는 엔딩 흐름에서 빠지고 타이틀 「＿＿＿＿ · 끝」 탭으로 ----------
+     열어 본 클리어 기록(mc34.ch1clear의 at)을 'mc34.recSeen'에 적어 둔다 — 새 클리어면 다시 처음 한 번 반짝(세이브와 따로, 지워져도 반짝임만 돌아옴) */
+  const REC_SEEN = 'mc34.recSeen';
+  function clearAt() { try { const c = MC.save.readClear && MC.save.readClear(); return c && c.at ? String(c.at) : '1'; } catch (_) { return '1'; } }
+  function recSeen() { try { return localStorage.getItem(REC_SEEN) === clearAt(); } catch (_) { return true; } }
+  function markRecSeen() { try { localStorage.setItem(REC_SEEN, clearAt()); } catch (_) {} }
+  // 저장된 1장 끝 상태로 기록 화면(custom s4 record)을 띄우고, 닫히면 타이틀로 돌아온다(MC.state는 되돌림 — 이어하기는 늘 다시 읽는다)
+  async function openRecord() {
+    const ST4 = ch1.s4stages;
+    if (!ST4 || typeof ST4.record !== 'function') return false;
+    const R = (ch1.s4e && ch1.s4e.RECORD) || null;
+    if (!R) return false;
+    const prev = MC.state;
+    let ok = false;
+    try { ok = !!MC.save.load(); } catch (_) { ok = false; }
+    if (!ok) { MC.state = prev; return false; }
+    markRecSeen();
+    try { await ST4.record(Object.assign({}, R, { back: true })); } catch (e) { MC.core.error(e, 'title.record'); }
+    MC.state = prev;
+    return true;
+  }
+
   ch1.titleScene = function (opt) {
     opt = opt || {};
     const g = G();
@@ -58640,12 +59139,14 @@ MC.addLang('en', {
     function refreshInfo() {
       sc.infoRev = MC.i18n.rev;
       const i = MC.save.hasAny() ? MC.save.info() : null;
+      sc.cleared = !!(i && i.cleared);
       if (!i) { sc.info = null; bNew.style = 'primary'; return; }
       bNew.style = 'normal';
       const mp = MC.data.maps && MC.data.maps[i.map], pm = Math.floor((i.playMs || 0) / 60000);
       const mname = mp && mp.name ? MC.i18n.t(mp.name, 'map') : '';
       // 1장을 끝낸 세이브(s4.clear — save.info().cleared): 「＿＿＿＿ · 끝」(이름칸 공란 그대로). 이어하기는 장부부터(S4_BUILD2 H2-4)
-      if (i.cleared) { sc.info = tf('title.cleared', { name: MC.i18n.name(i.dispName || '') }); return; }
+      // [s44-director C2③] 이 줄을 탭하면 장부 뒷면(기록 카드)이 열린다 — 아직 안 열어 본 클리어 기록이면 처음 한 번 반짝
+      if (i.cleared) { sc.info = tf('title.cleared', { name: MC.i18n.name(i.dispName || '') }); sc.recNew = !recSeen(); return; }
       sc.info = tf('title.info', { lv: i.lv, map: mname || tf('title.somewhere'), time: Math.floor(pm / 60) + ':' + String(pm % 60).padStart(2, '0') });
       if (MC.text.width(sc.info, 'small') > 170) sc.info = tf('title.infoShort', { lv: i.lv, map: mname });
     }
@@ -58752,55 +59253,30 @@ MC.addLang('en', {
         return true;
       }
       if (sc.t - sc.st1 < 250) return true;
+      if (sc.cleared && sc.info && ev.type === 'tap' && inInfo(ev)) { doRecord(); return true; }   // [s44-director C2③] 「＿＿＿＿ · 끝」 → 장부 뒷면
       for (const b of buttons()) if (b.onInput(ev)) return true;
       return true;
     };
+    // 「＿＿＿＿ · 끝」 줄의 누름 칸: 이어하기 단추 아래 ~ 처음부터 단추 위(사이 25px 전부), 폭은 글자 + 양옆 20px(최소 120)
+    function inInfo(ev) {
+      if (ev.x == null || ev.y == null) return false;
+      const w = Math.max(120, MC.text.width(sc.info, 'small') + 40), x0 = (g.W - w) >> 1, y0 = bCont.y + bCont.h + 1, y1 = bNew.y - 1;
+      return ev.x >= x0 && ev.x < x0 + w && ev.y >= y0 && ev.y < y1;
+    }
+    async function doRecord() {
+      if (sc.busy) return;
+      sc.busy = true;
+      U.sfx('page', { gain: 0.5 });
+      sc.recNew = false;
+      await openRecord();
+      sc.busy = false;
+      refreshInfo();
+      for (const b of buttons()) b.arm(250);
+    }
     sc.onBack = () => {};
     sc.render = () => {
-      const W = g.W, H = g.H, t = sc.t, L = layout(), ctx = g.ctx;
-      ctx.drawImage(bakeBg(), 0, 0);
-      // 반짝이는 별
-      for (let i = 0; i < 14; i++) {
-        const x = Math.floor(U.hash(i, 7, 32) * W), y = Math.floor(U.hash(i, 8, 32) * (L.hz - 40));
-        if (Math.hypot(x - L.moonX, y - L.moonY) < 22) continue;
-        const ph = Math.sin(t * 0.0017 * (0.6 + U.hash(i, 9, 32)) + i * 1.7);
-        if (ph > 0.55) { g.px(x, y, '#c8d4ec'); if (ph > 0.93) { g.px(x - 1, y, '#44547a'); g.px(x + 1, y, '#44547a'); g.px(x, y - 1, '#44547a'); g.px(x, y + 1, '#44547a'); } }
-        else if (ph > 0) g.px(x, y, '#44547a');
-      }
-      // 구름(달 앞을 천천히)
-      const cl = bakeClouds();
-      for (let i = 0; i < cl.length; i++) {
-        const w = cl[i].width, span = W + w, x = Math.round(W - ((t * (0.0021 + i * 0.0012) + i * 97) % span));
-        ctx.drawImage(cl[i], x, i === 0 ? L.moonY - 2 : Math.max(6, L.moonY - 22));
-      }
-      // 등대 빛 → [a42-ui A3] 그 위에 성(등대는 성 뒤)
-      drawBeam(t, L);
-      if (castleC) ctx.drawImage(castleC, 0, 0);
-      // 성의 창 하나(촛불빛)
-      const ix = L.X0 + 64, fl = Math.sin(t * 0.011) + Math.sin(t * 0.027);
-      g.rect(ix + 10, L.hz - 32, 1, 2, fl > 1.2 ? '#ffcf6a' : fl > -0.8 ? '#c8923a' : '#7a5424');
-      // 물결 3층
-      const wv = makeWaves();
-      for (const r of wv) {
-        const off = ((t / 1000 * r.speed) % r.P + r.P) % r.P;
-        const yy = r.y + (r.layer ? Math.round(Math.sin(t * 0.0011 + r.ph) * 0.8) : 0);
-        ctx.drawImage(r.strip, -Math.round(off), yy);
-      }
-      // 섬 기슭의 물거품
-      const q = (t / 130) | 0, qf = (t / 260) | 0;
-      for (let x = ix - 64; x <= ix + 64; x += 2) {
-        const hv = U.hash(x, qf, 53);
-        if (hv < 0.45) g.rect(x, L.hz + 1 + (hv < 0.12 ? 1 : 0), hv < 0.2 ? 2 : 1, 1, hv < 0.1 ? '#6a82b0' : '#33507a');
-      }
-      // 달 그림자(물 위 반짝임)
-      for (let k = 0; k < 44; k++) {
-        const y = L.hz + 2 + k * 2, depth = k / 44;
-        if (y >= H - 2) break;
-        if (U.hash(k, q, 51) < 0.28) continue;
-        const w = 1 + Math.floor(U.hash(k, q + 7, 52) * (2 + depth * 7));
-        const x = L.moonX - (w >> 1) + Math.round(Math.sin(t * 0.0023 + k * 0.9) * (1 + depth * 2));
-        g.ditherRect(x, y, w, 1, depth < 0.25 ? '#c8d4ec' : '#6a82b0', 16 - depth * 10);
-      }
+      const W = g.W, H = g.H, t = sc.t, L = layout();
+      drawWorld(t, L, { isle: sc.cleared });                                // [s44-director] 바다·성 한 장(B5-3 컷과 같은 함수) · C1③ 클리어 뒤 바위섬
       // 글자가 물결에 묻히지 않게 아래쪽 바다를 디더 계단으로 어둡게(1단계 안내 → 2단계 버튼 영역)
       {
         const y0 = sc.stage >= 1 ? (sc.info ? bCont.y : bNew.y) - 22 : H - 104 - g.safe.bottom;
@@ -58831,7 +59307,10 @@ MC.addLang('en', {
         for (const b of [bCont, bNew, bSet]) { if (b === bCont && !sc.info) continue; b.y += dy; }
         for (const b of buttons()) if (b !== bMute) b.render();
         if (sc.info) {
-          const im = MC.text.bake(sc.info, 'small', '#8a98b8', { shadow: '#03050b' });
+          // [s44-director C2③] 아직 안 열어 본 기록이면 은빛 → 금빛으로 천천히 반짝(글 없음 — 누를 수 있다는 표시만)
+          const k = sc.recNew ? 0.5 - 0.5 * Math.cos((t - sc.st1) / 1400 * Math.PI * 2) : 0;
+          const col = k > 0.8 ? '#e8d49a' : k > 0.45 ? '#b8b090' : '#8a98b8';
+          const im = MC.text.bake(sc.info, 'small', col, { shadow: '#03050b' });
           if (im) U.drawDither(im, (W - im.width) >> 1, bCont.y + bCont.h + 3, p * 16);
         }
         bMute.render();
