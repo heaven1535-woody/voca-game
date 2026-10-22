@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.5.0-cine';
+  var VERSION = '0.5.0b-fix';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -3035,6 +3035,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 
   function renderOne(sc) {
     if (typeof sc.render !== 'function') return;
+    if (sc.name === 'dialogue' && MC.fx && MC.fx.letterboxUnderUI) MC.fx.letterboxUnderUI();   // [0.5.0b-fix] 레터박스는 대화창 아래
     MC.gfx._beginFrame();
     sc.render();
     MC.gfx._beginFrame();
@@ -3473,6 +3474,13 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const h = Math.round(20 * lb.v), g = G();
     g.rect(0, 0, g.W, h, '#000'); g.rect(0, g.H - h, g.W, h, '#000');
   }
+  // [0.5.0b-fix] 필드가 안 그려지는 프레임(불투명 컷 위 holdSay 대사 등)에도 띠가 대화창 아래에 깔리게 — scene.js가 dialogue 씬 직전에 부른다.
+  //   예전엔 renderOverlays(모든 씬 뒤)에서 그려 대화창 아래 20px를 덮었다(cu_father 「괜찮다, 괜찮아.」)
+  F.letterboxUnderUI = function () {
+    const g = G();
+    if (postFrame === g.renderId) return;
+    g._beginFrame(); drawLetterbox(); postFrame = g.renderId;
+  };
 
   /* ---------- 월드 후처리 ---------- */
   let postFrame = -1;
@@ -3536,6 +3544,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       .then(r => { busyN--; return r; }, e => { busyN--; throw e; });
   };
   F.fadeLevel = () => fadeS.v;
+  // [0.5.0b-fix] 덮개(world) 여부만 바꾼다 — 진행 중인 페이드 트윈은 그대로 둔다(fade(lv,0)은 같은 속성 트윈을 끊어 페이드가 중간에 멎었다)
+  F.fadeWorld = on => { fadeS.world = !!on; };
   function drawFadeLayer(v, color, dither) {
     if (v <= 0.001) return;
     const g = G();
@@ -3688,6 +3698,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (fz.canvas) g.ctx.drawImage(fz.canvas, 0, 0); else g.clear('#000');
     applyGrade();
     drawLetterbox();
+    postFrame = g.renderId;                                    // [0.5.0b-fix] 위 씬(대화창)을 다시 덮지 않게
   };
 
   /* ---------- 입자 ---------- */
@@ -51802,14 +51813,16 @@ MC.addLang('en', {
      페이드(검정 덮개)는 모든 씬 위에 그려진다. 우리 불투명 씬이 떠 있는 동안에는 페이드를 '월드 층'으로 내려
      (우리가 월드 후처리를 부르지 않으니 안 보임) 우리 화면을 보이게 하고, 끝나면 같은 단계로 다시 올린다.
      그 사이에 다른 곳에서 fade를 부르면 그 값이 그대로 남는다. */
+  // [0.5.0b-fix] 덮개 여부만 바꾼다. 예전 fade(lv,0)은 진행 중인 페이드를 끊었다 — holdSay 컷(cu_father)이 다음 장면의 밝아지기 도중에 걷히며
+  //   빌포르 집무실이 34% 검정 격자(대화창 위)로 멎었다
   U.coverBegin = function () {
     const lv = MC.fx.fadeLevel ? MC.fx.fadeLevel() : 0;
-    if (lv > 0.001) MC.fx.fade(lv, 0, { world: true });
+    if (lv > 0.001) { if (MC.fx.fadeWorld) MC.fx.fadeWorld(true); else MC.fx.fade(lv, 0, { world: true }); }
     return lv;
   };
   U.coverEnd = function () {
     const lv = MC.fx.fadeLevel ? MC.fx.fadeLevel() : 0;
-    if (lv > 0.001) MC.fx.fade(lv, 0);
+    if (lv > 0.001) { if (MC.fx.fadeWorld) MC.fx.fadeWorld(false); else MC.fx.fade(lv, 0); }
   };
 
   /* ---------- 화자·초상 ---------- */
