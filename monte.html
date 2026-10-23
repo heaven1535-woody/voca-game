@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.5.0b-fix';
+  var VERSION = '0.5.0c-word';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -8691,6 +8691,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     removeFollower();
     const st = MC.state && MC.state.follow;
     if (!map || !map.def || map.def.follow !== true || !st) return null;
+    if (map.def.followCond != null && !check(map.def.followCond)) return null;   // [0.5.0c] 맵 followCond: 조건이 맞을 때만 동행(B1 — 파리아가 꿈에 처음 나타난 뒤부터)
     const o = newActor({ id: 'follower', type: 'npc', sprite: followerSprite(st.sprite), x: pl.x, y: pl.y, dir: pl.dir });
     o.def = { id: 'follower', type: 'npc', event: st.event || null };
     o.event = st.event || null; o.spawned = true; o.solid = false; o.ghost = true; o.follower = true;
@@ -17442,6 +17443,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         if (!m.light) inf(w0, '잠입 맵에 light 없음(등불 부채꼴은 어둠 위에서 가장 잘 보인다)');
       } else if ((m.objects || []).some(o => o && o.type === 'guard')) wrn(w0, 'guard가 있지만 kind:"stealth" 아님 — 간수가 움직이지 않음');
       if (m.follow != null && typeof m.follow !== 'boolean') wrn(w0, 'follow는 true/false');
+      if (m.followCond != null) { checkCond(m.followCond, w0 + ' followCond'); if (!m.follow) wrn(w0, 'followCond가 있는데 follow:true 아님'); }   // [0.5.0c] 조건부 동행
       if (m.candle && !m.light) wrn(w0, 'candle:true인데 light 없음(촛불 효과 없음)');
       if (m.darkColor != null && !/^#[0-9a-fA-F]{6}$/.test(String(m.darkColor))) wrn(w0, 'darkColor 형식 #rrggbb ' + m.darkColor);
       // S3 맵 속성(§C-1-3·§C-1-8): followBlock [[x,y],...] · save:false
@@ -35984,7 +35986,7 @@ MC.data.battle = {
     letter:      { n: '투서', k: 'ink', w: '1815년 2월 · 검사실',
                    t: '검사가 보여 준 투서. 엘바, 찬탈자의 편지, 아버지 집, 선실까지 적혀 있었다. 글씨는 비뚤비뚤.' },
     twogrooms:   { n: '두 신랑', k: 'seal', w: '1815년 2월 · 검사실',
-                   t: "'한날에 신랑 둘이 한 방에 있군.' 검사도 제 약혼 잔치에서 불려 나왔다. 나보다 몇 살 위." },
+                   t: "'한날에 신랑 둘이 한 방에 있군.' 검사도 제 약혼 파티에서 불려 나왔다. 나보다 몇 살 위." },
     burn:        { n: '타 버린 편지', k: 'seal', w: '1815년 2월 · 검사실',
                    t: "검사는 편지를 벽난로에 넣었다. '이제 당신을 붙잡아 둘 종이는 한 장도 없소.'" },
     whotold:     { n: '그 이름', k: 'seal', w: '1815년 2월 · 검사실',
@@ -36000,22 +36002,22 @@ MC.data.battle = {
     knife:       { n: '꽂힌 칼', k: 'knife', w: '1815년 2월 · 카탈루냐',
                    t: "메르세데스가 나를 남편 될 사람이라 하자, 페르낭은 탁자에 칼을 꽂았다. '……알아.' 한마디뿐." },
     arbor:       { n: '정자의 세 사람', k: 'mem', w: '1815년 2월 · 레제르브',
-                   t: '잔치 이틀 전 저녁, 레제르브. 당글라르, 페르낭, 카드루스가 한 탁자에. 술잔 곁에 잉크병과 종이.' },
+                   t: '파티 이틀 전 저녁, 레제르브. 당글라르, 페르낭, 카드루스가 한 탁자에. 술잔 곁에 잉크병과 종이.' },
     debt:        { n: '아버지의 빚', k: 'thimble', w: '1815년 2월 · 아버지의 집',
                    t: "내가 카드루스에게 진 빚을 아버지가 갚으셨다. 찬장이 텅 빌 만큼. '괜찮다, 괜찮아.'" },
     thimble:     { n: '골무', k: 'thimble', w: '1815년 2월 · 레제르브',
                    t: "카드루스는 잔을 들 때도 골무를 끼고 있었다. '골무 걸고 약속하네'가 입버릇이었다." },
     sash:        { n: '붉은 허리띠', k: 'knife', w: '1815년 2월 · 카탈루냐',
                    t: '페르낭이 나갈 때 붉은 허리띠가 문틀에 걸렸다. 그는 그것을 거칠게 잡아 뺐다.' },
-    toast:       { n: '끝맺지 못한 잔', k: 'mem', w: '1815년 2월 · 약혼 잔치',
+    toast:       { n: '끝맺지 못한 잔', k: 'mem', w: '1815년 2월 · 약혼 파티',
                    t: { var: 'toast',
                         A: "르클레르 선장님께 들던 잔. '이 배를 제게 맡기고 가신—' 거기서 문이 열렸다.",
                         B: "아버지께 들던 잔. '이제부터는 제가—' 거기서 문이 열렸다.",
                         C: "메르세데스에게 들던 잔. '이 항구로—' 거기서 문이 열렸다.",
                         '*': '누군가에게 들던 잔. 건배를 끝맺기 전에 문이 열렸다.' } },
-    wait:        { n: '기다릴게', k: 'mem', w: '1815년 2월 · 약혼 잔치',
+    wait:        { n: '기다릴게', k: 'mem', w: '1815년 2월 · 약혼 파티',
                    t: '끌려가는 내 등 뒤로 메르세데스가 외쳤다. 무슨 일이 있어도 기다리겠다고.' },
-    morrel:      { n: '착오라는 외침', k: 'mem', w: '1815년 2월 · 약혼 잔치',
+    morrel:      { n: '착오라는 외침', k: 'mem', w: '1815년 2월 · 약혼 파티',
                    t: "모렐 씨는 끝까지 착오라고 외쳤다. '이 사람은 우리 배 선장이오!'" }
   };
   MC.data.clueOrder = ['halfday', 'ledger', 'elba_letter', 'knife', 'sash', 'arbor', 'thimble', 'debt', 'toast', 'wait', 'morrel',
@@ -36712,6 +36714,9 @@ MC.addMaps({
       "amb": "dream",
       "light": { "dark": 0.55, "r": 64 },
       "vignette": 0.35,
+      // (0.5.0c) 파리아가 꿈에 처음 나타난 뒤(1820 B2 「꿈에도 그가 있었다」)부터는 B1에서도 따라온다. 그 전(1817 엿봄·1820 첫 잠)은 혼자. S4 외톨이 꿈은 follow on:false가 지운다
+      "follow": true,
+      "followCond": { "flag": "a4d.b2_intro" },
       "tiles": [
         "^^^^^^^^^   ^^^^^^^^",
         "^///W/#/^   ^WW////^",
@@ -38207,7 +38212,7 @@ MC.addEvents({
 
   "a1.reserve_west": [
     { "op": "if", "cond": { "flag": "a2.feast" },
-      "then": [ { "op": "say", "who": "think", "t": "잔치를 두고 어딜 가." } ],
+      "then": [ { "op": "say", "who": "think", "t": "파티를 두고 어딜 가." } ],
       "else": [ { "op": "say", "who": "think", "t": "메르세데스는 모레 본다.{p:200} 오늘 저녁은 아버지 차례다." } ] },
     { "op": "move", "id": "player", "path": "R1", "speed": 200 }
   ],
@@ -38563,11 +38568,11 @@ MC.addEvents({
     { "op": "grade", "sat": 1, "tint": "#ffb060", "ta": 0.05, "ms": 0 },
     { "op": "vignette", "a": 0, "ms": 0 },                         // [l45-light B7-9] 낮 잔치 — 예전 0.15
     { "op": "map", "id": "reserve", "at": "feast", "trans": "cut" },
-    { "op": "card", "t": "─── 이틀 후 ───", "sub": "약혼 잔치 날" },
+    { "op": "card", "t": "─── 이틀 후 ───", "sub": "약혼 파티 날" },
     { "op": "bgm", "id": "feast", "fade": 500 },
     { "op": "amb", "id": "feast_crowd", "fade": 500 },
     { "op": "fade", "to": 0, "ms": 700 },
-    { "op": "banner", "t": "레제르브 · 약혼 잔치" },
+    { "op": "banner", "t": "레제르브 · 약혼 파티" },
     { "op": "wait", "ms": 500 },
     { "op": "sfx", "id": "glass_clink" },
     { "op": "emote", "id": "mercedes", "kind": "note", "ms": 1000, "async": true },
@@ -38765,7 +38770,7 @@ MC.addEvents({
     { "op": "move", "id": "villefort", "path": "D2 R1", "speed": 300 },
     { "op": "face", "id": "villefort", "dir": "down" },
     { "op": "wait", "ms": 400 },
-    { "op": "say", "who": "villefort", "t": "기다리게 했소.{p:300} 나도 약혼 잔치에서 불려 나왔소." },
+    { "op": "say", "who": "villefort", "t": "기다리게 했소.{p:300} 나도 약혼 파티에서 불려 나왔소." },
     { "op": "say", "who": "dantes", "face": "shock", "t": "검사님도……{p:200} 오늘이셨습니까?" },
     { "op": "say", "who": "villefort", "t": "한날에 신랑 둘이 한 방에 있군.{p:300} 빨리 끝내고 둘 다 돌아갑시다." },
     { "op": "sfx", "id": "page" },
@@ -38829,7 +38834,7 @@ MC.addEvents({
     { "op": "wait", "ms": 400 },
     { "op": "say", "who": "villefort", "t": "됐소.{p:300} 이제 당신을 붙잡아 둘 종이는 한 장도 없소." },
 
-    { "op": "say", "who": "dantes", "face": "smile", "t": "감사합니다!{p:200} 그럼 잔치에—", "auto": 150 },
+    { "op": "say", "who": "dantes", "face": "smile", "t": "감사합니다!{p:200} 그럼 파티에—", "auto": 150 },
     { "op": "say", "who": "villefort", "t": "오늘 밤만 여기 있으시오.{p:200} 서류상 절차요." },
     { "op": "say", "who": "villefort", "t": "그 이름은 오늘로 잊으시오.{p:300}\n당신을 위해서요.{p:500}\n……내 얼굴도." },   // [s44-writer B3-5 · C3②] 친절한 얼굴로 감싼다(한 상자 36자 안 — '그리고'를 뺌)
     { "op": "choice", "who": "think", "t": "빌포르는 이쪽을 보지 않는다.", "var": "doubt", "opts": [
@@ -38841,7 +38846,7 @@ MC.addEvents({
         { "op": "move", "id": "villefort", "path": "L1", "speed": 360 },
         { "op": "face", "id": "villefort", "dir": "up" },
         { "op": "wait", "ms": 700 },
-        { "op": "say", "who": "villefort", "t": "늦었소.{p:400} 우리 둘 다,{p:200} 잔치에 늦었어." } ] }
+        { "op": "say", "who": "villefort", "t": "늦었소.{p:400} 우리 둘 다,{p:200} 파티에 늦었어." } ] }
     ] },
     { "op": "wait", "ms": 300 },
     { "op": "move", "id": "villefort", "path": [ [5, 2] ], "speed": 320 },
@@ -39077,7 +39082,7 @@ MC.addEvents({
           "then": [ { "op": "say", "who": "think", "t": "아버지,{p:200} 저녁은 드셨어요?{p:500} ……드셨겠죠?" } ],
           "else": [ { "op": "if", "cond": { "var": "toast", "eq": "C" },
             "then": [ { "op": "say", "who": "think", "t": "시청은 저녁에 가자고 했는데.{p:500} 했는데……" } ],
-            "else": [ { "op": "say", "who": "think", "t": "잔치는…… 다들 아직 기다리고 있을까?" } ] } ] } ] },
+            "else": [ { "op": "say", "who": "think", "t": "파티는…… 다들 아직 기다리고 있을까?" } ] } ] } ] },
       { "op": "say", "who": "think", "t": "34번.{p:700} ……34번?" },
       { "op": "cam", "zoom": 1 },                                        // [c50-cine] 조작이 풀리기 전 와이드로
       { "op": "letterbox", "on": false, "ms": 300 },
@@ -41129,7 +41134,7 @@ MC.addEvents({
       { "op": "say", "who": "dantes", "t": [ "모릅니다.{p:300}\n그래서 알고 싶어요.", "하늘만 원망하긴{p:200} 이제 지쳤습니다." ] },
       { "op": "fade", "to": 1, "ms": 900 },
       { "op": "narr", "t": "에드몽은 이야기했다.{p:300} 파라옹호와 선장님, 엘바, 아버지.", "ms": 2800 },
-      { "op": "narr", "t": "메르세데스와 잔치.{p:300} 검사와 벽난로.{p:300} 그리고 이 성.", "ms": 2800 },
+      { "op": "narr", "t": "메르세데스와 파티.{p:300} 검사와 벽난로.{p:300} 그리고 이 성.", "ms": 2800 },
       { "op": "light", "r": 48, "ms": 0 },
       { "op": "fade", "to": 0, "ms": 900 },
       { "op": "call", "ev": "a4c.n2_clues" },
@@ -41950,7 +41955,8 @@ MC.addEvents({
       { "op": "sfx", "id": "drip", "pitch": 0.7, "gain": 0.5 },
       { "op": "wait", "ms": 400 },
       { "op": "say", "who": "think", "t": "물 건너 그 문.{p:300}\n그날 저 안에서,\n나는 졌다." },
-      { "op": "say", "who": "think", "t": "……오늘은 조용하다.{p:300}\n혼자가 아니라서일까." },
+      // (0.5.0c) 사용자: 꿈에 파리아가 없는데 같이 있는 줄로 읽힘 — 1817 엿봄은 합류(셋째 밤) 전이고 꿈속 첫 등장은 1820 B2 → '깨어나면'으로 현실임을 밝힌다(혼자 모티프는 유지)
+      { "op": "say", "who": "think", "t": "……오늘은 조용하다.{p:300}\n깨어나면 혼자가 아니라서일까." },
       { "op": "light", "r": 0, "ms": 400 },
       { "op": "light", "at": "player", "color": "#ffcf6a", "ms": 0 },
       { "op": "cam", "to": "player", "ms": 400, "async": true },
@@ -42678,7 +42684,7 @@ MC.addEvents({
       { "op": "say", "who": "dantes", "t": "제가 선장이 되면,{p:200} 그 장부부터 들여다봤을 겁니다." },
       { "op": "say", "who": "faria", "t": "그럼 하나 더.{p:200}\n메르세데스를 원한 사람은?" },
       { "op": "say", "who": "dantes", "t": "……페르낭." },
-      { "op": "say", "who": "dantes", "face": "sad", "t": "둘 다……{p:300} 제 잔치에 왔던 사람들입니다." },
+      { "op": "say", "who": "dantes", "face": "sad", "t": "둘 다……{p:300} 제 약혼 파티에 왔던 사람들입니다." },
       { "op": "say", "who": "faria", "t": "그러니 더 잘 봐야지.{p:200} 당글라르부터 캐 보세." },
       { "op": "say", "who": "faria", "t": "엘바의 편지를 그자가 봤나?{p:200} 그자 평소 글씨는?" },
       { "op": "say", "who": "dantes", "t": "……모르겠습니다.{p:300}\n오래돼서, 흐립니다." },
@@ -42744,7 +42750,7 @@ MC.addEvents({
       { "op": "say", "who": "faria", "face": "stern", "t": "둘이 아는 사이였나?" },
       { "op": "say", "who": "dantes", "t": "아뇨.{p:400} ……아니, 잠깐." },
       // (fixer-s2n) 정자는 카드를 먼저 쥐여 주지 않는다: 잔치 전 며칠을 플레이어가 되짚어 가다 정자를 고르는 순간 떠오른다(틀린 곳은 당테스가 스스로 지운다)
-      { "op": "choice", "who": "faria", "t": "잔치 전 며칠,{p:200}\n둘을 한자리에서 본 데는?", "opts": [
+      { "op": "choice", "who": "faria", "t": "파티 전 며칠,{p:200}\n둘을 한자리에서 본 데는?", "opts": [
         { "t": "부두", "v": "port", "do": [
           ARBOR_PORT,
           { "op": "choice", "who": "think", "t": "……그럼 어디서?", "opts": [
@@ -42759,7 +42765,7 @@ MC.addEvents({
       ] },
       { "op": "sfx", "id": "heartbeat", "gain": 0.5 },
       { "op": "clue", "id": "arbor", "recall": true },
-      { "op": "say", "who": "dantes", "t": "잔치 이틀 전, 레제르브 정자.{p:300}\n셋이 한 탁자에." },
+      { "op": "say", "who": "dantes", "t": "파티 이틀 전, 레제르브 정자.{p:300}\n셋이 한 탁자에." },
       { "op": "say", "who": "faria", "t": "그날로 돌아가 보세.{p:300}\n눈을 감고, 순서대로." },
       // 되감기(대사 약 10상자) 앞에서 한 번 끊는다: 그날로 들어가는 것은 플레이어의 결정
       { "op": "choice", "who": "think", "t": "그날로 돌아간다.", "opts": [
@@ -45496,7 +45502,7 @@ MC.addEvents({
       when(V("s3_jaw", 1), [ { "op": "say", "who": "faria", "face": "smile", "t": "……이제야 사자 같군." } ]),
       { "op": "custom", "id": "s3", "args": { "stage": "shadow", "panel": 4 } },
       { "op": "say", "who": "faria", "t": "결국 둘을 포도밭 저녁에 불렀네.\n잔에 독을 타서." },
-      { "op": "say", "who": "think", "t": "……잔치에서." },
+      { "op": "say", "who": "think", "t": "……파티에서." },
       { "op": "custom", "id": "s3", "args": { "stage": "shadow", "panel": 5 } },
       { "op": "say", "who": "faria", "t": "스파다는 눈치챘지. 가기 전에\n조카에게 한 줄 남겼네." },
       { "op": "say", "who": "faria", "t": "'내 기도서를 조카에게 준다.'\n그게 다였어." },
@@ -50241,7 +50247,7 @@ MC.addLang('ko', {
     "recap.p.s1_y17": "두 해가 흘러 1817년이 됐다",
     "recap.p.s1_inspect": "감찰관이 확인을 약속했다",
     "recap.p.s1_if": "재판 없이 이프 성에 갇혔다",
-    "recap.p.s1_feast": "이틀 뒤, 약혼 잔치가 열렸다",
+    "recap.p.s1_feast": "이틀 뒤, 약혼 파티가 열렸다",
     "recap.p.s1_catalan": "메르세데스와 모레를 약속했다",
     "recap.p.s1_father": "석 달 만에 아버지를 뵈었다",
     "recap.p.s1_port": "선장을 잃은 배로 마르세유에 왔다",
