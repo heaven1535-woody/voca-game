@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.5.0c-word';
+  var VERSION = '0.5.1-caption';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -1935,7 +1935,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 
   /* ---------- 이벤트 명령 번역(TEXT_FIELDS) ---------- */
   // op → 번역할 필드. 'args'는 깊게, 'opts'는 선택지 배열. name.v는 저장값이라 번역하지 않는다(그릴 때 name()).
-  const TEXT_FIELDS = { say: ['t'], narr: ['t'], choice: ['t', 'opts'], caption: ['t'], closeup: ['t'], card: ['t', 'sub', 'line'], banner: ['t'], toast: ['t'], custom: ['args'] };
+  const TEXT_FIELDS = { say: ['t'], narr: ['t'], choice: ['t', 'opts'], caption: ['t'], closeup: ['t'], card: ['t', 'sub', 'line'], banner: ['t'], toast: ['t'], custom: ['args'], sfx: ['cap'] };   // sfx.cap: [u51 B8-7] 소리 자막(글일 때만 — false는 그대로)
   const CANCEL_SRC = ['그만둔다'];
   const plainSrc = s => String(s == null ? '' : s).replace(/\{[^{}]*\}/g, '');
   const deepable = s => /[^\x00-\x7f]|\s/.test(s);        // id('letter' 'faria')는 건너뜀
@@ -2234,6 +2234,9 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
             case 'caption': case 'closeup': case 'banner': case 'toast':
               if (translatable(c.t)) add(Object.assign({ src: c.t, kind: c.op, who: c.who || null, slot: c.op }, base));
               break;
+            case 'sfx':                                  // [u51 B8-7] 소리 자막(칸 sndcap — fx.js가 등록)
+              if (translatable(c.cap)) add(Object.assign({ src: c.cap, kind: 'sndcap', who: null, slot: 'sndcap' }, base, { at: at + '.cap' }));
+              break;
             case 'card':
               [['t', 'cardT'], ['sub', 'cardSub'], ['line', 'cardLine']].forEach(([f, s]) => { if (translatable(c[f])) add(Object.assign({ src: c[f], kind: 'card', slot: s }, base, { at: at + '.' + f })); });
               break;
@@ -2282,6 +2285,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       if (o && typeof o === 'object') for (const k in o) { if (parts[0] === 'maps' && parts.length === 2 && MAP_SKIP[k]) continue; dwalk(o[k], parts.concat(k)); }
     };
     for (const root of Object.keys(D)) { if (DATA_SKIP[root]) continue; dwalk(D[root], [root]); }
+    // [u51 B8-7] 효과음 레시피의 소리 자막(sfx.*.cap) — sfx 뿌리는 통째로 건너뛰므로 cap만 따로(sfx.js가 t(cap,'sndcap')로 그린다)
+    for (const id of Object.keys(D.sfx || {})) { const cp = D.sfx[id] && D.sfx[id].cap; if (translatable(cp)) add({ src: cp, kind: 'sndcap', slot: 'sndcap', at: 'sfx.' + id + '.cap', path: 'sfx.*.cap', ev: null, scene: '데이터 sfx', scope: 'data', pilot: false, who: null }); }
     // 코드가 t()/name()으로 부르는데 데이터에 단독 문자열로 없는 원문(i18n-pilot, docs/requests/i18n-pilot.md) — 번역자가 보고, 검사기가 고아로 잡지 않게
     for (const [src, kind, slot, at, note] of CODE_SRC) add({ src, kind, slot, at, path: at, ev: null, scene: '코드', scope: 'data', pilot: true, who: null, note });
     extractCache = out; extractRev = evsRev;
@@ -2777,12 +2782,19 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     else if (!on && guard) { guard = false; try { if (history.state && history.state.mc34) history.back(); } catch (_) {} }
   };
 
+  const onMs = p => { let n = 0; (Array.isArray(p) ? p : [p]).forEach((v, i) => { if (!(i & 1)) n += Math.max(0, +v || 0); }); return n; };   // 진동 패턴 [울림, 쉼, 울림…]의 울림 합(ms)
   I.vibrate = function (p) {
-    if (!firstTouch || !navigator.vibrate) return false;
-    // 브라우저가 아직 '사용자 활성화'를 못 받았으면 부르지 않는다(합성 입력·키보드만 쓴 경우 콘솔 'Blocked call' 오류 방지)
-    if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return false;
+    if (!firstTouch) return false;
     const s = MC.save && MC.save.settings;
     if (s && s.vibrate === false) return false;
+    // [u51 B8-7] 진동이 없는 터치 기기(아이폰 웹 — navigator.vibrate 없음, iOS는 있어도 울리지 않음: a42-snd): 진동 대신 화면 테두리가 한 번 맥동(fx.edgePulse).
+    //   12ms 이하 UI 톡(버튼·선택지)은 건너뛴다. 마우스만 있는 기기는 그대로(아무것도 안 함)
+    if (!navigator.vibrate || (MC.audio && MC.audio.IOS)) {
+      if ((navigator.maxTouchPoints || 0) > 0 && onMs(p) > 12 && MC.fx && MC.fx.edgePulse) MC.fx.edgePulse(p);
+      return false;
+    }
+    // 브라우저가 아직 '사용자 활성화'를 못 받았으면 부르지 않는다(합성 입력·키보드만 쓴 경우 콘솔 'Blocked call' 오류 방지)
+    if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return false;
     try { return navigator.vibrate(p); } catch (_) { return false; }
   };
 
@@ -3918,6 +3930,63 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     }
   }
 
+  /* ---------- [u51 B8-7] 소리 자막 ---------- */
+  // 「[벽 너머 · 긁는 소리]」 small 한 줄 1.2초(sfx.js capCue가 부른다 — 설정 '소리 자막'). 자리: 보이는 대화창(이름표·초상·선택지까지)이 아래면 그 바로 위,
+  //   위 창이면 바로 아래, 창이 없으면 화면 아래쪽(레터박스 띠 바로 위). 같은 글이 이어 오면(노크 셋·발소리) 새 줄 대신 그 줄을 늘린다 · 두 줄까지 · 사라질 때만 3단계(토스트 결)
+  const CAP_MS = 1200, CAP_LH = 13, CAP_COL = '#e4dcc8';
+  const caps = [];
+  if (MC.i18n && MC.i18n.slot) MC.i18n.slot('sndcap', { font: 'small', w: 150, lines: 1, nowrap: true, over: 'warn', note: '소리 자막 한 줄(효과음 op cap·레시피 cap — 코드가 [ ]로 감싼다, 대사창 바로 위 1.2초). 「자리 · 소리」 꼴' });
+  F.sndCap = function (text) {
+    text = String(text == null ? '' : text).trim();
+    if (!text) return;
+    const t = MC.time.real;
+    for (const c of caps) if (c.text === text) { c.t0 = t; return; }
+    if (caps.length >= 2) caps.shift();
+    caps.push({ text, s: '[' + text + ']', t0: t });
+  };
+  F.sndCaps = () => caps.map(c => c.text);                   // 확인용(디버그·하네스)
+  function renderCaps() {
+    if (!caps.length) return;
+    const t = MC.time.real;
+    for (let i = caps.length - 1; i >= 0; i--) if (t - caps[i].t0 >= CAP_MS || t < caps[i].t0) caps.splice(i, 1);
+    if (!caps.length) return;
+    const g = G(), n = caps.length, z = MC.dialogue && MC.dialogue.capZone ? MC.dialogue.capZone() : null;
+    let y = z ? (z.pos === 'top' ? z.bottom + 3 : z.top - 2 - n * CAP_LH) : g.H - (g.safe.bottom || 0) - 22 - n * CAP_LH;
+    y = Math.max((g.safe.top || 0) + 2, Math.round(y));
+    for (let i = 0; i < n; i++) {
+      const left = CAP_MS - (t - caps[i].t0), alpha = left >= 240 ? 1 : left >= 160 ? 0.66 : 0.33;
+      MC.text.draw(caps[i].s, g.W >> 1, y + i * CAP_LH, { font: 'small', color: CAP_COL, align: 'center', outline: '#000', alpha });
+    }
+  }
+
+  /* ---------- [u51 B8-7] 테두리 맥동 — 진동이 없는 기기(아이폰 웹 등)에서 진동 대신(input.vibrate가 부른다) ---------- */
+  // 화면 네 가장자리 6도트 디더 띠(바깥 2도트가 가장 짙다)가 한 번 차올랐다 빠진다(0.26초). 알파 없이 Bayer 단만.
+  //   다음 맥동까지 0.42초 이상 — 심장이 빨라져도 초당 2.4회에서 멈춘다(초당 3회 넘는 깜빡임 금지)
+  const EP = { t0: -1e9, k: 1 }, EP_MS = 260, EP_GAP = 420, EP_COL = '#e0d6c0';
+  F.edgePulse = function (p) {
+    const t = MC.time.real;
+    if (t - EP.t0 < EP_GAP) return false;
+    let on = 0;
+    (Array.isArray(p) ? p : [p]).forEach((v, i) => { if (!(i & 1)) on += Math.max(0, +v || 0); });
+    EP.t0 = t; EP.k = on >= 40 ? 1 : 0.75;                   // 긴 진동(문 쾅·대포)은 한 단 짙게
+    return true;
+  };
+  function drawEdgePulse() {
+    const el = MC.time.real - EP.t0;
+    if (el < 0 || el >= EP_MS) return;
+    const lv = Math.round(Math.sin(el / EP_MS * Math.PI) * 10 * EP.k);
+    if (lv <= 0) return;
+    const g = G(), ctx = g.ctx, W = g.W, H = g.H;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    for (const [o, m] of [[0, 1], [2, 0.55], [4, 0.25]]) {
+      const L = Math.round(lv * m);
+      if (L <= 0) continue;
+      g.ditherRect(o, o, W - 2 * o, 2, EP_COL, L); g.ditherRect(o, H - o - 2, W - 2 * o, 2, EP_COL, L);
+      g.ditherRect(o, o + 2, 2, H - 2 * o - 4, EP_COL, L); g.ditherRect(W - o - 2, o + 2, 2, H - 2 * o - 4, EP_COL, L);
+    }
+    ctx.restore();
+  }
+
   /* ---------- 갱신·오버레이 ---------- */
   F.update = function (dt, frozen) {
     // 흔들림(실시간 감쇠, 초당 1.6)
@@ -3947,6 +4016,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     }
     if (!fadeS.world) drawFadeLayer(fadeS.v, fadeS.color, fadeS.dither);
     drawTrans();
+    drawEdgePulse();                                           // [u51 B8-7] 페이드·전환 위 — 검은 화면에서도 보인다
+    renderCaps();
     renderToasts();
   };
 
@@ -4048,7 +4119,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   // (S4 §D-4) assist = 손놀림 보조(등급 상한 A) · oneHand = 한 손 조작(헤엄 탭 없이 저절로 젓기) — loadSettings가 같은 타입만 받으므로 키만 더하면 된다
   // [l45-light B7-1] bright = 밝기 보정 0 / 15 / 30(%) — gfx.present가 최종 화면에 감마로
   // [s46-sound B4-2] phoneBass = 폰 스피커 저음 보강(음악 베이스 한 옥타브 위 겹침 — music.js). 기본 켬(이어폰이면 끌 수 있다)
-  const DEF = { mus: 7, sfx: 8, voice: true, mute: false, textSpeed: 1, battleSpeed: 1, moveMs: 200, shake: 1, vibrate: true, hand: 'right', lang: '', assist: false, oneHand: false, bright: 0, phoneBass: true };
+  // [u51 B8-7] sndCap = 소리 자막 ''(자동: 소리 끄기·효과음 0이면 켬) | 'on' | 'off' — 설정 줄을 처음 누르면 'on'/'off'로 정해진다(sfx.js capOn)
+  const DEF = { mus: 7, sfx: 8, voice: true, mute: false, textSpeed: 1, battleSpeed: 1, moveMs: 200, shake: 1, vibrate: true, hand: 'right', lang: '', assist: false, oneHand: false, bright: 0, phoneBass: true, sndCap: '' };
   const GRADE_RANK = { S: 3, A: 2, B: 1 };
   const gradeOf = r => (r && r.escape && typeof r.escape.grade === 'string' ? r.escape.grade : (r && typeof r.grade === 'string' ? r.grade : null));
   let warned = false;
@@ -5132,17 +5204,39 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     } catch (e) { A.warn('fx', '효과음 부가 효과 오류: ' + e.message); }
   }
 
+  /* ---------------------------------------------------------------- [u51 B8-7] 소리 자막 */
+  /** 소리 자막을 띄우는가: 설정 sndCap '' = 자동(소리 끄기·?mute=1·효과음 0이면 켬) · 'on' · 'off' */
+  X.capOn = function () {
+    const s = A.settings() || {}, v = s.sndCap;
+    if (v === 'on') return true;
+    if (v === 'off') return false;
+    return !!(s.mute || (+s.sfx || 0) <= 0);
+  };
+  // 단서 소리의 자막·파문(자막이 켜졌을 때만, 오프라인 렌더 제외). o.cap(이미 번역된 글 — 이벤트는 i18n.cmd가 · false면 이번엔 없음)이 레시피 cap(원문 → 여기서 번역)보다 앞선다.
+  //   o.ring = 노크 파문 자리('player' | 오브젝트 id | [x,y] 타일) → field.ring(벽에 흰 고리 셋). 자막 글은 fx.sndCap이 대화창 위에 1.2초
+  function capCue(d, o) {
+    let c = o.cap !== undefined ? o.cap : null;
+    if (c == null && d.cap) c = MC.i18n && MC.i18n.t ? MC.i18n.t(String(d.cap), 'sndcap') : d.cap;
+    if (!c && o.ring == null) return;
+    if (!X.capOn()) return;
+    const g = A.graph(); if (g && g.off) return;
+    if (c && MC.fx && MC.fx.sndCap) MC.fx.sndCap(String(c));
+    if (o.ring != null && MC.field && MC.field.ring) MC.field.ring(o.ring);
+  }
+
   /* ---------------------------------------------------------------- 공개: 효과음 */
-  /** 효과음 재생. o: {pan:-1..1, pitch:배율, gain:배율, lp:Hz(이 소리만 저역 통과 — 담요 속처럼 먹먹하게, 돌려받은 inst.lp로 도중에 열 수 있음)}. 없는 id → 경고 1회 */
+  /** 효과음 재생. o: {pan:-1..1, pitch:배율, gain:배율, lp:Hz(이 소리만 저역 통과 — 담요 속처럼 먹먹하게, 돌려받은 inst.lp로 도중에 열 수 있음), cap·ring([u51 B8-7] 소리 자막·노크 파문)}. 없는 id → 경고 1회 */
   X.play = function (id, o) {
     try {
       const d = def(id);
       if (!d) { A.warn('sfx:' + id, '없는 효과음 id: ' + id); return null; }
       if (!d.L) return null;
-      if (!A.canPlay()) return null;
       o = o || {};
+      capCue(d, o);                                        // [u51 B8-7] 소리 자막·노크 파문 — canPlay 앞(무음일 때가 본래 쓰임)
       // [s46-sound B4-3] 레시피 hap(진동 패턴): 심장 = 진동 자동 결합(소5·G소1 — 소리를 끈 폰에서는 진동이 유일한 심장). 아주 작게 부른 것(gain < 0.2)·o.hap:false·오프라인 렌더는 건너뜀
+      //   [u51 B8-7] canPlay 앞으로 옮김: 설정 '소리 끄기'로 컨텍스트가 잠든 뒤에도 심장 진동(진동이 없는 기기는 테두리 맥동 — input.vibrate)이 온다
       if (d.hap && o.hap !== false && (o.gain == null || +o.gain >= 0.2) && MC.input && MC.input.vibrate) { const g0 = A.graph(); if (g0 && !g0.off) { try { MC.input.vibrate(d.hap); } catch (e) { /* */ } } }
+      if (!A.canPlay()) return null;
       if (o.lp > 0) {                                      // [embrace-side] 소리 하나에만 거는 저역 통과(버스 앞) — 끝나면 떼어 냄
         const g = A.graph(), lp = A.u.biquad(g.c, 'lowpass', +o.lp, 0.7);
         lp.connect(g.cat.sfx.in);
@@ -6787,7 +6881,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   /* ---------- 대화창 씬 ---------- */
   const st = {
     on: false, mode: 'closed', open: 0, box: false,           // mode: closed|opening|typing|shown|idle|closing
-    sp: null, face: null, pos: 'bottom', pt: null, swapT: -999,
+    sp: null, face: null, pos: 'bottom', pt: null, swapT: -999, rise: 0,     // rise: [u51 B2-6] 아래 창을 올린 높이(선택지 질문 — 선택지가 그 아래 대화창 자리에 온다)
     page: null, shown: 0, acc: 0, revealT: [], base: 28, auto: null, voice: null, noWait: false,
     doneAt: 0, onAdv: null, keep: 'grace', idleAt: 0,
     choice: null, lift: null, openRes: [], closeRes: [],
@@ -6801,14 +6895,14 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 
   function boxRect() {
     const g = G();
-    return { x: g.X0 + 2, y: st.pos === 'top' ? g.safe.top + 34 : g.H - 66 - g.safe.bottom, w: BOX_W, h: BOX_H };
+    return { x: g.X0 + 2, y: st.pos === 'top' ? g.safe.top + 34 : g.H - 66 - g.safe.bottom - st.rise, w: BOX_W, h: BOX_H, pos: st.pos };
   }
   function inStack() { return st.on && MC.scene.has(scene); }
   function hardReset(cancelChoice) {           // 씬이 밖에서 치워졌을 때 등: 걸린 약속을 모두 풀어 준다
     const adv = st.onAdv; st.onAdv = null;
     const ch = st.choice; st.choice = null;
     if (st.on && MC.scene.has(scene)) MC.scene.remove(scene);
-    st.on = false; st.mode = 'closed'; st.open = 0; st.box = false; st.page = null; st.sp = null; st.pt = null;
+    st.on = false; st.mode = 'closed'; st.open = 0; st.box = false; st.page = null; st.sp = null; st.pt = null; st.rise = 0;
     const lf = st.lift; st.lift = null; unlift(lf);
     if (adv) adv();
     if (ch && ch.res) ch.res(cancelChoice != null ? cancelChoice : (ch.cancel >= 0 ? ch.cancel : 0));
@@ -6821,17 +6915,18 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   }
   async function openBox(sp, o) {
     const pos = o.pos === 'top' ? 'top' : 'bottom';
+    const rise = pos === 'bottom' ? Math.max(0, o.rise | 0) : 0;   // [u51 B2-6] choice()만 넘긴다(대사는 늘 0)
     const pt = portraitOf(sp, o.face);
     if (!inStack()) {
       if (st.on) hardReset();
-      Object.assign(st, { sp, face: o.face || null, pos, pt, box: true, open: 0, mode: 'opening', page: null, choice: null });
+      Object.assign(st, { sp, face: o.face || null, pos, rise, pt, box: true, open: 0, mode: 'opening', page: null, choice: null });
       pushScene();
       await new Promise(r => st.openRes.push(r));
       return;
     }
     const changed = !st.sp || st.sp.id !== sp.id || st.pt !== pt;
-    if (st.box && st.pos !== pos) st.box = false;       // 위↔아래로 자리가 바뀌면 새 자리에서 다시 연다
-    st.sp = sp; st.face = o.face || null; st.pt = pt; st.pos = pos;
+    if (st.box && (st.pos !== pos || st.rise !== rise)) st.box = false;   // 위↔아래(또는 올린 질문 자리 ↔ 제자리)로 바뀌면 새 자리에서 다시 연다
+    st.sp = sp; st.face = o.face || null; st.pt = pt; st.pos = pos; st.rise = rise;
     if (!st.box || st.mode === 'closing' || st.mode === 'opening') {
       if (st.mode === 'closing') flush(st.closeRes);
       if (!st.box) st.open = 0;
@@ -6859,7 +6954,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     st.mode = 'closing';
   }
   function finishClose() {
-    st.mode = 'closed'; st.open = 0; st.box = false; st.page = null; st.choice = null; st.sp = null; st.pt = null;
+    st.mode = 'closed'; st.open = 0; st.box = false; st.page = null; st.choice = null; st.sp = null; st.pt = null; st.rise = 0;
     if (st.on) { st.on = false; MC.scene.remove(scene); }
     const lf = st.lift; st.lift = null; unlift(lf);
     flush(st.closeRes);
@@ -7040,7 +7135,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const g = G(), c = st.choice, h = c.total + 8, L = boxRect();
     let y;
     if (st.box) {
-      if (st.pos === 'top') y = L.y + BOX_H + 3;
+      if (st.pos === 'top' || st.rise > 0) y = L.y + BOX_H + 3;   // [u51 B2-6] 올린 질문 상자 바로 아래(질문 → 답 순서로 읽힌다 — 선택지는 대화창 제자리에)
       else {
         let top = L.y;
         if (st.pt) top = L.y - 30;
@@ -7050,6 +7145,22 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       }
     } else y = g.H - 8 - g.safe.bottom - h;
     return { x: L.x, y: Math.max(g.safe.top + 2, y), w: BOX_W, h };
+  }
+  // [u51 B8-7] 소리 자막 자리(fx.renderCaps): 지금 보이는 대화창이 차지한 세로 칸(이름표·초상·생각 방울·선택지 포함) → {top, bottom, pos} | null(창이 안 보임)
+  function capZone() {
+    if (!inStack()) return null;
+    const stk = MC.scene.stack;
+    for (let j = stk.indexOf(scene) + 1; j < stk.length; j++) if (stk[j] && stk[j].opaque) return null;   // 불투명 연출 아래 깔린 창은 안 보인다
+    const vis = st.box && st.mode !== 'closed' && !st.hidIdle, c = st.choice;
+    if (!vis && !c) return null;
+    const L = boxRect(), sp = st.sp;
+    let top = 1e9, bottom = -1e9;
+    if (vis) {
+      top = L.y - (st.pt ? 30 : sp && sp.style === 'normal' && sp.name != null ? 18 : sp && sp.style === 'think' ? 17 : 0);
+      bottom = L.y + BOX_H;
+    }
+    if (c) { const R = choiceRect(); top = Math.min(top, R.y); bottom = Math.max(bottom, R.y + R.h); }
+    return { top, bottom, pos: st.pos };
   }
   function rowAt(x, y, slack) {
     const c = st.choice, R = choiceRect();
@@ -7209,7 +7320,9 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       // 질문: 문자열(한국어는 늘 이것) 또는 상자 배열(i18n §14-1 — 앞 상자는 탭 대기, 마지막 상자의 마지막 페이지 아래에 선택지). 빈 상자는 버린다
       const qs = Array.isArray(o.t) ? o.t.filter(x => x != null && x !== '') : (o.t != null && o.t !== '' ? [o.t] : []);
       if (qs.length) {
-        await openBox(sp, o);
+        // [u51 B2-6] 아래 질문 상자는 선택지 높이(+틈 3)만큼 올려 연다 → 선택지가 그 아래(대화창 제자리)에 와서 질문이 늘 답 위에 읽힌다(모바일 평가 11). 위 창은 예전 그대로(선택지가 아래)
+        const rise = o.pos === 'top' ? 0 : buildChoice(opts).total + 8 + 3;
+        await openBox(sp, Object.assign({}, o, { rise }));
         ask: for (let q = 0; q < qs.length; q++) {
           const comp = compile(qs[q], { align: sp.align }), lastQ = q === qs.length - 1;
           for (let p = 0; p < comp.pages.length; p++) {
@@ -7494,7 +7607,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     close,                // 창 닫기 -> Promise
     reset,
     speaker, portraitOf, compile, prep, strip,
-    boxRect,              // 현재 대화창 위치 {x,y,w,h}
+    boxRect,              // 현재 대화창 위치 {x,y,w,h,pos}
+    capZone,              // [u51 B8-7] 소리 자막이 피할 칸 {top,bottom,pos} | null
     get active() { return st.on || !!narrS || pending > 0 || MC.scene.find('nameplate') !== null; },
     get open() { return inStack(); },
     get sayN() { return sayN; },        // [s44-director B5-14] 시작한 대사 op 수(holdSay)
@@ -7955,6 +8069,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       if (c.pan != null) o.pan = +c.pan;
       if (c.pitch != null) o.pitch = +c.pitch;
       if (c.gain != null) o.gain = +c.gain;
+      if (c.cap !== undefined) o.cap = c.cap;              // [u51 B8-7] 소리 자막(글은 i18n.cmd가 번역 — TEXT_FIELDS sfx.cap) · false = 레시피 자막도 끔
+      if (c.ring != null) o.ring = c.ring;                 // 노크 파문 자리('player'|id|[x,y])
       const f = A('sfx', 'play'); if (f) f(c.id, o);
     },
     amb: c => {
@@ -8173,7 +8289,9 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
           case 'custom': if (!(MC.ch1 && MC.ch1.custom && MC.ch1.custom[c.id])) add('정보', w, 'custom.' + c.id + ' 아직 없음(대체 연출)'); break;
           case 'emote': if (!EMOTES.includes(c.kind)) add('경고', w, '모르는 emote ' + c.kind); break;
           case 'move': if (typeof c.path === 'string' && !/^\s*([UDLR]\d*\s*)+$/i.test(c.path)) add('오류', w, '경로 형식 "' + c.path + '"'); break;
-          case 'sfx': if (isFn(MC.sfx, 'has') && !MC.sfx.has(c.id)) add('경고', w, '없는 효과음 ' + c.id); break;
+          case 'sfx': if (isFn(MC.sfx, 'has') && !MC.sfx.has(c.id)) add('경고', w, '없는 효과음 ' + c.id);
+            if (c.cap !== undefined && c.cap !== false && (typeof c.cap !== 'string' || !c.cap.trim())) add('경고', w, 'cap은 글 또는 false([u51 B8-7] 소리 자막)');   // ring은 field.atPos가 없는 id를 경고
+            break;
           case 'bgm': if (c.id != null && MC.data.bgm && !MC.data.bgm[c.id]) add('경고', w, '없는 곡 ' + c.id); break;
           case 'closeup': if (!D.portraitOf(c.who, c.face)) add('경고', w, '클로즈업 초상 없음 ' + c.who + '/' + c.face); break;
         }
@@ -10427,6 +10545,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     g.offset(-rcam.x, -rcam.y);
     if (zk > 1) ctx.setTransform(zk, 0, 0, zk, -zk * (rcam.x + Z.cx), -zk * (rcam.y + Z.cy));   // 줌: 같은 배율로
     drawGlows();
+    drawRings();                                       // [u51 B8-7] 노크 파문
     drawHoldRing();
     drawHoldHint();
     if (pl.emo) drawEmote(pl);
@@ -10709,6 +10828,29 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const r = drawRect(o);
     return [r[0] + r[2] / 2, r[1] + r[3] / 2];
   }
+  // [u51 B8-7] 노크 파문: 소리 난 자리(벽·문·바닥 돌)에 흰 1px 고리 셋이 0.12초 간격으로 퍼진다(반지름 3 → 11, 0.52초). 소리 자막이 켜졌을 때 sfx.js가 부른다(ring).
+  //   그리는 곳은 7단계(어둠·색 보정 뒤 — 캄캄한 방에서도 보인다) · 끝 절반은 알파 없이 디더 단으로 옅어진다 · 정수 좌표 · 컷신 줌 중엔 같은 배율
+  const RINGS = [], RING_MS = 520, RING_GAP = 120, RING_R0 = 3, RING_R1 = 11;
+  function ringAt(at) {
+    if (!map) return;
+    const p = atPos(at);
+    if (RINGS.length >= 6) RINGS.shift();
+    RINGS.push({ x: Math.round(p[0]), y: Math.round(p[1]), t0: nowR(), m: map });
+  }
+  function drawRings() {
+    if (!RINGS.length) return;
+    const g = G(), t = nowR();
+    for (let i = RINGS.length - 1; i >= 0; i--) {
+      const R = RINGS[i], el = t - R.t0;
+      if (R.m !== map || el < 0 || el >= RING_MS + 2 * RING_GAP) { RINGS.splice(i, 1); continue; }
+      for (let k = 0; k < 3; k++) {
+        const e = (el - k * RING_GAP) / RING_MS;
+        if (e < 0 || e >= 1) continue;
+        const r = Math.round(RING_R0 + (RING_R1 - RING_R0) * MC.ease.outQuad(e));
+        g.ring(R.x, R.y, r, e < 0.5 ? '#ffffff' : g.pattern('#ffffff', e < 0.75 ? 10 : 5));
+      }
+    }
+  }
 
   const F = MC.field = {
     // 맵 진입(필드 씬이 없으면 만들고, 있으면 맵만 교체). at: 스폰 이름 또는 [x,y,dir]. trans: fade|cut|dream|wake|white|ink. onEnter가 끝나면 resolve
@@ -10767,6 +10909,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       const k = FX_ALIAS[kind] || kind, p = atPos(at);
       MC.fx.particles.emit(k, p[0], p[1], n);
     },
+    ring: ringAt,                                      // [u51 B8-7] 노크 파문 ring(at) — at: 'player' | id | [x,y](타일, 소수 가능)
     tileToScreen(x, y) { return zoomScreen(x * TS - rcam.x, y * TS - rcam.y); },   // [c50-cine] 줌 중이면 줌 화면 좌표(zoomWrap 안에서는 평소 좌표)
     // [c50-cine B5-1] 컷신 정수 줌: k 1|2|3, at [x,y](타일, 소수 가능)|id|'player', o {ms(디더 컷, 기본 280 · 0이면 바로), y(0~1 초점 높이), keepCam}
     zoom(k, at, o) { return zoomTo(k, at, o); },
@@ -18919,7 +19062,8 @@ MC.data.sfx = {
     {"o":"sine","f":[180,60],"a":2,"d":300,"g":0.2},
     {"t":150,"o":"sine","f":[280,780],"fms":30,"a":2,"d":40,"g":0.05,"rep":5,"every":90,"jit":40,"rpm":0.25}]},
   /* [s46-sound B4-1] 저역(sine 48→28·LP 잡음) −4dB, 폰 대역 층(소1-2): 몸통 noise bp400 q.8 d1600 g.3 + 균열 hp2500 d40 g.12 + 꼬리 bp300 600ms 굴림 */
-  "cannon_far": {"c":"story","p":4,"cd":300,"L":[
+  /* [u51 B8-7] cap = 소리 자막 원문(설정 '소리 자막'이 켜지면 이 소리가 날 때마다 대사창 위 1.2초 — 이벤트 op의 cap이 앞선다, 번역은 i18n extract의 sfx.*.cap). 늘 단서인 소리 여섯에만 */
+  "cannon_far": {"c":"story","p":4,"cd":300,"cap":"멀리서 · 대포 소리","L":[
     {"n":"white","lp":[900,140],"ffms":900,"a":6,"d":1300,"g":0.35,"send":{"dream":0.7}},
     {"o":"sine","f":[48,28],"a":5,"d":900,"g":0.3},
     {"n":"white","bp":400,"q":0.8,"a":6,"d":1600,"g":0.5,"send":{"dream":0.5}},
@@ -19230,7 +19374,7 @@ MC.data.sfx = {
     {"t":8,"o":"sine","f":3300,"a":2,"d":60,"g":0.012},
     {"n":"white","bp":2800,"q":2,"a":2,"d":10,"g":0.02}]},
   /* hollow_knock: 속 빈 침대 다리 '통'(knock보다 밝고 길게 울림 — 3막 벽 두드리기의 소리 결) */
-  "hollow_knock": {"c":"story","p":3,"cd":90,"rp":0.03,"L":[
+  "hollow_knock": {"c":"story","p":3,"cd":90,"rp":0.03,"cap":"속이 빈 울림","L":[
     {"o":"triangle","f":[240,190],"a":2,"d":110,"g":0.2,"send":{"stone":0.25}},
     {"o":"sine","f":[175,160],"a":3,"d":320,"g":0.14},
     {"n":"white","bp":480,"q":5,"a":2,"d":180,"g":0.1},
@@ -19274,7 +19418,7 @@ MC.data.sfx = {
     {"n":"white","bp":[1700,900],"q":1,"gate":[14,28],"a":70,"s":1,"h":650,"r":300,"g":0.035},
     {"t":80,"n":"white","hp":2800,"a":2,"d":5,"g":0.04,"rep":12,"every":70,"jit":50,"rgm":[0.2,1]}]},
   /* sea_wall: 돌 너머 파도(LP 400) — 한 번 밀려와 부서지고 빠지는 3초 */
-  "sea_wall": {"c":"story","p":4,"cd":800,"L":[
+  "sea_wall": {"c":"story","p":4,"cd":800,"cap":"벽 너머 · 파도 소리","L":[
     {"n":"brown","lp":[180,400,160],"ffms":2600,"a":900,"s":1,"h":700,"r":1500,"g":0.34},
     {"n":"white","lp":[250,420,220],"ffms":2600,"a":1000,"s":0.8,"h":500,"r":1300,"g":0.06},
     {"o":"sine","f":[48,40],"a":800,"s":1,"h":800,"r":1400,"g":0.08},
@@ -19457,7 +19601,7 @@ MC.data.sfx = {
     {"n":"white","bp":500,"q":0.8,"wob":0.4,"a":10,"d":2200,"g":0.3,"send":{"stone":0.4}},
     {"t":300,"n":"brown","lp":500,"a":200,"d":1800,"g":0.18,"send":{"stone":0.6}}]},
   /* key_ring: 열쇠 꾸러미(아침 순회 — _keys보다 가깝고 밝게) + 자물쇠 쇠고리 */
-  "key_ring": {"c":"story","p":3,"cd":200,"gain":1.6,"L":[
+  "key_ring": {"c":"story","p":3,"cd":200,"gain":1.6,"cap":"열쇠 꾸러미 소리","L":[
     {"n":"metal","bp":3000,"q":4,"a":2,"d":90,"g":0.05,"rep":3,"every":65,"jit":30,"rgm":[0.5,1]},
     {"o":"sine","f":2900,"a":2,"d":160,"g":0.015,"rep":3,"every":65,"jit":30,"rpm":0.06},
     {"t":40,"n":"white","hp":3000,"a":2,"d":6,"g":0.06},
@@ -32442,7 +32586,7 @@ MC.addSprites({ pals: PAL, spr: SPR });
 /* data/spr_ships_c50.js — [c50-conv-ships 0.5.0-cine B6-7] 배 세 척: 제미나이 원본(docs/art_refs/gemini/pharaon_g1 · tartane_top_g1 · convoy_top_g1, 1536×2752)을
    형태 그대로(크롭·격자·팔레트·✦ 지우기·층 나누기만) 필드 1배 도트로. 변환기(번들 밖) docs/art_wip/c50/ships/conv.html + specs.js, 결과 행 rows.json.
    · ob_pharaon_hull 164×224 — 항구 port (8,29) w 10 아래 정렬 = 16~29행(부두 오른쪽, 위는 부두 턱·아래는 맵 끝 = 화면 밖으로 이어짐). 고물 끝이 안 보이게 원본 y 0~2098만.
-   · ob_pharaon_flag 24×16 — 반쯤 내린 깃발(원본에 없어 별개 작은 오브젝트로 손 도트: 바람이 자서 늘어진 푸른 깃발, ob_flag_half와 같은 색). 큰 돛대 기둥 왼쪽(부두 쪽 — 좁은 화면에서도 보이게) 가운데 높이, 흰 띠가 기둥에 매인 쪽.
+   · ob_pharaon_flag 32×32([u51] 24×16에서 키움 — 천 16×21 + 깃줄) — 반쯤 내린 깃발(원본에 없어 별개 작은 오브젝트로 손 도트: 바람이 자서 늘어진 푸른 깃발, ob_flag_half와 같은 색). 큰 돛대 기둥 왼쪽(부두 쪽 — 좁은 화면에서도 보이게) 가운데 높이, 흰 띠가 기둥에 매인 쪽.
    · ob_tartane_hull / ob_tartane_rig 119×296 — 갑판 tartane (4,18) w 8. hull = 선체·갑판·밧줄 더미·통·박·키(z<0 바닥), rig = 돛대 기둥·활대·라틴 돛(사람 위).
      두 층은 같은 칸·같은 자리(층 가르기는 '돛 다각형 안 밝은 돛 색 + 활대 띠 + 돛대 기둥'만 위층 — 모양을 새로 긋지 않음). 아래 15줄은 빈 줄(아래 정렬 맞춤).
    · ob_convoy_hull 80×174 — 호송선 boat (4,29) w 5. 앉을 널 셋 = 22·24·26행(병사·당테스 스폰), 노걸이 23·25행 양쪽. 왼쪽 4·오른쪽 3·아래 6줄 빈 칸.
@@ -32677,25 +32821,43 @@ SPR.ob_pharaon_hull = { pal: 'c50ph', rows: [
 ".........................................hhhkhkYYYYkkkkHHHHkkkkkskkkqkkkwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwkkpqqqqrkwwwwppppkwwwwwwkswwwwkHkkkHkkkkj.................",
 ".........................................hhhkhkYYYYYkkkkHHkRkkkkksHHkkkkpwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwkkppqqqqrkwwwwwwwwkwwkwwwkswwwwqkHkkHkkkkj.................",
 ".........................................hhhkhkkYYYYkkkkHkkkRkkkkkHHkkkkpwwwwwwwwwwwwpppwwwwwwwwwwwwwwwwwkkppqqqqrkwwwwwwwwkwwkkwwkswwwwqkHkkkkkkkkjk..............."] };
-// 반쯤 내린 깃발(손 도트 10×12, 6~15열) — 오른쪽 끝(15열)이 돛대 기둥 왼쪽 가장자리(그림 82열 = 월드 208)에 닿는다. 접힌 주름 0. 색은 ob_flag_half(spr_world.js tw 6·0·M)
-PAL.c50flag = { k: '#2b1d2a', '6': '#3a6aa8', '0': '#23304a', M: '#fbf4ea' };
+// 반쯤 내린 깃발(손 도트 — AI 원본 밖의 별개 오브젝트) — 오른쪽 끝(15열)이 돛대 기둥 왼쪽 가장자리(그림 82열 = 월드 208)에 닿는다. 색은 ob_flag_half(spr_world.js tw 6·0·M)
+// [u51] 10×12 → 16×21(폰 폭 187에서 읽히게 — 0.5.0 남은 흠). 바람 없이 늘어진 천: 세로 주름 셋(L 밝은 결·0 그늘), 깃대 쪽 흰 띠(M), 바깥쪽 아래 모서리가 더 처진다.
+//   위 7줄·아래 4줄은 돛대를 따라 내려온 깃줄(r) — 깃발이 꼭대기가 아니라 돛대 가운데에 내려와 있음이 보이게. 32×32(오브젝트 w 2 = 32px라 x 자리는 예전 그대로)
+PAL.c50flag = { k: '#2b1d2a', '6': '#3a6aa8', '0': '#23304a', M: '#fbf4ea', L: '#5a8ac8', r: '#d8c8a8' };   // r: 깃줄 — 돛대 나무색(#64503f~#98806a)과 갈리게 밝은 삼베
 SPR.ob_pharaon_flag = { pal: 'c50flag', rows: [
-"........................",
-"........................",
-"......kkkkkkkkkk........",
-"......k0666666Mk........",
-"......k6066666Mk........",
-"......k6606666Mk........",
-"......k6606666Mk........",
-"......k6606660Mk........",
-"......k6606666Mk........",
-"......k6606666Mk........",
-".......k60666Mk.........",
-".......k66066Mk.........",
-"........k6666k..........",
-".........kkkk...........",
-"........................",
-"........................"] };
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+".kkkkkkkkkkkkkkk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60MMk................",
+"k6L606L606L60kkr................",
+"k6L606L606L6k..r................",
+"k6L606L606kk...r................",
+"k6L606L6kk.....r................",
+"k6L60kk........r................",
+".kkk...........r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................"] };
 // 타르탄(새벽 — 시간은 장면 grade가): 나무 o·n·a·e·b·c·d(원본 #8e6347 근처 그대로 — B6-6 '갑판 한 단 밝게') · 돛 1~4 · 밧줄 r·R·t (s4deckob 사다리)
 PAL.c50ta = {'1':'#6e6656', '2':'#8e826e', '3':'#b0a48c', '4':'#cfc4ac', 'o':'#1e1612', 'n':'#2c2219', 'a':'#4a3a2e', 'e':'#5e4636', 'b':'#8a6044', 'c':'#a8745a', 'd':'#c49274', 'r':'#5e564a', 'R':'#857a68', 't':'#aca08a'};
 SPR.ob_tartane_hull = { pal: 'c50ta', rows: [
@@ -38912,7 +39074,7 @@ MC.addEvents({
     { "op": "fade", "to": 1, "ms": 0 },
     { "op": "amb", "id": null, "fade": 900 },
     { "op": "wait", "ms": 1500 },
-    { "op": "sfx", "id": "door_iron" },
+    { "op": "sfx", "id": "door_iron", "cap": "철문 · 닫히는 소리" },   // [u51 B8-7] 소리 자막(검정 속 성문)
     { "op": "shake", "p": 0.3 },
     { "op": "vibrate", "p": 60 },
     { "op": "wait", "ms": 1300 },
@@ -39019,9 +39181,10 @@ MC.addEvents({
       { "op": "vignette", "a": 0.4, "ms": 0 },
       { "op": "amb", "id": "cell", "fade": 3000 },
       { "op": "wait", "ms": 1600 },
-      { "op": "sfx", "id": "drip" },
+      // [u51 B8-7] cap = 소리 자막(설정 '소리 자막' — 무음이면 기본 켬) · ring = 노크 파문(소리 난 벽·문에 흰 고리 셋)
+      { "op": "sfx", "id": "drip", "cap": "물방울 소리" },
       { "op": "wait", "ms": 1100 },
-      { "op": "sfx", "id": "drip", "pitch": 0.92 },
+      { "op": "sfx", "id": "drip", "pitch": 0.92, "cap": "물방울 소리" },
       { "op": "wait", "ms": 500 },
       { "op": "parallel", "do": [
         [ { "op": "fade", "to": 0, "ms": 1800 } ],
@@ -39035,20 +39198,20 @@ MC.addEvents({
       { "op": "wait", "ms": 250 },
       { "op": "face", "id": "player", "dir": "up" },
       { "op": "wait", "ms": 200 },
-      { "op": "sfx", "id": "knock" }, { "op": "shake", "p": 0.12 }, { "op": "wait", "ms": 220 },
-      { "op": "sfx", "id": "knock", "pitch": 1.05 }, { "op": "shake", "p": 0.12 }, { "op": "wait", "ms": 220 },
-      { "op": "sfx", "id": "knock", "pitch": 0.95 }, { "op": "shake", "p": 0.16 }, { "op": "vibrate", "p": 30 },
+      { "op": "sfx", "id": "knock", "cap": "철문 · 두드리는 소리", "ring": "door" }, { "op": "shake", "p": 0.12 }, { "op": "wait", "ms": 220 },
+      { "op": "sfx", "id": "knock", "pitch": 1.05, "cap": "철문 · 두드리는 소리", "ring": "door" }, { "op": "shake", "p": 0.12 }, { "op": "wait", "ms": 220 },
+      { "op": "sfx", "id": "knock", "pitch": 0.95, "cap": "철문 · 두드리는 소리", "ring": "door" }, { "op": "shake", "p": 0.16 }, { "op": "vibrate", "p": 30 },
       { "op": "say", "who": "dantes", "face": "shock", "t": "여보세요!{p:250} 여보세요,{p:150} 누구 없습니까?" },
       { "op": "wait", "ms": 900 },
-      { "op": "sfx", "id": "drip" },
+      { "op": "sfx", "id": "drip", "cap": "물방울 소리" },
       { "op": "wait", "ms": 700 },
       { "op": "cam", "zoom": 1, "async": true },                          // [c50-cine] 발소리 — 문과 간수가 보이게 와이드
-      { "op": "sfx", "id": "step_stone", "pan": 0.3, "pitch": 0.9 }, { "op": "wait", "ms": 430 },
-      { "op": "sfx", "id": "step_stone", "pan": 0.2, "pitch": 0.86 }, { "op": "wait", "ms": 430 },
-      { "op": "sfx", "id": "step_stone", "pan": 0.1, "pitch": 0.9 }, { "op": "wait", "ms": 300 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.3, "pitch": 0.9, "cap": "복도 · 다가오는 발소리" }, { "op": "wait", "ms": 430 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.2, "pitch": 0.86, "cap": "복도 · 다가오는 발소리" }, { "op": "wait", "ms": 430 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.1, "pitch": 0.9, "cap": "복도 · 다가오는 발소리" }, { "op": "wait", "ms": 300 },
       { "op": "emote", "id": "player", "kind": "exclaim", "ms": 700 },
       { "op": "move", "id": "player", "path": "D2", "speed": 260, "face": "up" },
-      { "op": "sfx", "id": "door_iron" }, { "op": "shake", "p": 0.22 }, { "op": "vibrate", "p": 50 },
+      { "op": "sfx", "id": "door_iron", "cap": "철문 · 열리는 소리" }, { "op": "shake", "p": 0.22 }, { "op": "vibrate", "p": 50 },
       { "op": "spawn", "id": "jailer", "sprite": "ch_jailer", "x": 6, "y": 1, "dir": "down" },
       { "op": "move", "id": "jailer", "path": "D1", "speed": 320 },
       { "op": "wait", "ms": 300 },
@@ -39070,11 +39233,11 @@ MC.addEvents({
         [ { "op": "move", "id": "jailer", "path": "U1", "speed": 300 }, { "op": "despawn", "id": "jailer" } ],
         [ { "op": "wait", "ms": 200 }, { "op": "move", "id": "player", "path": "U1", "speed": 200 } ]
       ] },
-      { "op": "sfx", "id": "door_iron" }, { "op": "shake", "p": 0.35 }, { "op": "vibrate", "p": 60 },
+      { "op": "sfx", "id": "door_iron", "cap": "철문 · 닫히는 소리" }, { "op": "shake", "p": 0.35 }, { "op": "vibrate", "p": 60 },
       { "op": "jump", "id": "player", "h": 3, "ms": 160 },
       { "op": "cam", "zoom": 2, "at": "player", "async": true },         // [c50-cine] 문이 닫힌 뒤 혼자 — 2배(「34번. ……34번?」까지)
       { "op": "wait", "ms": 1500 },
-      { "op": "sfx", "id": "drip" },
+      { "op": "sfx", "id": "drip", "cap": "물방울 소리" },
       { "op": "wait", "ms": 700 },
       { "op": "if", "cond": { "var": "toast", "eq": "A" },
         "then": [ { "op": "say", "who": "think", "t": "선장님.{p:400} 파라옹호는 지금 누가 몰고 있을까요?" } ],
@@ -39203,20 +39366,20 @@ MC.addEvents({
               { "op": "say", "who": "think", "t": "두드릴까? ……두드려서 뭐 해?" } ],
             "else": [ { "op": "if", "cond": { "var": "days", "gte": 30 },
               "then": [
-                { "op": "sfx", "id": "knock" }, { "op": "shake", "p": 0.08 }, { "op": "wait", "ms": 260 },
-                { "op": "sfx", "id": "knock", "pitch": 0.95 }, { "op": "shake", "p": 0.08 },
+                { "op": "sfx", "id": "knock", "cap": "철문 · 두드리는 소리", "ring": "door" }, { "op": "shake", "p": 0.08 }, { "op": "wait", "ms": 260 },
+                { "op": "sfx", "id": "knock", "pitch": 0.95, "cap": "철문 · 두드리는 소리", "ring": "door" }, { "op": "shake", "p": 0.08 },
                 { "op": "wait", "ms": 500 },
                 { "op": "say", "who": "narr", "t": "두드렸다. 이번엔 발소리도 없다." },
                 { "op": "if", "cond": { "flag": "a3.inspected" },
                   "then": [ { "op": "say", "who": "think", "t": "확인하는 중일 거야. 그렇지?" } ] } ],
               "else": [
-                { "op": "sfx", "id": "knock" }, { "op": "shake", "p": 0.1 }, { "op": "wait", "ms": 220 },
-                { "op": "sfx", "id": "knock", "pitch": 1.05 }, { "op": "shake", "p": 0.1 }, { "op": "wait", "ms": 220 },
-                { "op": "sfx", "id": "knock", "pitch": 0.95 }, { "op": "shake", "p": 0.12 },
+                { "op": "sfx", "id": "knock", "cap": "철문 · 두드리는 소리", "ring": "door" }, { "op": "shake", "p": 0.1 }, { "op": "wait", "ms": 220 },
+                { "op": "sfx", "id": "knock", "pitch": 1.05, "cap": "철문 · 두드리는 소리", "ring": "door" }, { "op": "shake", "p": 0.1 }, { "op": "wait", "ms": 220 },
+                { "op": "sfx", "id": "knock", "pitch": 0.95, "cap": "철문 · 두드리는 소리", "ring": "door" }, { "op": "shake", "p": 0.12 },
                 { "op": "wait", "ms": 700 },
-                { "op": "sfx", "id": "step_stone", "pan": 0.3, "pitch": 0.9, "gain": 0.5 },
+                { "op": "sfx", "id": "step_stone", "pan": 0.3, "pitch": 0.9, "gain": 0.5, "cap": "복도 · 멀어지는 발소리" },
                 { "op": "wait", "ms": 500 },
-                { "op": "sfx", "id": "step_stone", "pan": 0.5, "pitch": 0.86, "gain": 0.3 },
+                { "op": "sfx", "id": "step_stone", "pan": 0.5, "pitch": 0.86, "gain": 0.3, "cap": "복도 · 멀어지는 발소리" },
                 { "op": "say", "who": "narr", "t": "두드렸다. 발소리만 멀어졌다." } ] } ] } ] } ] }
     ],
 
@@ -39427,14 +39590,14 @@ MC.addEvents({
 
     "a3.inspector": [
       { "op": "wait", "ms": 700 },
-      { "op": "sfx", "id": "step_stone", "pan": 0.4, "pitch": 0.9 }, { "op": "wait", "ms": 300 },
-      { "op": "sfx", "id": "step_stone", "pan": 0.4, "pitch": 1.05 }, { "op": "wait", "ms": 300 },
-      { "op": "sfx", "id": "step_stone", "pan": 0.3, "pitch": 0.88 }, { "op": "wait", "ms": 300 },
-      { "op": "sfx", "id": "step_stone", "pan": 0.3, "pitch": 1.02 }, { "op": "wait", "ms": 380 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.4, "pitch": 0.9, "cap": "복도 · 여럿의 발소리" }, { "op": "wait", "ms": 300 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.4, "pitch": 1.05, "cap": "복도 · 여럿의 발소리" }, { "op": "wait", "ms": 300 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.3, "pitch": 0.88, "cap": "복도 · 여럿의 발소리" }, { "op": "wait", "ms": 300 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.3, "pitch": 1.02, "cap": "복도 · 여럿의 발소리" }, { "op": "wait", "ms": 380 },
       { "op": "emote", "id": "player", "kind": "exclaim", "ms": 700 },
       { "op": "face", "id": "player", "dir": "right" },
       { "op": "letterbox", "on": true },
-      { "op": "sfx", "id": "door_iron" }, { "op": "shake", "p": 0.2 }, { "op": "vibrate", "p": 50 },
+      { "op": "sfx", "id": "door_iron", "cap": "철문 · 열리는 소리" }, { "op": "shake", "p": 0.2 }, { "op": "vibrate", "p": 50 },
       { "op": "spawn", "id": "jailer", "sprite": "ch_jailer", "x": 6, "y": 1, "dir": "down" },
       { "op": "move", "id": "jailer", "path": "D1 L1", "speed": 280 },
       { "op": "face", "id": "jailer", "dir": "left" },
@@ -39467,7 +39630,7 @@ MC.addEvents({
       { "op": "say", "who": "jailer", "t": [ "감찰은{p:150} 일 년에 한 번.", "운 좋은 날이군, 34번." ] },
       { "op": "move", "id": "jailer", "path": "R1 U1", "speed": 280 },
       { "op": "despawn", "id": "jailer" },
-      { "op": "sfx", "id": "door_iron" }, { "op": "shake", "p": 0.25 }, { "op": "vibrate", "p": 60 },
+      { "op": "sfx", "id": "door_iron", "cap": "철문 · 닫히는 소리" }, { "op": "shake", "p": 0.25 }, { "op": "vibrate", "p": 60 },
       { "op": "letterbox", "on": false },
       { "op": "wait", "ms": 900 },
       { "op": "say", "who": "think", "t": [ "확인하겠다고 했어.{p:300} 약속한다고 했어.", "곧이야.{p:200} 이제 곧이야.{p:600} ……그렇지?" ] }
@@ -39532,7 +39695,7 @@ MC.addEvents({
       { "op": "if", "cond": { "all": [ { "flag": "a3.inspected" }, { "not": { "flag": "a3.gate_felt" } }, { "not": { "flag": "a3.gate_open" } }, { "not": { "flag": "a3.despair1_done" } }, { "any": [ { "var": "b1kills", "gte": 4 }, { "lv": 3 }, { "var": "sleeps", "gte": 3 } ] } ] },
         "then": [
           { "op": "wait", "ms": 500 },
-          { "op": "sfx", "id": "door_iron", "pitch": 0.7, "gain": 0.45, "pan": -0.4 },
+          { "op": "sfx", "id": "door_iron", "pitch": 0.7, "gain": 0.45, "pan": -0.4, "cap": "멀리서 · 철문 삐걱이는 소리" },
           { "op": "shake", "p": 0.12 }, { "op": "vibrate", "p": 40 },
           { "op": "wait", "ms": 400 },
           { "op": "say", "who": "narr", "t": "멀리서 철문이 삐걱이는 소리가 났다." },   // [s44-writer B3-6] 되묻는 속마음(「……열렸어? 어디가?」) 삭제 — 의문형은 장면당 한 번
@@ -39668,7 +39831,7 @@ MC.addEvents({
         [ { "op": "wait", "ms": 60 }, { "op": "fade", "to": 0, "ms": 0 } ]
       ] },
       { "op": "wait", "ms": 1800 },
-      { "op": "sfx", "id": "scratch", "pan": 0.6 },
+      { "op": "sfx", "id": "scratch", "pan": 0.6, "cap": "벽 너머 · 긁는 소리" },
       { "op": "vibrate", "p": [ 15, 70, 15, 70, 15 ] },
       { "op": "shake", "p": 0.06 },
       { "op": "wait", "ms": 900 },
@@ -39676,7 +39839,7 @@ MC.addEvents({
       { "op": "call", "ev": "a3.getup" },
       { "op": "say", "who": "dantes", "t": "……무슨 소리지?" },
       { "op": "wait", "ms": 700 },
-      { "op": "sfx", "id": "scratch", "pan": 0.6, "pitch": 0.95 },
+      { "op": "sfx", "id": "scratch", "pan": 0.6, "pitch": 0.95, "cap": "벽 너머 · 긁는 소리" },
       { "op": "vibrate", "p": [ 15, 70, 15, 70, 15 ] },
       { "op": "fx", "kind": "dust", "at": [ 8, 5 ], "n": 4 },
       { "op": "face", "id": "player", "dir": "right" },
@@ -39690,16 +39853,16 @@ MC.addEvents({
     "a3.knock": [
       { "op": "add", "var": "knock", "n": 1 },
       { "op": "face", "id": "player", "dir": "right" },
-      { "op": "sfx", "id": "knock", "pan": 0.5 }, { "op": "shake", "p": 0.1 }, { "op": "vibrate", "p": 15 },
+      { "op": "sfx", "id": "knock", "pan": 0.5, "cap": "벽 · 두드리는 소리", "ring": [ 8, 5 ] }, { "op": "shake", "p": 0.1 }, { "op": "vibrate", "p": 15 },
       { "op": "wait", "ms": 200 },
-      { "op": "sfx", "id": "knock", "pan": 0.5, "pitch": 0.96 }, { "op": "shake", "p": 0.1 },
+      { "op": "sfx", "id": "knock", "pan": 0.5, "pitch": 0.96, "cap": "벽 · 두드리는 소리", "ring": [ 8, 5 ] }, { "op": "shake", "p": 0.1 },
       { "op": "wait", "ms": 600 },
       { "op": "if", "cond": { "var": "knock", "gte": 3 },
         "then": [ { "op": "call", "ev": "a3.knock3" } ],
         "else": [ { "op": "if", "cond": { "var": "knock", "gte": 2 },
           "then": [
             { "op": "wait", "ms": 900 },
-            { "op": "sfx", "id": "scratch", "pan": 0.6 },
+            { "op": "sfx", "id": "scratch", "pan": 0.6, "cap": "벽 너머 · 긁는 소리" },
             { "op": "vibrate", "p": [ 15, 70, 15 ] },
             { "op": "say", "who": "narr", "t": [ "……다시 들린다.", "누군가 벽 너머에서 파고 있다." ] } ],
           "else": [
@@ -39737,12 +39900,12 @@ MC.addEvents({
     ].concat(SCRAPE(1), SCRAPE(2), SCRAPE(3), SCRAPE(4), [
       { "op": "grow" },
       { "op": "wait", "ms": 1600 },
-      { "op": "sfx", "id": "scratch", "pan": 0.6, "pitch": 0.9 }, { "op": "vibrate", "p": [ 15, 70, 15 ] },
+      { "op": "sfx", "id": "scratch", "pan": 0.6, "pitch": 0.9, "cap": "벽 너머 · 긁는 소리" }, { "op": "vibrate", "p": [ 15, 70, 15 ] },
       { "op": "wait", "ms": 900 },
-      { "op": "sfx", "id": "scratch", "pan": 0.35 }, { "op": "vibrate", "p": [ 15, 70, 15 ] },
+      { "op": "sfx", "id": "scratch", "pan": 0.35, "cap": "바닥 아래 · 긁는 소리" }, { "op": "vibrate", "p": [ 15, 70, 15 ] },
       { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 3 },
       { "op": "wait", "ms": 800 },
-      { "op": "sfx", "id": "scratch", "pan": 0.15, "pitch": 1.08 }, { "op": "vibrate", "p": [ 15, 70, 15, 70, 15 ] },
+      { "op": "sfx", "id": "scratch", "pan": 0.15, "pitch": 1.08, "cap": "바로 발밑 · 긁는 소리" }, { "op": "vibrate", "p": [ 15, 70, 15, 70, 15 ] },
       { "op": "shake", "p": 0.14 },
       { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 6 },
       { "op": "wait", "ms": 700 },
@@ -39880,14 +40043,14 @@ MC.addEvents({
       { "op": "letterbox", "on": true, "ms": 400 },
       { "op": "walkto", "id": "player", "to": [7, 5], "speed": 220, "face": "right" },
       { "op": "wait", "ms": 300 },
-      { "op": "sfx", "id": "scratch", "pan": 0, "pitch": 1.12 },
+      { "op": "sfx", "id": "scratch", "pan": 0, "pitch": 1.12, "cap": "바로 발밑 · 긁는 소리" },   // [u51 B8-7] cap = 소리 자막
       { "op": "vibrate", "p": [15, 70, 15, 70, 15] },
       { "op": "shake", "p": 0.16 },
       { "op": "fx", "kind": "dust", "at": [7, 6], "n": 5 },
       { "op": "face", "id": "player", "dir": "down" },
       { "op": "emote", "id": "player", "kind": "exclaim", "ms": 700 },
       { "op": "spawn", "id": "lid", "type": "thing", "sprite": "ob_stone_lid_0", "x": 7, "y": 6, "solid": false, "z": -1 },
-      { "op": "sfx", "id": "stone_lift", "pitch": 0.72, "gain": 0.6 },
+      { "op": "sfx", "id": "stone_lift", "pitch": 0.72, "gain": 0.6, "cap": "발밑 · 돌이 들썩이는 소리" },
       { "op": "shake", "p": 0.12 },
       { "op": "sprite", "id": "lid", "sprite": "ob_stone_lid_1" }, { "op": "wait", "ms": 110 },
       { "op": "sprite", "id": "lid", "sprite": "ob_stone_lid_0" }, { "op": "wait", "ms": 110 },
@@ -39895,7 +40058,7 @@ MC.addEvents({
       { "op": "sprite", "id": "lid", "sprite": "ob_stone_lid_0" },
       { "op": "move", "id": "player", "path": "U1", "speed": 150, "face": "down" },
       { "op": "wait", "ms": 500 },
-      { "op": "sfx", "id": "stone_lift", "pitch": 0.86 },
+      { "op": "sfx", "id": "stone_lift", "pitch": 0.86, "cap": "발밑 · 돌이 들썩이는 소리" },
       { "op": "shake", "p": 0.22 },
       { "op": "vibrate", "p": 40 },
       { "op": "fx", "kind": "dust", "at": "lid", "n": 8 },
@@ -40602,18 +40765,20 @@ MC.addEvents({
     { "op": "vignette", "a": 0.35, "ms": 0 },
     { "op": "amb", "id": "cell", "fade": 800 }
   ];
+  // [u51 B8-7] cap = 소리 자막 · ring = 노크 파문(바닥 돌 (7,6))
+  const KNOCK_CAP = { "cap": "바닥 아래 · 두드리는 소리", "ring": [7, 6] };
   const KNOCK3 = [                                                 // 바닥에서 세 번(파리아의 신호)
-    { "op": "sfx", "id": "knock", "pan": 0.5, "pitch": 0.7, "gain": 0.55 }, { "op": "vibrate", "p": 20 }, { "op": "shake", "p": 0.05 }, { "op": "wait", "ms": 380 },
-    { "op": "sfx", "id": "knock", "pan": 0.5, "pitch": 0.72, "gain": 0.55 }, { "op": "vibrate", "p": 20 }, { "op": "shake", "p": 0.05 }, { "op": "wait", "ms": 380 },
-    { "op": "sfx", "id": "knock", "pan": 0.5, "pitch": 0.68, "gain": 0.6 }, { "op": "vibrate", "p": 25 }, { "op": "shake", "p": 0.06 }
+    Object.assign({ "op": "sfx", "id": "knock", "pan": 0.5, "pitch": 0.7, "gain": 0.55 }, KNOCK_CAP), { "op": "vibrate", "p": 20 }, { "op": "shake", "p": 0.05 }, { "op": "wait", "ms": 380 },
+    Object.assign({ "op": "sfx", "id": "knock", "pan": 0.5, "pitch": 0.72, "gain": 0.55 }, KNOCK_CAP), { "op": "vibrate", "p": 20 }, { "op": "shake", "p": 0.05 }, { "op": "wait", "ms": 380 },
+    Object.assign({ "op": "sfx", "id": "knock", "pan": 0.5, "pitch": 0.68, "gain": 0.6 }, KNOCK_CAP), { "op": "vibrate", "p": 25 }, { "op": "shake", "p": 0.06 }
   ];
   const LID_UP = [                                                 // 돌이 들리고 등잔 든 파리아가 올라온다(7,6)
     { "op": "spawn", "id": "lid", "type": "thing", "sprite": "ob_stone_lid_0", "x": 7, "y": 6, "solid": false, "z": -1 },
-    { "op": "sfx", "id": "stone_lift", "pitch": 0.8, "gain": 0.6 },
+    { "op": "sfx", "id": "stone_lift", "pitch": 0.8, "gain": 0.6, "cap": "발밑 · 돌이 들썩이는 소리" },
     { "op": "sprite", "id": "lid", "sprite": "ob_stone_lid_1" }, { "op": "wait", "ms": 110 },
     { "op": "sprite", "id": "lid", "sprite": "ob_stone_lid_0" }, { "op": "wait", "ms": 110 },
     { "op": "sprite", "id": "lid", "sprite": "ob_stone_lid_1" }, { "op": "wait", "ms": 300 },
-    { "op": "sfx", "id": "stone_lift", "pitch": 1.0, "gain": 0.6 },
+    { "op": "sfx", "id": "stone_lift", "pitch": 1.0, "gain": 0.6, "cap": "발밑 · 돌이 들썩이는 소리" },
     { "op": "shake", "p": 0.1 },
     { "op": "spawn", "id": "hole_m", "type": "thing", "sprite": "ob_hole", "x": 7, "y": 6, "solid": true, "z": -2 },
     { "op": "spawn", "id": "lid", "type": "thing", "sprite": "ob_stone_lid_0", "x": 6, "y": 6, "solid": false, "z": -1 },
@@ -40762,8 +40927,8 @@ MC.addEvents({
 
     // N1-e: 순찰 → '가지 마십시오' → 아버지 연세쯤 → 내일 밤 → 짚 덮기(조작)
     "a4m.n1_part": [
-      { "op": "sfx", "id": "step_stone", "pan": 0.6, "pitch": 0.88, "gain": 0.25 }, { "op": "wait", "ms": 420 },
-      { "op": "sfx", "id": "step_stone", "pan": 0.5, "pitch": 0.92, "gain": 0.35 }, { "op": "wait", "ms": 380 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.6, "pitch": 0.88, "gain": 0.25, "cap": "복도 · 순찰 발소리" }, { "op": "wait", "ms": 420 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.5, "pitch": 0.92, "gain": 0.35, "cap": "복도 · 순찰 발소리" }, { "op": "wait", "ms": 380 },
       { "op": "emote", "id": "faria_m", "kind": "exclaim", "ms": 600 },
       { "op": "face", "id": "faria_m", "dir": "up" },
       { "op": "say", "who": "faria", "face": "stern", "t": "순찰일세." },
@@ -40797,7 +40962,7 @@ MC.addEvents({
       { "op": "set", "flag": "a4m.n1_part" },
       { "op": "fx", "kind": "dust", "at": [7, 6], "n": 4 },
       { "op": "spawn", "id": "trace", "type": "thing", "sprite": "ob_pickup", "x": 7, "y": 6, "solid": false, "z": 1, "event": "a4m.n1_cover" },
-      { "op": "sfx", "id": "step_stone", "pan": 0.4, "pitch": 0.9, "gain": 0.5 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.4, "pitch": 0.9, "gain": 0.5, "cap": "복도 · 순찰 발소리" },
       { "op": "letterbox", "on": false, "ms": 400 },
       { "op": "say", "who": "think", "t": "발소리가 온다.{p:300}\n……흙가루를 덮어야 해." }
     ],
@@ -40811,11 +40976,11 @@ MC.addEvents({
       { "op": "wait", "ms": 250 },
       { "op": "sfx", "id": "scratch", "gain": 0.3, "pitch": 1.5 },
       { "op": "say", "who": "narr", "t": "짚을 끌어다 돌을 덮었다." },
-      { "op": "sfx", "id": "step_stone", "pan": 0.5, "pitch": 0.9, "gain": 0.55 }, { "op": "wait", "ms": 460 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.5, "pitch": 0.9, "gain": 0.55, "cap": "복도 · 순찰 발소리" }, { "op": "wait", "ms": 460 },
       { "op": "emote", "id": "player", "kind": "sweat", "ms": 1400, "async": true },
-      { "op": "sfx", "id": "step_stone", "pan": 0.15, "pitch": 0.86, "gain": 0.6 }, { "op": "wait", "ms": 460 },
-      { "op": "sfx", "id": "step_stone", "pan": -0.2, "pitch": 0.9, "gain": 0.45 }, { "op": "wait", "ms": 460 },
-      { "op": "sfx", "id": "step_stone", "pan": -0.55, "pitch": 0.88, "gain": 0.25 }, { "op": "wait", "ms": 900 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.15, "pitch": 0.86, "gain": 0.6, "cap": "복도 · 순찰 발소리" }, { "op": "wait", "ms": 460 },
+      { "op": "sfx", "id": "step_stone", "pan": -0.2, "pitch": 0.9, "gain": 0.45, "cap": "복도 · 순찰 발소리" }, { "op": "wait", "ms": 460 },
+      { "op": "sfx", "id": "step_stone", "pan": -0.55, "pitch": 0.88, "gain": 0.25, "cap": "복도 · 멀어지는 발소리" }, { "op": "wait", "ms": 900 },
       { "op": "say", "who": "think", "t": "……내일 밤." },
       { "op": "call", "ev": "a3.to_bed" },
       { "op": "fade", "to": 1, "ms": 1400 },
@@ -40866,12 +41031,12 @@ MC.addEvents({
       { "op": "say", "who": "think", "t": "……간수가 짚을 들추면.{p:400} 그땐 물그릇으로라도." },
       { "op": "set", "flag": "a4m.day_hid" },
       { "op": "wait", "ms": 600 },
-      { "op": "sfx", "id": "step_stone", "pan": 0.3, "pitch": 0.9, "gain": 0.3 }, { "op": "wait", "ms": 430 },
-      { "op": "sfx", "id": "step_stone", "pan": 0.2, "pitch": 0.86, "gain": 0.45 }, { "op": "wait", "ms": 430 },
-      { "op": "sfx", "id": "step_stone", "pan": 0.1, "pitch": 0.9, "gain": 0.6 }, { "op": "wait", "ms": 300 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.3, "pitch": 0.9, "gain": 0.3, "cap": "복도 · 다가오는 발소리" }, { "op": "wait", "ms": 430 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.2, "pitch": 0.86, "gain": 0.45, "cap": "복도 · 다가오는 발소리" }, { "op": "wait", "ms": 430 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.1, "pitch": 0.9, "gain": 0.6, "cap": "복도 · 다가오는 발소리" }, { "op": "wait", "ms": 300 },
       { "op": "emote", "id": "player", "kind": "exclaim", "ms": 600 },
       { "op": "walkto", "id": "player", "to": [4, 4], "speed": 200, "face": "up" },
-      { "op": "sfx", "id": "door_iron" }, { "op": "shake", "p": 0.22 }, { "op": "vibrate", "p": 50 },
+      { "op": "sfx", "id": "door_iron", "cap": "철문 · 열리는 소리" }, { "op": "shake", "p": 0.22 }, { "op": "vibrate", "p": 50 },
       { "op": "spawn", "id": "jailer", "sprite": "ch_jailer", "x": 6, "y": 1, "dir": "down" },
       { "op": "move", "id": "jailer", "path": "D1", "speed": 320 },
       { "op": "say", "who": "jailer", "t": "34번.{p:300} 빵,{p:200} 물." },
@@ -40889,7 +41054,7 @@ MC.addEvents({
       { "op": "face", "id": "jailer", "dir": "up" },
       { "op": "move", "id": "jailer", "path": "U1", "speed": 300 },
       { "op": "despawn", "id": "jailer" },
-      { "op": "sfx", "id": "door_iron" }, { "op": "shake", "p": 0.3 }, { "op": "vibrate", "p": 50 },
+      { "op": "sfx", "id": "door_iron", "cap": "철문 · 닫히는 소리" }, { "op": "shake", "p": 0.3 }, { "op": "vibrate", "p": 50 },
       { "op": "wait", "ms": 1000 },
       { "op": "say", "who": "think", "t": "밤까지……{p:400} 길다." },
       { "op": "letterbox", "on": false, "ms": 400 },
@@ -41559,7 +41724,7 @@ MC.addEvents({
       { "op": "wait", "ms": 500 },
       { "op": "fade", "to": 0, "ms": 1400 },
       { "op": "wait", "ms": 500 },
-      { "op": "sfx", "id": "scratch", "pan": 0.3, "pitch": 1.05 },
+      { "op": "sfx", "id": "scratch", "pan": 0.3, "pitch": 1.05, "cap": "바로 발밑 · 긁는 소리" },
       { "op": "vibrate", "p": [15, 70, 15] },
       { "op": "say", "who": "think", "t": "……소리가 가까워졌다.{p:300}\n바로 발밑이야." },
       { "op": "call", "ev": "a4.meet" }
@@ -42029,8 +42194,8 @@ MC.addEvents({
       { "op": "face", "id": "player", "dir": "up" },
       { "op": "if", "cond": { "flag": "a4d.revenge_done" }, "then": [
         { "op": "wait", "ms": 300 },
-        { "op": "sfx", "id": "knock", "pitch": 0.55, "gain": 0.35 }, { "op": "vibrate", "p": 15 }, { "op": "wait", "ms": 260 },
-        { "op": "sfx", "id": "knock", "pitch": 0.5, "gain": 0.3 }, { "op": "wait", "ms": 600 },
+        { "op": "sfx", "id": "knock", "pitch": 0.55, "gain": 0.35, "cap": "철문 안 · 두드리는 소리", "ring": "gate" }, { "op": "vibrate", "p": 15 }, { "op": "wait", "ms": 260 },   // [u51 B8-7] cap = 소리 자막 · ring = 노크 파문
+        { "op": "sfx", "id": "knock", "pitch": 0.5, "gain": 0.3, "cap": "철문 안 · 두드리는 소리", "ring": "gate" }, { "op": "wait", "ms": 600 },
         { "op": "say", "who": "narr", "t": "검은 철문.{p:300}\n……안에서 누가 두드린다." },
         { "op": "end" } ] },
       { "op": "if", "cond": { "flag": "a4d.deduced" }, "then": [
@@ -42127,7 +42292,7 @@ MC.addEvents({
       { "op": "emote", "id": "player", "kind": "question", "ms": 900 },
       { "op": "say", "who": "think", "t": "……마르세유.{p:400} 붉다." },
       { "op": "wait", "ms": 400 },
-      { "op": "sfx", "id": "bell", "pitch": 0.62, "gain": 0.45, "pan": -0.3 },
+      { "op": "sfx", "id": "bell", "pitch": 0.62, "gain": 0.45, "pan": -0.3, "cap": "멀리서 · 종소리" },
       { "op": "wait", "ms": 900 },
       { "op": "say", "who": "voice", "voice": "mercedes", "pos": "top", "t": "……기다릴게." },
       { "op": "wait", "ms": 300 },
@@ -42168,7 +42333,7 @@ MC.addEvents({
           { "op": "show", "id": "follower", "v": false },
           { "op": "letterbox", "on": true, "ms": 0 },
           { "op": "wait", "ms": 800 },
-          { "op": "sfx", "id": "bell", "pitch": 0.72, "gain": 0.5, "pan": -0.3 },
+          { "op": "sfx", "id": "bell", "pitch": 0.72, "gain": 0.5, "pan": -0.3, "cap": "멀리서 · 종소리" },
           { "op": "wait", "ms": 1100 },
           { "op": "sfx", "id": "splash", "gain": 0.3 }, { "op": "fx", "kind": "ripple", "at": "player", "n": 1 },
           { "op": "call", "ev": "a3.stand" },
@@ -42213,7 +42378,7 @@ MC.addEvents({
               "else": [ { "op": "if", "cond": { "flag": "a4d.deduced" },
                 "then": [
                   { "op": "wait", "ms": 300 },
-                  { "op": "sfx", "id": "door_iron", "pitch": 0.6, "gain": 0.4, "pan": 0.4 },
+                  { "op": "sfx", "id": "door_iron", "pitch": 0.6, "gain": 0.4, "pan": 0.4, "cap": "멀리서 · 빗장 풀리는 소리" },
                   { "op": "shake", "p": 0.12 }, { "op": "vibrate", "p": 40 },
                   { "op": "wait", "ms": 400 },
                   { "op": "say", "who": "think", "t": "멀리서 빗장이 풀렸다.{p:300}\n붉은 문이다." } ],
@@ -42894,8 +43059,8 @@ MC.addEvents({
       { "op": "grade", "sat": 0.3, "tint": "#1a2a50", "ta": 0.16, "ms": 0 },
       { "op": "fade", "to": 0, "ms": 900 },
       // [s46-sound B4-21] 기침: breath(바람 결 — 이발 소리와 구분이 안 됨) → cough(흉성 '콜록, 콜록'). 들썩임·박자는 그대로
-      { "op": "sfx", "id": "cough", "gain": 0.6 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 240 },
-      { "op": "sfx", "id": "cough", "pitch": 0.93, "gain": 0.5 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 700 },
+      { "op": "sfx", "id": "cough", "gain": 0.6, "cap": "신부님 · 기침 소리" }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 240 },   // [u51 B8-7] cap = 소리 자막
+      { "op": "sfx", "id": "cough", "pitch": 0.93, "gain": 0.5, "cap": "신부님 · 기침 소리" }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 700 },
       { "op": "custom", "id": "deduce", "args": { "stage": "tap", "id": "faria", "hint": "신부님 어깨에 짚을 덮는다.", "other": "……" } },
       { "op": "walkto", "id": "player", "to": [ 5, 5 ], "speed": 260, "face": "left" },
       { "op": "face", "id": "player", "dir": "left" },
@@ -43053,9 +43218,9 @@ MC.addEvents({
       { "op": "fx", "kind": "dust", "at": "names", "n": 4 },
       { "op": "light", "dark": 0.88, "r": 26, "at": [ 4, 2 ], "color": "#ff9a50", "ms": 900 },
       { "op": "wait", "ms": 700 },
-      { "op": "sfx", "id": "step_stone", "pan": 0.3, "pitch": 0.9 }, { "op": "wait", "ms": 420 },
-      { "op": "sfx", "id": "step_stone", "pan": 0.2, "pitch": 0.86 }, { "op": "wait", "ms": 420 },
-      { "op": "sfx", "id": "door_iron" }, { "op": "shake", "p": 0.2 }, { "op": "vibrate", "p": 40 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.3, "pitch": 0.9, "cap": "복도 · 다가오는 발소리" }, { "op": "wait", "ms": 420 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.2, "pitch": 0.86, "cap": "복도 · 다가오는 발소리" }, { "op": "wait", "ms": 420 },
+      { "op": "sfx", "id": "door_iron", "cap": "철문 · 열리는 소리" }, { "op": "shake", "p": 0.2 }, { "op": "vibrate", "p": 40 },
       { "op": "spawn", "id": "jailer", "sprite": "ch_jailer", "x": 6, "y": 1, "dir": "down" },
       { "op": "light", "dark": 0.86, "r": 46, "at": "jailer", "color": "#ffb060", "flicker": true, "ms": 300 },
       { "op": "move", "id": "jailer", "path": "D1", "speed": 320 },
@@ -43070,11 +43235,11 @@ MC.addEvents({
       { "op": "move", "id": "jailer", "path": "U1", "speed": 300 },
       { "op": "light", "dark": 0.92, "r": 20, "at": [ 4, 2 ], "color": "#6a78c8", "flicker": false, "ms": 0 },
       { "op": "despawn", "id": "jailer" },
-      { "op": "sfx", "id": "door_iron", "pitch": 0.9 }, { "op": "shake", "p": 0.25 },
+      { "op": "sfx", "id": "door_iron", "pitch": 0.9, "cap": "철문 · 닫히는 소리" }, { "op": "shake", "p": 0.25 },
       { "op": "wait", "ms": 1400 },
-      { "op": "sfx", "id": "knock", "pan": 0.5, "gain": 0.5 }, { "op": "wait", "ms": 260 },
-      { "op": "sfx", "id": "knock", "pan": 0.5, "gain": 0.5, "pitch": 1.05 }, { "op": "wait", "ms": 260 },
-      { "op": "sfx", "id": "knock", "pan": 0.5, "gain": 0.55 }, { "op": "vibrate", "p": [ 15, 60, 15, 60, 15 ] },
+      { "op": "sfx", "id": "knock", "pan": 0.5, "gain": 0.5, "cap": "바닥 아래 · 두드리는 소리", "ring": [ 7, 6 ] }, { "op": "wait", "ms": 260 },
+      { "op": "sfx", "id": "knock", "pan": 0.5, "gain": 0.5, "pitch": 1.05, "cap": "바닥 아래 · 두드리는 소리", "ring": [ 7, 6 ] }, { "op": "wait", "ms": 260 },
+      { "op": "sfx", "id": "knock", "pan": 0.5, "gain": 0.55, "cap": "바닥 아래 · 두드리는 소리", "ring": [ 7, 6 ] }, { "op": "vibrate", "p": [ 15, 60, 15, 60, 15 ] },
       { "op": "fx", "kind": "dust", "at": "hole", "n": 3 },
       { "op": "light", "dark": 0.9, "r": 26, "at": "hole", "color": "#ffcf6a", "flicker": true, "ms": 900 },
       { "op": "say", "who": "think", "t": "……세 번.{p:400}\n돌 틈으로 등잔빛이 샌다." },
@@ -44168,8 +44333,8 @@ MC.addEvents({
       // [s44-writer B3-22] 수업 끝 기침 한 번(작2-6) — ⑥ 토막(1825) 한가운데에 그 밤 발작의 고리
       { "op": "wait", "ms": 500 },
       // [s46-sound B4-21] 기침: breath → cough(흉성 '콜록') — 이발 숟가락 소리(snip)와 결을 나눈다
-      { "op": "sfx", "id": "cough", "gain": 0.6 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 240 },
-      { "op": "sfx", "id": "cough", "pitch": 0.93, "gain": 0.5 }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 600 },
+      { "op": "sfx", "id": "cough", "gain": 0.6, "cap": "신부님 · 기침 소리" }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 240 },   // [u51 B8-7] cap = 소리 자막
+      { "op": "sfx", "id": "cough", "pitch": 0.93, "gain": 0.5, "cap": "신부님 · 기침 소리" }, { "op": "jump", "id": "faria", "h": 1, "ms": 90 }, { "op": "wait", "ms": 600 },
       { "op": "say", "who": "faria", "t": "……괜찮네." },
       { "op": "narr", "t": "그해 가을, 레몬즙과 불.", "ms": 1500 }   // [s44-writer B3-23] 수업 끝 시간 카드
     ].concat(LAYERS_S2, [
@@ -44701,7 +44866,7 @@ MC.addEvents({
       { "op": "sfx", "id": "orgel_note", "pitch": 0.8, "gain": 0.5 },
       { "op": "say", "who": "think", "t": "……숨." },
       { "op": "wait", "ms": 600 },
-      { "op": "sfx", "id": "step_stone", "gain": 0.2, "pan": -0.7 },
+      { "op": "sfx", "id": "step_stone", "gain": 0.2, "pan": -0.7, "cap": "멀리서 · 발소리" },   // [u51 B8-7] cap = 소리 자막
       { "op": "wait", "ms": 500 },
       { "op": "say", "who": "think", "t": "발소리.{p:300} 일곱 시 간수다." },
       { "op": "set", "flag": "s3f.hour" },
@@ -44727,7 +44892,7 @@ MC.addEvents({
       { "op": "letterbox", "on": true, "ms": 300 },
       call("a3.to_bed"),
       { "op": "wait", "ms": 700 },
-      { "op": "sfx", "id": "door_iron" }, { "op": "shake", "p": 0.2 }, { "op": "vibrate", "p": 50 },
+      { "op": "sfx", "id": "door_iron", "cap": "철문 · 열리는 소리" }, { "op": "shake", "p": 0.2 }, { "op": "vibrate", "p": 50 },
       { "op": "spawn", "id": "jailer", "sprite": "ch_jailer", "x": 6, "y": 1, "dir": "down" },
       { "op": "move", "id": "jailer", "path": "D1", "speed": 320 },
       { "op": "face", "id": "jailer", "dir": "left" },
@@ -44737,7 +44902,7 @@ MC.addEvents({
       { "op": "face", "id": "jailer", "dir": "up" },
       { "op": "move", "id": "jailer", "path": "U1", "speed": 300 },
       { "op": "despawn", "id": "jailer" },
-      { "op": "sfx", "id": "door_iron" }, { "op": "shake", "p": 0.3 },
+      { "op": "sfx", "id": "door_iron", "cap": "철문 · 닫히는 소리" }, { "op": "shake", "p": 0.3 },
       { "op": "wait", "ms": 700 },
       call("a3.stand"),
       { "op": "give", "item": "bread", "n": 1, "quiet": true },
@@ -45259,7 +45424,7 @@ MC.addEvents({
       { "op": "face", "id": "player", "dir": "up" },
       { "op": "emote", "id": "player", "kind": "dots", "ms": 900 },
       { "op": "say", "who": "faria", "face": "sad", "t": "자네마저 그 눈으로 보는군.\n좋아, 증명하지." },
-      { "op": "sfx", "id": "_far_steps", "gain": 0.3 },
+      { "op": "sfx", "id": "_far_steps", "gain": 0.3, "cap": "멀리서 · 발소리" },   // [u51 B8-7] cap = 소리 자막
       { "op": "wait", "ms": 700 },
       { "op": "say", "who": "dantes", "t": "발소리입니다.{p:300}\n……가 보겠습니다." },
       { "op": "set", "var": "s3tp", "v": 3 },
@@ -45282,7 +45447,7 @@ MC.addEvents({
     "s3t.wrist_wait": [
       when(F("s3t.paper"), [ END ]),
       { "op": "tether", "off": true },
-      { "op": "sfx", "id": "_far_steps", "gain": 0.5 },
+      { "op": "sfx", "id": "_far_steps", "gain": 0.5, "cap": "다가오는 발소리" },
       { "op": "wait", "ms": 500 },
       { "op": "say", "who": "faria", "t": "……가게.{p:300} 들키겠네." },
       { "op": "sfx", "id": "cloth_slip", "gain": 0.3 },
@@ -45308,23 +45473,23 @@ MC.addEvents({
       { "op": "bgm", "id": null, "fade": 1600 },
       { "op": "place", "at": [ 7, 5, "down" ] },
       { "op": "wait", "ms": 900 },
-      { "op": "sfx", "id": "stone_lift", "gain": 0.35, "pitch": 0.8 },
+      { "op": "sfx", "id": "stone_lift", "gain": 0.35, "pitch": 0.8, "cap": "바닥 아래 · 돌 밀리는 소리" },
       { "op": "wait", "ms": 1100 },
-      { "op": "sfx", "id": "stone_lift", "gain": 0.3, "pitch": 0.78 },
+      { "op": "sfx", "id": "stone_lift", "gain": 0.3, "pitch": 0.78, "cap": "바닥 아래 · 돌 밀리는 소리" },
       { "op": "wait", "ms": 1500 },
-      { "op": "sfx", "id": "stone_lift", "gain": 0.3, "pitch": 0.8 },
+      { "op": "sfx", "id": "stone_lift", "gain": 0.3, "pitch": 0.8, "cap": "바닥 아래 · 돌 밀리는 소리" },
       { "op": "wait", "ms": 700 },
       { "op": "say", "who": "think", "t": "신부님이……{p:300} 발로 돌을 미신다." },
-      { "op": "sfx", "id": "door_iron", "gain": 0.2, "pitch": 0.8 },
+      { "op": "sfx", "id": "door_iron", "gain": 0.2, "pitch": 0.8, "cap": "벽 너머 · 철문 소리" },
       { "op": "wait", "ms": 800 },
       { "op": "say", "who": "governor", "pos": "top", "t": "27번.{p:300} 아프다더군." },
       { "op": "say", "who": "faria_off", "pos": "top", "t": "추위 탓입니다, 나리." },
       { "op": "say", "who": "governor", "pos": "top", "t": "추우면 볕 드는 방으로\n옮겨 주겠네." },
       { "op": "say", "who": "faria_off", "pos": "top", "t": "……여기가 좋습니다, 나리.\n벽이 낯익어서요." },
       { "op": "say", "who": "governor", "pos": "top", "t": "……미친 늙은이.{p:300} 몸조심하게." },
-      { "op": "sfx", "id": "_far_steps", "gain": 0.3 },
+      { "op": "sfx", "id": "_far_steps", "gain": 0.3, "cap": "벽 너머 · 멀어지는 발소리" },
       { "op": "wait", "ms": 1200 },
-      { "op": "sfx", "id": "_far_steps", "gain": 0.14 },
+      { "op": "sfx", "id": "_far_steps", "gain": 0.14, "cap": "벽 너머 · 멀어지는 발소리" },
       { "op": "wait", "ms": 1600 },
       { "op": "set", "var": "s3phase", "v": "doubt" },
       { "op": "set", "flag": "s3t.governor" },
@@ -45359,11 +45524,12 @@ MC.addEvents({
     ].concat(DUSK(2600), [
       { "op": "wait", "ms": 900 },
       // [fixer-fix] 소리를 꺼도 무엇을 셌는지 보이게: 두드릴 때마다 바닥 구멍 자리(hole_pull = 7,6)에 흙먼지 + 작은 흔들림
-      { "op": "sfx", "id": "knock", "gain": 0.28, "pitch": 0.8 }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
+      //   [u51 B8-7] + 소리 자막(cap)·노크 파문(ring) — 셋째가 2.1초 늦게 오면 자막도 한 번 꺼졌다가 다시 뜬다(늦음이 보인다)
+      { "op": "sfx", "id": "knock", "gain": 0.28, "pitch": 0.8, "cap": "바닥 아래 · 두드리는 소리", "ring": [ 7, 6 ] }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
       { "op": "wait", "ms": 750 },
-      { "op": "sfx", "id": "knock", "gain": 0.26, "pitch": 0.8 }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
+      { "op": "sfx", "id": "knock", "gain": 0.26, "pitch": 0.8, "cap": "바닥 아래 · 두드리는 소리", "ring": [ 7, 6 ] }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
       { "op": "wait", "ms": 2100 },
-      { "op": "sfx", "id": "knock", "gain": 0.18, "pitch": 0.76 }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
+      { "op": "sfx", "id": "knock", "gain": 0.18, "pitch": 0.76, "cap": "바닥 아래 · 두드리는 소리", "ring": [ 7, 6 ] }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
       { "op": "wait", "ms": 800 },
       { "op": "say", "who": "think", "t": "……세 번." },
       { "op": "face", "id": "player", "dir": "down" },
@@ -45412,11 +45578,12 @@ MC.addEvents({
       when({ "any": [ F("s3t.drag"), V("s3tlift", 1) ] }, [ END ]),
       when({ "not": { "var": "s3_knock" } }, [ { "op": "set", "var": "s3_knock", "v": "late" } ]),
       // [fixer-fix] 긁는 소리에도 구멍 자리 흙먼지 + 작은 흔들림(소리를 꺼도 무슨 소리인지)
-      { "op": "sfx", "id": "drag", "gain": 0.45 }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
+      //   [u51 B8-7] 소리 자막도 S1과 같은 말(「긁는 소리」) — 무음으로 한 사람도 그 소리를 알아본다(설명은 더하지 않는다)
+      { "op": "sfx", "id": "drag", "gain": 0.45, "cap": "바닥 아래 · 긁는 소리" }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
       { "op": "wait", "ms": 1100 },
-      { "op": "sfx", "id": "breath", "gain": 0.22, "pitch": 0.85 },
+      { "op": "sfx", "id": "breath", "gain": 0.22, "pitch": 0.85, "cap": "바닥 아래 · 숨소리" },
       { "op": "wait", "ms": 900 },
-      { "op": "sfx", "id": "drag", "gain": 0.4, "pitch": 0.9 }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
+      { "op": "sfx", "id": "drag", "gain": 0.4, "pitch": 0.9, "cap": "바닥 아래 · 긁는 소리" }, { "op": "fx", "kind": "dust", "at": [ 7, 6 ], "n": 2 }, { "op": "shake", "p": 0.03 },
       { "op": "wait", "ms": 500 },
       { "op": "say", "who": "think", "t": "……이 소리." },
       { "op": "glow", "id": "hole_pull" },
@@ -45824,7 +45991,7 @@ MC.addEvents({
       { "op": "face", "id": "player", "dir": "down" },
       { "op": "jump", "id": "player", "h": 1, "ms": 140 },
       { "op": "wait", "ms": 700 },
-      { "op": "sfx", "id": "hum_faria", "gain": 0.5 },
+      { "op": "sfx", "id": "hum_faria", "gain": 0.5, "cap": "구멍 아래 · 흥얼거리는 소리" },
       { "op": "wait", "ms": 3200 },
       { "op": "say", "who": "think", "t": "……아직은." },
       DOUBT_TICK
@@ -47026,7 +47193,7 @@ MC.addEvents({
         [ { "op": "narr", "t": "바다 밑에, 그 검은 철문이 있었다." } ],
         [ { "op": "wait", "ms": 450 }, { "op": "place", "id": "follower", "at": [ 10, 23, "up" ] } ]
       ] },
-      { "op": "sfx", "id": "knock", "pitch": 0.5, "gain": 0.28 },
+      { "op": "sfx", "id": "knock", "pitch": 0.5, "gain": 0.28, "cap": "철문 안 · 두드리는 소리", "ring": "gate_black" },   // [u51 B8-7] cap = 소리 자막 · ring = 노크 파문
       { "op": "wait", "ms": 700 },
       { "op": "say", "who": "think", "t": "물 건너 보이던 문.{p:300}\n……아래에서 보면 여기다." },
       { "op": "wait", "ms": 500 },
@@ -47427,13 +47594,14 @@ MC.addEvents({
   ];
   // 타르탄 갑판(장면 13·14) — 새벽 보랏빛(#3a2a4a) → 깨어나며 이른 아침(#c87a62, s4t.deck 첫 페이드 3초) → 키를 잡고 셔츠를 입은 뒤 아침빛(#f0b070, s4t.helm).
   //   빛 웅덩이 없음. 색 바꾸는 순간은 장면 이벤트가 grade op로 — 재개는 같은 단계 값(fixer-s4p2: QA 지적 1 — 실제 흐름에 아침빛이 한 번도 오지 않던 것)
+  //   [u51] 이른 아침·아침빛의 sat↑·ta↓(바다가 회보라로 씻기던 것 — c50-conv-ships 남은 문제). events_s4t.js s4t.deck·s4t.helm과 같은 값. 첫 새벽 보랏빛(#3a2a4a)은 그대로
   const TAR_LOOK = [
     { "op": "act", "v": 5, "ui": "act5" },
     { "op": "light", "dark": 0, "ms": 0 },
     when({ "any": [ ENDED, F("s4t.helmed") ] },
-      [ { "op": "grade", "sat": 0.75, "tint": "#f0b070", "ta": 0.12, "ms": 0 }, { "op": "vignette", "a": 0.2, "ms": 0 } ], [
+      [ { "op": "grade", "sat": 0.9, "tint": "#f0b070", "ta": 0.07, "ms": 0 }, { "op": "vignette", "a": 0.2, "ms": 0 } ], [
       when(F("s4t.deck"),
-        [ { "op": "grade", "sat": 0.55, "tint": "#c87a62", "ta": 0.14, "ms": 0 }, { "op": "vignette", "a": 0.25, "ms": 0 } ],
+        [ { "op": "grade", "sat": 0.8, "tint": "#c87a62", "ta": 0.08, "ms": 0 }, { "op": "vignette", "a": 0.25, "ms": 0 } ],
         [ { "op": "grade", "sat": 0.35, "tint": "#3a2a4a", "ta": 0.2, "ms": 0 }, { "op": "vignette", "a": 0.3, "ms": 0 } ]) ])
   ];
   // 파리아 모습(faria_cell 침대 (1,4)) — 맵의 faria 오브젝트는 S4에서 숨는다(cond). 장면이 spawn한다
@@ -47641,7 +47809,8 @@ MC.addEvents({
   const KNOCKS = 2;                                                        // 셋째가 오지 않는 두드림(Q11 권장안). 원작대로 부르는 소리만이면 0
   const PLAN = [ [ 48, 6, 6 ], [ 40, 5, 6 ], [ 30, 4, 5 ], [ 22, 2, 3 ] ];   // 멎는 맥(계약 §G-4 ≈ 30~35초)
 
-  const knock = (i) => [ { "op": "sfx", "id": "knock", "gain": 0.3, "pan": -0.2, "pitch": i ? 0.97 : 1 }, { "op": "vibrate", "p": 15 }, { "op": "shake", "p": 0.03 } ];
+  // [u51 B8-7] cap = 소리 자막 · ring = 노크 파문(바닥 돌 (7,6)) — 셋째가 오지 않는 3초에는 자막도 파문도 없다
+  const knock = (i) => [ { "op": "sfx", "id": "knock", "gain": 0.3, "pan": -0.2, "pitch": i ? 0.97 : 1, "cap": "바닥 아래 · 두드리는 소리", "ring": [ 7, 6 ] }, { "op": "vibrate", "p": 15 }, { "op": "shake", "p": 0.03 } ];
   const KNOCK_SEQ = [];
   for (let i = 0; i < KNOCKS; i++) { if (i) KNOCK_SEQ.push(W(760)); KNOCK_SEQ.push.apply(KNOCK_SEQ, knock(i)); }
 
@@ -48015,7 +48184,8 @@ MC.addEvents({
       LB_ON,
       call("a3.to_bed"),
       W(1600),
-      { "op": "sfx", "id": "door_iron" }, { "op": "shake", "p": 0.2 }, { "op": "vibrate", "p": 50 },
+      // [u51 B8-7] cap = 소리 자막 — 옆방(신부님 방) 소리가 이 아침의 전부다
+      { "op": "sfx", "id": "door_iron", "cap": "철문 · 열리는 소리" }, { "op": "shake", "p": 0.2 }, { "op": "vibrate", "p": 50 },
       { "op": "spawn", "id": "jailer", "sprite": "ch_jailer", "x": 6, "y": 1, "dir": "down" },
       { "op": "move", "id": "jailer", "path": "D1", "speed": 320 },
       { "op": "face", "id": "jailer", "dir": "left" },
@@ -48025,19 +48195,19 @@ MC.addEvents({
       { "op": "face", "id": "jailer", "dir": "up" },
       { "op": "move", "id": "jailer", "path": "U1", "speed": 300 },
       { "op": "despawn", "id": "jailer" },
-      { "op": "sfx", "id": "door_iron" }, { "op": "shake", "p": 0.25 },
+      { "op": "sfx", "id": "door_iron", "cap": "철문 · 닫히는 소리" }, { "op": "shake", "p": 0.25 },
       W(1300),
-      { "op": "sfx", "id": "step_stone", "pan": 0.5, "pitch": 0.9, "gain": 0.4 }, W(520),
-      { "op": "sfx", "id": "step_stone", "pan": 0.7, "pitch": 0.86, "gain": 0.3 }, W(900),
-      { "op": "sfx", "id": "door_iron", "gain": 0.35, "pitch": 0.85, "pan": 0.7 },   // 옆방 문
+      { "op": "sfx", "id": "step_stone", "pan": 0.5, "pitch": 0.9, "gain": 0.4, "cap": "복도 · 옆방으로 가는 발소리" }, W(520),
+      { "op": "sfx", "id": "step_stone", "pan": 0.7, "pitch": 0.86, "gain": 0.3, "cap": "복도 · 옆방으로 가는 발소리" }, W(900),
+      { "op": "sfx", "id": "door_iron", "gain": 0.35, "pitch": 0.85, "pan": 0.7, "cap": "옆방 · 철문 소리" },   // 옆방 문
       W(2200),
       { "op": "lowpass", "hz": 700, "ms": 0 },
       TOP("tguard", "……27번?{p:500} 이봐, 27번!"),                         // 장면 4의 첫 자리(12½에서 거꾸로 울린다)
       { "op": "lowpass", "hz": null, "ms": 300 },
-      { "op": "sfx", "id": "step_stone", "pan": 0.6, "pitch": 1.1, "gain": 0.45 }, W(200),
-      { "op": "sfx", "id": "step_stone", "pan": 0.7, "pitch": 1.15, "gain": 0.4 }, W(200),
-      { "op": "sfx", "id": "step_stone", "pan": 0.8, "pitch": 1.1, "gain": 0.35 }, W(700),
-      { "op": "sfx", "id": "crowd_gasp", "gain": 0.25, "pan": 0.6 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.6, "pitch": 1.1, "gain": 0.45, "cap": "옆방 · 급한 발소리" }, W(200),
+      { "op": "sfx", "id": "step_stone", "pan": 0.7, "pitch": 1.15, "gain": 0.4, "cap": "옆방 · 급한 발소리" }, W(200),
+      { "op": "sfx", "id": "step_stone", "pan": 0.8, "pitch": 1.1, "gain": 0.35, "cap": "옆방 · 급한 발소리" }, W(700),
+      { "op": "sfx", "id": "crowd_gasp", "gain": 0.25, "pan": 0.6, "cap": "옆방 · 웅성거림" },
       call("a3.getup"),
       { "op": "set", "var": "s4phase", "v": "morning" },                  // hole_ear가 나타난다(맵 cond)
       { "op": "grade", "sat": 0.45, "tint": "#3a2410", "ta": 0.08, "ms": 4000, "async": true },   // 잿빛 새벽 → 아침 창빛
@@ -48048,7 +48218,7 @@ MC.addEvents({
     ],
     // hole_ear 짧은 탭 — 웅성임만(안내 글 없음)
     "s4m.ear_tap": [
-      { "op": "sfx", "id": "crowd_gasp", "gain": 0.18, "pan": 0.6, "pitch": 0.9 }
+      { "op": "sfx", "id": "crowd_gasp", "gain": 0.18, "pan": 0.6, "pitch": 0.9, "cap": "구멍 너머 · 웅성거림" }
     ],
     // hole_ear 길게 누름(1초) = 구멍에 귀를 댄다 → 벽 너머 목소리(8상자, 귀 대기 조작이 앞에서 끊는다)
     "s4m.listen": [
@@ -48089,10 +48259,10 @@ MC.addEvents({
     ],
     "s4m.listen_end": [
       W(700),
-      { "op": "sfx", "id": "door_iron", "gain": 0.4, "pitch": 0.85, "pan": 0.7 },   // 웅성이 끝나고 문이 닫힌다
+      { "op": "sfx", "id": "door_iron", "gain": 0.4, "pitch": 0.85, "pan": 0.7, "cap": "옆방 · 철문 닫히는 소리" },   // 웅성이 끝나고 문이 닫힌다
       W(800),
-      { "op": "sfx", "id": "step_stone", "pan": 0.8, "pitch": 0.86, "gain": 0.3 }, W(600),
-      { "op": "sfx", "id": "step_stone", "pan": 0.95, "pitch": 0.82, "gain": 0.18 },
+      { "op": "sfx", "id": "step_stone", "pan": 0.8, "pitch": 0.86, "gain": 0.3, "cap": "복도 · 멀어지는 발소리" }, W(600),
+      { "op": "sfx", "id": "step_stone", "pan": 0.95, "pitch": 0.82, "gain": 0.18, "cap": "복도 · 멀어지는 발소리" },
       W(2600),                                                             // 정적
       { "op": "set", "flag": "s4m.listened" },
       { "op": "grow" },
@@ -48238,11 +48408,11 @@ MC.addEvents({
     "s4m.knock3": [
       { "op": "face", "id": "player", "dir": "right" },
       W(300),
-      { "op": "sfx", "id": "knock", "pan": 0.5 }, { "op": "shake", "p": 0.1 }, { "op": "vibrate", "p": 15 },
+      { "op": "sfx", "id": "knock", "pan": 0.5, "cap": "벽 · 두드리는 소리", "ring": [ 8, 5 ] }, { "op": "shake", "p": 0.1 }, { "op": "vibrate", "p": 15 },   // [u51 B8-7] 자막·파문 — 그 뒤 4초는 아무 자막도 없다(대답이 없다)
       W(220),
-      { "op": "sfx", "id": "knock", "pan": 0.5, "pitch": 1.04 }, { "op": "shake", "p": 0.1 }, { "op": "vibrate", "p": 15 },
+      { "op": "sfx", "id": "knock", "pan": 0.5, "pitch": 1.04, "cap": "벽 · 두드리는 소리", "ring": [ 8, 5 ] }, { "op": "shake", "p": 0.1 }, { "op": "vibrate", "p": 15 },
       W(220),
-      { "op": "sfx", "id": "knock", "pan": 0.5, "pitch": 0.96 }, { "op": "shake", "p": 0.12 }, { "op": "vibrate", "p": 15 },
+      { "op": "sfx", "id": "knock", "pan": 0.5, "pitch": 0.96, "cap": "벽 · 두드리는 소리", "ring": [ 8, 5 ] }, { "op": "shake", "p": 0.12 }, { "op": "vibrate", "p": 15 },
       { "op": "set", "var": "s4_knock3", "v": 1 },
       W(4000)
     ],
@@ -49035,21 +49205,22 @@ MC.addEvents({
       { "op": "act", "v": 5, "ui": "act5" },
       { "op": "lowpass", "hz": 650, "ms": 0 },                            // 자루 속 — 바깥은 먹먹하게(0.4.2 A5: 420→650, a0.sack과 같게)
       W(1800),
-      SFX("door_iron", { "gain": 0.4, "pitch": 0.9, "pan": 0.6 }),       // 옆방(34번 방) 문 — 일곱 시
+      // [u51 B8-7] 자루 속(검정·먹먹함) — 소리가 장면의 전부라 단서 소리마다 cap(소리 자막). 심장은 자막 대신 진동(진동 없는 기기는 테두리 맥동)
+      SFX("door_iron", { "gain": 0.4, "pitch": 0.9, "pan": 0.6, "cap": "옆방 · 철문 소리" }),       // 옆방(34번 방) 문 — 일곱 시
       W(700),
       TOP("tguard", "34번.{p:300} 저녁."),                                // 침대의 스승을 '34번'이라 부른다(§2-2)
       HEART110(10),
       { "op": "vignette", "a": 0.55, "ms": 400, "async": true },
-      SFX("step_stone", { "gain": 0.4, "pan": 0.5 }), W(520),
-      SFX("step_stone", { "gain": 0.45, "pan": 0.35, "pitch": 0.95 }), W(520),
+      SFX("step_stone", { "gain": 0.4, "pan": 0.5, "cap": "옆방 · 발소리" }), W(520),
+      SFX("step_stone", { "gain": 0.45, "pan": 0.35, "pitch": 0.95, "cap": "옆방 · 발소리" }), W(520),
       W(1500),                                                           // 1.5초 — 명령도 반짝임도 없다(내가 만든 거짓이 통하는지)
-      SFX("bowl", { "gain": 0.5, "pan": 0.35 }),
+      SFX("bowl", { "gain": 0.5, "pan": 0.35, "cap": "옆방 · 그릇 놓는 소리" }),
       W(700),
       TOP("tguard", "……자나."),
       W(300),
-      SFX("step_stone", { "gain": 0.35, "pan": 0.45 }), W(520),
-      SFX("step_stone", { "gain": 0.25, "pan": 0.65, "pitch": 0.95 }), W(600),
-      SFX("door_iron", { "gain": 0.35, "pitch": 0.9, "pan": 0.7 }),
+      SFX("step_stone", { "gain": 0.35, "pan": 0.45, "cap": "옆방 · 멀어지는 발소리" }), W(520),
+      SFX("step_stone", { "gain": 0.25, "pan": 0.65, "pitch": 0.95, "cap": "옆방 · 멀어지는 발소리" }), W(600),
+      SFX("door_iron", { "gain": 0.35, "pitch": 0.9, "pan": 0.7, "cap": "옆방 · 철문 닫히는 소리" }),
       { "op": "vignette", "a": 0.3, "ms": 800, "async": true },
       W(900),
       { "op": "say", "who": "think", "t": "천천히. 셋까지 세고." },
@@ -49069,9 +49240,9 @@ MC.addEvents({
       { "op": "lowpass", "hz": 650, "ms": 0 },
       W(900),
       // 들것에 실려 나간다 — 계단(매듭 문답)
-      SFX("door_iron", { "gain": 0.35, "pitch": 0.85 }), W(700),
-      SFX("step_stone", { "gain": 0.4, "pan": -0.2 }), W(450),
-      SFX("step_stone", { "gain": 0.4, "pan": 0.2, "pitch": 0.95 }), W(500),
+      SFX("door_iron", { "gain": 0.35, "pitch": 0.85, "cap": "철문 소리" }), W(700),
+      SFX("step_stone", { "gain": 0.4, "pan": -0.2, "cap": "두 사람의 발소리" }), W(450),
+      SFX("step_stone", { "gain": 0.4, "pan": 0.2, "pitch": 0.95, "cap": "두 사람의 발소리" }), W(500),
       { "op": "shake", "p": 0.12 }, SFX("cloth_slip", { "gain": 0.3, "pitch": 0.7 }),
       W(900),
       { "op": "say", "who": "unknown", "t": "27번.{p:300} 늙고 마른 영감이라더니." },   // 자루의 나는 '27번'(§2-2)
@@ -49079,24 +49250,24 @@ MC.addEvents({
       { "op": "say", "who": "unknown", "t": "가서 묶지.\n무거운 걸 왜 미리 들어." },
       W(500),
       { "op": "say", "who": "think", "t": "……매듭." },                    // 당테스는 매듭이 무엇에 쓰는지 모른다
-      SFX("step_stone", { "gain": 0.35, "pitch": 1.08 }), { "op": "shake", "p": 0.08 }, W(420),
-      SFX("step_stone", { "gain": 0.35, "pitch": 1.12 }), { "op": "shake", "p": 0.08 }, W(420),
-      SFX("step_stone", { "gain": 0.35, "pitch": 1.1 }), { "op": "shake", "p": 0.08 }, W(500),
+      SFX("step_stone", { "gain": 0.35, "pitch": 1.08, "cap": "계단 · 발소리" }), { "op": "shake", "p": 0.08 }, W(420),
+      SFX("step_stone", { "gain": 0.35, "pitch": 1.12, "cap": "계단 · 발소리" }), { "op": "shake", "p": 0.08 }, W(420),
+      SFX("step_stone", { "gain": 0.35, "pitch": 1.1, "cap": "계단 · 발소리" }), { "op": "shake", "p": 0.08 }, W(500),
       { "op": "amb", "id": "mistral", "fade": 2000 },                    // 계단 끝 — 밤바람
       W(1800),
       // 바위 끝
-      SFX("step_stone", { "gain": 0.3, "pitch": 0.9 }), W(600),
-      SFX("step_stone", { "gain": 0.3, "pitch": 0.88 }), W(900),
+      SFX("step_stone", { "gain": 0.3, "pitch": 0.9, "cap": "바위 위 · 발소리" }), W(600),
+      SFX("step_stone", { "gain": 0.3, "pitch": 0.88, "cap": "바위 위 · 발소리" }), W(900),
       { "op": "say", "who": "unknown", "t": "좀 더 가. 지난번 놈은 바위에 걸려\n소장한테 한소리 들었잖아." },
-      SFX("step_stone", { "gain": 0.3, "pitch": 0.9 }), W(500),
-      SFX("step_stone", { "gain": 0.3, "pitch": 0.86 }), W(500),
-      SFX("step_stone", { "gain": 0.28, "pitch": 0.9 }), W(900),
-      SFX("clank"), { "op": "shake", "p": 0.12 },                         // 쇠공이 바위에
+      SFX("step_stone", { "gain": 0.3, "pitch": 0.9, "cap": "바위 위 · 발소리" }), W(500),
+      SFX("step_stone", { "gain": 0.3, "pitch": 0.86, "cap": "바위 위 · 발소리" }), W(500),
+      SFX("step_stone", { "gain": 0.28, "pitch": 0.9, "cap": "바위 위 · 발소리" }), W(900),
+      SFX("clank", { "cap": "쇳덩이 소리" }), { "op": "shake", "p": 0.12 },   // 쇠공이 바위에
       W(700),
       { "op": "say", "who": "unknown", "t": "추 달아. 서른여섯짜리,\n늘 쓰던 걸로." },   // 감옥의 관례(12½ 「서른여섯」「늘 쓰던 걸로요」와 같은 낱말)
       W(400),
-      SFX("rope_wrap"), { "op": "vibrate", "p": 25 }, W(320),            // 발목에 줄(글 없음)
-      SFX("rope_wrap", { "pitch": 0.9 }), { "op": "vibrate", "p": 25 },
+      SFX("rope_wrap", { "cap": "밧줄 감는 소리" }), { "op": "vibrate", "p": 25 }, W(320),   // 발목에 줄(글 없음 — 자막도 '어디에'는 말하지 않는다)
+      SFX("rope_wrap", { "pitch": 0.9, "cap": "밧줄 감는 소리" }), { "op": "vibrate", "p": 25 },
       W(900),
       call("a0.sack"),                                                   // 프롤로그 그대로: 심장 다섯 · thud · 두 줄 · 숨 참기 · 「하나,{p:450} 둘—」
       { "op": "say", "who": "unknown", "t": "셋!", "auto": 450 },         // [fixer-s4p2] QA 6: 탭을 기다리지 않고 던져진다(「하나, 둘—」 auto와 같은 흐름)
@@ -49108,7 +49279,7 @@ MC.addEvents({
       { "op": "fade", "to": 1, "ms": 0 },
       { "op": "amb", "id": null, "fade": 40 },
       W(300),
-      SFX("splash", { "gain": 1 }), { "op": "shake", "p": 0.35 }, { "op": "vibrate", "p": 80 },
+      SFX("splash", { "gain": 1, "cap": "물에 떨어지는 소리" }), { "op": "shake", "p": 0.35 }, { "op": "vibrate", "p": 80 },
       { "op": "fade", "to": 1, "ms": 0, "color": "#ffffff" }, W(40),     // 흰 1프레임(알파 없이 화면 전체)
       { "op": "fade", "to": 1, "ms": 0, "color": "#000000" },
       { "op": "vignette", "a": 0, "ms": 0 },
@@ -49198,7 +49369,8 @@ MC.addEvents({
   const SMOKE = i => (has('ob_if_smoke3_' + i) ? [ { "op": "sprite", "id": "ob_if_smoke", "sprite": 'ob_if_smoke3_' + i } ] : []);
   // [art-iffar 0.4.1-s4b] 머리채 한 컷(그록 cu_hair 96×112) — 물보라 번쩍 뒤 still(그림 윗변을 화면 위에 붙여 줄무늬 소매가 화면 밖으로). 없으면 번쩍만(예전 그대로)
   // [c50-cine B5-6 · 시7] 「……바위.」 직전 빗속에서 바위를 움켜쥔 손 1.5초(새 그림 cu_rock_grip) — 그 말은 손 위에 뜬다(holdSay 1). 그림이 없으면 건너뜀(지금 흐름 그대로)
-  const ROCK_CUT = has('cu_rock_grip') ? [ { "op": "custom", "id": "s4", "args": { "stage": "still", "spr": "cu_rock_grip", "ms": 1500, "max": 2, "y": 0.42, "bg": "#0c1424", "sfx": "thud", "gain": 0.3, "tint": "#3a5a98", "tintA": 0.38, "place": "br", "padB": 40, "bleed": "b", "vig": 4, "holdSay": 1, "holdAfter": 600 } } ] : [];
+  //   [u51] 아래 늘이기는 소매 열(44~63)만 — 맨 아래 줄 전체를 늘이면 바위 결이 세로 줄무늬가 됐다(c50-cine 남은 것). 바위는 그림 아랫변에서 끝나고 밤빛 바탕·비네트로 녹는다
+  const ROCK_CUT = has('cu_rock_grip') ? [ { "op": "custom", "id": "s4", "args": { "stage": "still", "spr": "cu_rock_grip", "ms": 1500, "max": 2, "y": 0.42, "bg": "#0c1424", "sfx": "thud", "gain": 0.3, "tint": "#3a5a98", "tintA": 0.38, "place": "br", "padB": 40, "bleed": "b", "bleedCols": [ 44, 64 ], "vig": 4, "holdSay": 1, "holdAfter": 600 } } ] : [];
   const HAIR_CUT = has('cu_hair') ? [ { "op": "custom", "id": "s4", "args": { "stage": "still", "spr": "cu_hair", "ms": 1500, "align": "top", "bg": "#0c1424", "max": 2, "vig": 0 } } ] : [];   // vig 0: 비네트가 윗변 소매를 먹지 않게(아래 가장자리는 그림 자체 디더)
   // H2-15: 클립이 없거나 실패하면 bgm 폴백
   // [s46-sound B4-6] 「살았다!」(14년 만의 다정한 목소리)에 음악이 먼저 깔리지 않게 — 선장의 「키나 잡아 보게.」 뒤 조작이 풀리는 순간 fade 3000으로 들어온다.
@@ -49386,22 +49558,23 @@ MC.addEvents({
     ].concat(PATROL_NARR ? [ { "op": "narr", "t": PATROL_NARR, "ms": 1800 } ] : [], [
       W(1500),
       // [s46-sound B4-15] 순회의 손 소리(열쇠·헝겊·발소리·흔듦) ×1.8(+5dB) — 폰에서 검정 30초가 22초 무음으로 들리던 것(소2-4). 박자·순서는 그대로
+      // [u51 B8-7] 검정 30초 — 소리 자막(cap). key_ring은 레시피 cap(「열쇠 꾸러미 소리」)
       SFX("key_ring", { "gain": 1.08 }), W(500),                          // 열쇠·문 — 2초 안에(귀가 먼저 감방임을 안다)
-      SFX("door_iron"), { "op": "shake", "p": 0.15 },
+      SFX("door_iron", { "cap": "철문 · 열리는 소리" }), { "op": "shake", "p": 0.15 },
       W(400),
       TOP("tguard", "34번.{p:300} 빵, 물."),                              // M41 — 1815년부터 같은 말을, 오늘 처음 죽은 사람에게
       SFX("cloth_slip", { "gain": 0.36, "pitch": 1.2 }),
       W(1000),
-      SFX("step_stone", { "gain": 0.8, "pan": -0.2 }), W(450),
-      SFX("step_stone", { "gain": 0.8, "pan": -0.35, "pitch": 0.95 }), W(400),
-      SFX("shoulder_shake", { "gain": 1.08 }), W(450),                    // 어깨를 흔든다
-      SFX("cloth_slip", { "gain": 0.7, "pitch": 0.8 }),                  // 헝겊이 흘러내린다(장면 8에서 제 손으로 감아 준 그 헝겊)
+      SFX("step_stone", { "gain": 0.8, "pan": -0.2, "cap": "발소리" }), W(450),
+      SFX("step_stone", { "gain": 0.8, "pan": -0.35, "pitch": 0.95, "cap": "발소리" }), W(400),
+      SFX("shoulder_shake", { "gain": 1.08, "cap": "어깨를 흔드는 소리" }), W(450),   // 어깨를 흔든다
+      SFX("cloth_slip", { "gain": 0.7, "pitch": 0.8, "cap": "헝겊이 흘러내리는 소리" }),   // 헝겊이 흘러내린다(장면 8에서 제 손으로 감아 준 그 헝겊)
       W(2000),
       TOP("tguard", "……27번?"),                                          // 장면 4의 말이 34번 방에서 거꾸로
-      SFX("step_stone", { "gain": 0.72, "pan": 0.3, "pitch": 1.1 }), W(200),
-      SFX("step_stone", { "gain": 0.72, "pan": 0.1, "pitch": 1.15 }), W(200),
-      SFX("step_stone", { "gain": 0.63, "pan": 0.4, "pitch": 1.05 }), W(200),
-      SFX("step_stone", { "gain": 0.63, "pan": 0.2, "pitch": 1.1 }), W(700),
+      SFX("step_stone", { "gain": 0.72, "pan": 0.3, "pitch": 1.1, "cap": "급한 발소리" }), W(200),
+      SFX("step_stone", { "gain": 0.72, "pan": 0.1, "pitch": 1.15, "cap": "급한 발소리" }), W(200),
+      SFX("step_stone", { "gain": 0.63, "pan": 0.4, "pitch": 1.05, "cap": "급한 발소리" }), W(200),
+      SFX("step_stone", { "gain": 0.63, "pan": 0.2, "pitch": 1.1, "cap": "급한 발소리" }), W(700),
       TOP("governor", "……굴이군. 두 방 사이에."),
       TOP("tguard", "던진 놈들 말로는,\n평소보다 무거웠답니다."),
       TOP("governor", "추는 서른여섯 파운드짜리였지?"),
@@ -49409,7 +49582,7 @@ MC.addEvents({
       TOP("governor", "그럼 바다 밑일세. 틀림없어."),
       TOP("governor", "배는 띄울 것 없네.\n대포만 쏘게. 절차니까."),
       W(300),
-      SFX("door_iron"), { "op": "shake", "p": 0.15 },
+      SFX("door_iron", { "cap": "철문 · 닫히는 소리" }), { "op": "shake", "p": 0.15 },
       W(900),
       { "op": "map", "id": "tartane", "at": "default", "trans": "cut" }    // onEnter → s4t.resume → watch → s4t.deck(검정 그대로)
     ]),
@@ -49428,7 +49601,7 @@ MC.addEvents({
       { "op": "face", "id": "captain", "dir": "left" },
       { "op": "amb", "id": "deck", "fade": 1500 },
       W(700),
-      { "op": "grade", "sat": 0.55, "tint": "#c87a62", "ta": 0.14, "ms": 3000, "async": true },   // 눈을 뜨는 동안 새벽 보랏빛 → 이른 아침(QA 1)
+      { "op": "grade", "sat": 0.8, "tint": "#c87a62", "ta": 0.08, "ms": 3000, "async": true },   // 눈을 뜨는 동안 새벽 보랏빛 → 이른 아침(QA 1) · [u51] sat 0.55→0.8·ta 0.14→0.08: 바다가 회보라로 씻기지 않고 푸르게(바다 채도 0.19→0.38, 갑판 살구빛은 남김) — events_s4.js TAR_LOOK과 같은 값
       { "op": "vignette", "a": 0.25, "ms": 3000, "async": true },
       { "op": "fade", "to": 0, "ms": 1400 },
       W(700),
@@ -49468,7 +49641,7 @@ MC.addEvents({
       SFX("cloth_slip", { "gain": 0.4 }),
       { "op": "fade", "to": 1, "ms": 400 },
       { "op": "grow", "v": 6 },                                          // H2-10: sprite가 아니라 성장 6단계(이어하기에서도 셔츠)
-      { "op": "grade", "sat": 0.75, "tint": "#f0b070", "ta": 0.12, "ms": 0 },   // 키 잡기의 일출 뒤 — 갑판에도 아침빛(QA 1, 검정 사이에 바꿈)
+      { "op": "grade", "sat": 0.9, "tint": "#f0b070", "ta": 0.07, "ms": 0 },   // 키 잡기의 일출 뒤 — 갑판에도 아침빛(QA 1, 검정 사이에 바꿈) · [u51] sat 0.75→0.9·ta 0.12→0.07(바다 채도 0.30→0.42) — TAR_LOOK과 같은 값
       { "op": "vignette", "a": 0.2, "ms": 0 },
       SFX("cloth_slip", { "gain": 0.3, "pitch": 0.85 }),
       W(500),
@@ -49984,6 +50157,7 @@ MC.addLang('ko', {
     "set.voice": "대사음",
     "set.phoneBass": "폰 저음 보강",
     "set.mute": "소리 끄기",
+    "set.sndCap": "소리 자막",
     "set.textSpeed": "대사 속도",
     "set.battleSpeed": "전투 속도",
     "set.moveSpeed": "걷는 속도",
@@ -50463,6 +50637,7 @@ MC.addLang('ko', {
     "set.voice": { "w": 96, "font": "body", "lines": 1, "note": "설정 행(대사 타자음 켬/끔) — 켬/끔 줄은 이름 칸 약 96px" },
     "set.mute": { "w": 96, "font": "body", "lines": 1, "note": "설정 행(모든 소리 끄기) — 켬/끔 줄, 이름 칸 약 96px" },
     "set.phoneBass": { "w": 96, "font": "body", "lines": 1, "note": "설정 '소리' 탭 켬/끔 줄([s46-sound B4-2] 폰 스피커 저음 보강 — 이름 칸 96px에 「폰 스피커 저음 보강」(111px)이 안 들어가 「폰 저음 보강」(70px). 음악의 낮은 베이스를 한 옥타브 위로 겹쳐 작은 스피커에서도 들리게. 이어폰이면 끄는 사람도 있음). 이름 칸 약 96px" },
+    "set.sndCap": { "w": 96, "font": "body", "lines": 1, "note": "설정 '소리' 탭 켬/끔 줄([u51 B8-7] 소리 자막 — 이야기에서 들어야 하는 효과음(노크·긁는 소리·발소리·철문·물방울·종·대포…)을 대사창 위에 「[벽 너머 · 긁는 소리]」 한 줄로. 처음엔 자동: 소리를 껐거나 효과음 0이면 켬). 이름 칸 약 96px" },
     "set.textSpeed": { "w": 66, "font": "body", "lines": 1, "note": "설정 행(대사 글자 속도) — ◀ 값 ▶ 줄은 오른쪽 92px(타이틀 설정 창 폭 168 기준 이름 칸 약 66px)" },
     "set.battleSpeed": { "w": 66, "font": "body", "lines": 1, "note": "설정 행(전투 진행 속도) — ◀ 값 ▶ 줄, 이름 칸 약 66px" },
     "set.moveSpeed": { "w": 66, "font": "body", "lines": 1, "note": "설정 행(걷는 속도) — ◀ 값 ▶ 줄, 이름 칸 약 66px" },
@@ -55312,7 +55487,7 @@ MC.addLang('en', {
       if (((t / 520) | 0) % 3 !== 2 || sc.off >= 0) {
         const img = MC.text.bake(label, 'body', '#f0f0f0', { shadow: '#000' });
         // 위쪽 대화창(초상 포함)이 떠 있으면 왼쪽 아래로 비킨다
-        const dTop = MC.dialogue && MC.dialogue.open && MC.dialogue.boxRect && MC.dialogue.boxRect().y < (H >> 1);
+        const dTop = MC.dialogue && MC.dialogue.open && MC.dialogue.boxRect && MC.dialogue.boxRect().pos === 'top';   // [u51 B2-6] 선택지 질문으로 올린 아래 창도 화면 위쪽 절반에 올 수 있어 y 대신 pos로
         if (img) U.drawDither(img, g.X0 + 8, dTop ? H - 24 - g.safe.bottom : 8 + g.safe.top, 16 * a);
       }
     };
@@ -60452,12 +60627,14 @@ MC.addLang('en', {
       px.globalAlpha = 1; px.globalCompositeOperation = 'source-over';
     }
     const bleed = String(a.bleed || '');
+    // [u51] bleedCols:[x0,x1](그림 px, x1 미포함) — 'b' 늘이기를 그 열에만(cu_rock_grip: 소매 열만 아래로 — 아랫줄 전체를 늘이면 바위 결이 세로 줄무늬가 됐다)
+    const bc = Array.isArray(a.bleedCols) ? [MC.clamp(num(a.bleedCols[0], 0) | 0, 0, img.width), MC.clamp(num(a.bleedCols[1], img.width) | 0, 0, img.width)] : [0, img.width];
     function drawBleed(ctx, x, y, s, W, H) {
       const iw = pic.width, ih = pic.height, w = iw * s, h = ih * s;
       if (bleed.indexOf('l') >= 0 && x > 0) ctx.drawImage(pic, 0, 0, 1, ih, 0, y, x, h);
       if (bleed.indexOf('r') >= 0 && x + w < W) ctx.drawImage(pic, iw - 1, 0, 1, ih, x + w, y, W - x - w, h);
       if (bleed.indexOf('t') >= 0 && y > 0) ctx.drawImage(pic, 0, 0, iw, 1, x, 0, w, y);
-      if (bleed.indexOf('b') >= 0 && y + h < H) ctx.drawImage(pic, 0, ih - 1, iw, 1, x, y + h, w, H - y - h);
+      if (bleed.indexOf('b') >= 0 && y + h < H && bc[1] > bc[0]) ctx.drawImage(pic, bc[0], ih - 1, bc[1] - bc[0], 1, x + bc[0] * s, y + h, (bc[1] - bc[0]) * s, H - y - h);
       if (bleed.indexOf('r') >= 0 && bleed.indexOf('b') >= 0 && x + w < W && y + h < H) ctx.drawImage(pic, iw - 1, ih - 1, 1, 1, x + w, y + h, W - x - w, H - y - h);
       if (bleed.indexOf('l') >= 0 && bleed.indexOf('b') >= 0 && x > 0 && y + h < H) ctx.drawImage(pic, 0, ih - 1, 1, 1, 0, y + h, x, H - y - h);
       if (bleed.indexOf('l') >= 0 && bleed.indexOf('t') >= 0 && x > 0 && y > 0) ctx.drawImage(pic, 0, 0, 1, 1, 0, 0, x, y);
@@ -61266,7 +61443,7 @@ MC.addLang('en', {
         if (S.pen == null) S.pen = 0;
         { let n = 0; for (let i = 0; i < lines.length; i++) n += L.shown(Array.from(lines[i]).length, t, P.tLed, i); if (S.skipped) S.pen = n; while (S.pen < n) { S.pen++; snd('pen', { gain: 1.0 }, null); } }
         if (S.clank < 0 && tClank >= 0 && t >= tClank) { S.clank = t; snd('clank', { gain: 0.25 }, 'thud', { gain: 0.15 }); }
-        if (!S.name && t >= tName) { S.name = true; snd('cannon_far', { gain: 0.15, lp: 500 }); }
+        if (!S.name && t >= tName) { S.name = true; snd('cannon_far', { gain: 0.15, lp: 500, cap: false }); }   // [0.5.1] 빈 이름칸은 글 없이(자막도 띄우지 않음)
         if (!S.fin && t >= tFin) {
           S.fin = true;
           // [s46-sound B4-17] 크레딧 음악은 0에서 4초에 걸쳐 들어온다(소2-4: 장부·「열넷」 폰 −48~−54 → 「끝」 음악 −30.6, 한 번에 +19dB). 예전 fade 400
@@ -62530,7 +62707,9 @@ MC.addLang('en', {
       { k: 'sfx', label: L('set.sfx'), type: 'vol' },
       { k: 'voice', label: L('set.voice'), type: 'bool' },
       { k: 'phoneBass', label: L('set.phoneBass'), type: 'bool' },   // [s46-sound B4-2] 폰 스피커 저음 보강(음악 베이스 한 옥타브 위 — music.js가 박동마다 따라감)
-      { k: 'mute', label: L('set.mute'), type: 'bool' }] },
+      { k: 'mute', label: L('set.mute'), type: 'bool' },
+      // [u51 B8-7] 소리 자막(단서 효과음을 [ ] 한 줄로) — 저장값 ''(자동)이면 무음(소리 끄기·효과음 0)일 때 켬으로 보인다. 누르면 그 반대를 'on'/'off'로 저장(get/set: 저장값이 불이 아닌 줄)
+      { k: 'sndCap', label: L('set.sndCap'), type: 'bool', get: () => !!(MC.sfx && MC.sfx.capOn && MC.sfx.capOn()), set: v => { MC.save.settings.sndCap = v ? 'on' : 'off'; } }] },
     { label: L('set.tabPlay'), rows: [
       { k: 'textSpeed', label: L('set.textSpeed'), type: 'opt', opts: [[0, L('set.slow')], [1, L('set.normal')], [2, L('set.fast')], [3, L('set.instant')]] },
       { k: 'battleSpeed', label: L('set.battleSpeed'), type: 'opt', opts: [[0, L('set.slow')], [1, L('set.normal')], [2, L('set.fast')]] },
@@ -62575,9 +62754,10 @@ MC.addLang('en', {
         return;
       }
       if (r.type === 'bool') {
-        const v = !s[r.k];
+        const v = r.get ? !r.get() : !s[r.k];
         if (r.k === 'mute') U.audio('setMute', v); else if (r.k === 'voice') U.audio('setVoice', v);
-        s[r.k] = v; MC.save.saveSettings();
+        if (r.set) r.set(v); else s[r.k] = v;
+        MC.save.saveSettings();
         if (r.k === 'vibrate' && v) U.vibrate(30);
         if (r.k === 'voice' && v && MC.sfx && MC.sfx.voice) { try { MC.sfx.voice('dantes', '가'); } catch (_) {} }
         U.sfx(v ? 'ui_ok' : 'ui_cancel');
@@ -62642,7 +62822,7 @@ MC.addLang('en', {
           MC.text.draw(r.opts[MC.clamp(i2, 0, r.opts.length - 1)][1], x + w - 48, cy + (vf === 'small' ? 1 : 0), { color: P.gold, align: 'center', font: vf });
         } else {
           e.tog.render();
-          const on = !!s[r.k], tx = x + w - 34, ty = e.tog.y + (e.tog.h >> 1) - 5;
+          const on = r.get ? !!r.get() : !!s[r.k], tx = x + w - 34, ty = e.tog.y + (e.tog.h >> 1) - 5;
           g.rect(tx, ty, 26, 10, '#000000'); g.rect(tx + 1, ty + 1, 24, 8, on ? g.mix(P.gold, P.f, 0.45) : '#15141c');
           g.rect(on ? tx + 14 : tx + 2, ty + 2, 10, 6, on ? P.gold : P.dim);
           MC.text.draw(tf(on ? 'set.on' : 'set.off'), tx - 6, cy, { color: on ? P.text : P.dim, align: 'right' });
