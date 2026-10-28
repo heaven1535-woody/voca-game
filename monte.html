@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.7-music';
+  var VERSION = '0.7.8-story';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -45028,6 +45028,14 @@ MC.addEvents({
             "then": [ { "op": "say", "who": "think", "t": "시청은 저녁에 가자고 했는데.{p:500} 했는데……" } ],
             "else": [ { "op": "say", "who": "think", "t": "파티는…… 다들 아직 기다리고 있을까?" } ] } ] } ] },
       { "op": "say", "who": "think", "t": "34번.{p:700} ……34번?" },
+      // [빗금 10-28] 첫 금은 꼭 긋는다(탭 한 번) — 사용자 「빗금 긋는 서사가 빠져 던전의 빗금 이야기가 어색하다」:
+      //   빗금 벽은 조사물이라 지나치면 꿈 B1의 빗금 넷·절망의 「빗금 사이로」·적 「세다 만 빗금」이 근거 없이 나왔다. 글은 a3.tally 첫 금 갈래 그대로
+      { "op": "wait", "ms": 500 },
+      { "op": "say", "who": "think", "t": "……세어 두자.{p:300} 나가는 날까지." },
+      { "op": "walkto", "id": "player", "to": [ 2, 2 ], "speed": 260, "face": "up" },
+      { "op": "face", "id": "player", "dir": "up" },
+      { "op": "custom", "id": "deduce", "args": { "stage": "tap", "at": [ 2, 1 ], "hint": "벽에 금을 긋는다.", "other": "……" } },
+      { "op": "call", "ev": "a3.tally" },
       { "op": "cam", "zoom": 1 },                                        // [c50-cine] 조작이 풀리기 전 와이드로
       { "op": "letterbox", "on": false, "ms": 300 },
       { "op": "set", "flag": "a3.started" },
@@ -45358,6 +45366,13 @@ MC.addEvents({
         "then": [ { "op": "if", "cond": { "var": "sleeps", "gte": 3 },
           "then": [ { "op": "say", "who": "think", "t": "눈을 떠도, 감아도 같은 방이다." } ],
           "else": [ { "op": "say", "who": "think", "t": "……또 그 방에 다녀왔어. 몇 밤이 지났지?" } ] } ] },
+      // [빗금 10-28] 금이 늘어난 아침엔 새 빗금이 반짝인다(단계마다 한 번, 탭하면 a3.tally의 30·200·730 글)
+      { "op": "if", "cond": { "all": [ { "var": "days", "gte": 730 }, { "not": { "var": "tallyGlow", "gte": 730 } } ] },
+        "then": [ { "op": "set", "var": "tallyGlow", "v": 730 }, { "op": "glow", "id": "tally_730a" } ],
+        "else": [ { "op": "if", "cond": { "all": [ { "var": "days", "gte": 200 }, { "not": { "var": "tallyGlow", "gte": 200 } } ] },
+          "then": [ { "op": "set", "var": "tallyGlow", "v": 200 }, { "op": "glow", "id": "tally_200" } ],
+          "else": [ { "op": "if", "cond": { "all": [ { "var": "days", "gte": 30 }, { "not": { "var": "tallyGlow", "gte": 30 } } ] },
+            "then": [ { "op": "set", "var": "tallyGlow", "v": 30 }, { "op": "glow", "id": "tally_30" } ] } ] } ] },
       { "op": "call", "ev": "a3.wake_tail" }
     ],
 
@@ -46408,8 +46423,11 @@ MC.addEvents({
     "a4.talk_next": [
       { "op": "if", "cond": Y22, "then": [ { "op": "end" } ] },          // 1822(균열 — 짧아진 대답)엔 권하지 않는다: 「……기도하겠네.」 뒤에 할 일을 붙이지 않게
       { "op": "wait", "ms": 400 },
+      // [10-28] 굴을 이미 판 해(a4t.clear1)엔 구멍이 「오늘은 더 못 파네」라 굴을 권하지 않는다(사용자: 셋을 알아챈 뒤 굴을 파라더니 못 판다고 함) — 다음은 잠(추리의 밤 4가 깸에서 이어진다)
       { "op": "if", "cond": LESSON_DIM,
-        "then": [ { "op": "say", "who": "faria", "t": "……굴이 기다리네." } ],
+        "then": [ { "op": "if", "cond": { "flag": "a4t.clear1" },
+          "then": [ { "op": "say", "who": "faria", "t": "……오늘은 이만 자게." } ],
+          "else": [ { "op": "say", "who": "faria", "t": "……굴이 기다리네." } ] } ],
         "else": [ { "op": "say", "who": "faria", "t": "……오늘 수업이 남았네." } ] }
     ],
 
@@ -48768,7 +48786,7 @@ MC.addEvents({
       { "op": "sfx", "id": "heartbeat" },
       { "op": "face", "id": "bs_d,bs_c", "dir": "down" },
       { "op": "wait", "ms": 800 },
-      { "op": "say", "who": "think", "t": "셋은 나를 본다.{p:500}\n넷째는 창만 본다." },
+      { "op": "say", "who": "think", "t": "셋은 나를 본다.{p:500}\n검사만 등을 돌렸다.{p:300} 그날처럼." },   // [10-28] 사용자 「넷째가 어색」 — '넷째'(형제 순서처럼 읽힘)·화면에 없는 '창' 대신 보이는 것(등)과 1막 「끝내 저를 안 보셨어요」의 메아리
       { "op": "sfx", "id": "sting" },
       { "op": "flash", "color": "#ff4a2a", "a": 0.55, "ms": 180 },
       { "op": "shake", "p": 0.45 },
