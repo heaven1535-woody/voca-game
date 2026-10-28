@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.13-ptc';
+  var VERSION = '0.7.14-ios';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -1010,16 +1010,12 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const d = ptData();
     if (d) for (const k in d) ptcDecode(k);
   }
-  function ptcImg(uri) {                                  // data URI → ImageBitmap(색 바꾸지 않음) | Image | null
+  function ptcImg(uri) {                                  // data URI → 캔버스(한 번 그려 둠) | Image | null
     return new Promise(res => {
       const im = new Image();
       im.onload = () => {
-        if (!window.createImageBitmap) { res(im); return; }
-        let p = null;
-        try { p = createImageBitmap(im, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }); } catch (_) { p = null; }
-        if (!p || typeof p.then !== 'function') { try { p = createImageBitmap(im); } catch (_) { p = null; } }
-        if (!p) { res(im); return; }
-        p.then(b => res(b), () => res(im));
+        // [ios-c] ImageBitmap(premultiplyAlpha none)은 아이폰 사파리에서 검게(아무것도 안) 그려졌다 — comic.js decodeImg와 같이 캔버스로
+        try { const c = mk(im.naturalWidth || im.width, im.naturalHeight || im.height); c.getContext('2d').drawImage(im, 0, 0); res(c); } catch (_) { res(im); }
       };
       im.onerror = () => res(null);
       im.src = uri;
@@ -72600,8 +72596,13 @@ MC.addLang('en', {
       const fail = () => { if (done) return; warn('dec:' + id, '그림 ' + id + ' 디코드 실패'); decoded.delete(id); fin(null); };
       // onload·decode() 가운데 먼저 오는 쪽 → ImageBitmap(디코드를 끝낸 비트맵). 비트맵이 1.5초 안에 안 오면 Image 그대로(첫 그리기에서 디코드)
       //   C는 색을 바꾸지 않게(colorSpaceConversion none — PNG에 색 관리 청크도 없다). 옵션을 모르는 브라우저는 옵션 없이
+      //   [ios-c] C는 캔버스에 한 번 그려 그 캔버스를 쓴다 — 아이폰 사파리에서 C 비트맵이 검게(아무것도 안) 그려졌다(10-29 사용자 폰). 360칸 그림이라 한 번 그리는 값은 작다
       const ok = () => {
         if (started || done) return; started = true;
+        if (st === 'C') {
+          try { const c = G().makeCanvas(e.w, e.h); c.getContext('2d').drawImage(im, 0, 0); r.src = c; fin(c); } catch (_) { r.src = im; fin(im); }
+          return;
+        }
         if (!window.createImageBitmap) { r.src = im; fin(im); return; }
         const tm = setTimeout(() => { if (!done) { r.src = im; fin(im); } }, 1500);
         let pr;
@@ -72644,6 +72645,7 @@ MC.addLang('en', {
   function dropDec(id) {
     const r = decoded.get(id); if (!r) return;
     if (r.src && typeof r.src.close === 'function') { try { r.src.close(); } catch (_) {} }
+    else if (r.src && r.src.getContext) r.src.width = r.src.height = 0;
     if (r.gCv) { r.gCv.width = r.gCv.height = 0; r.gCv = null; }
     if (r.sh) { for (const k in r.sh) if (r.sh[k]) r.sh[k].width = r.sh[k].height = 0; r.sh = null; }
     decoded.delete(id);
