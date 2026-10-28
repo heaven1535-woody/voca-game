@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.1-cfold';
+  var VERSION = '0.7.5-sound';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -4286,7 +4286,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   // [l45-light B7-1] bright = 밝기 보정 0 / 15 / 30(%) — gfx.present가 최종 화면에 감마로
   // [s46-sound B4-2] phoneBass = 폰 스피커 저음 보강(음악 베이스 한 옥타브 위 겹침 — music.js). 기본 켬(이어폰이면 끌 수 있다)
   // [u51 B8-7] sndCap = 소리 자막 ''(자동: 소리 끄기·효과음 0이면 켬) | 'on' | 'off' — 설정 줄을 처음 누르면 'on'/'off'로 정해진다(sfx.js capOn)
-  const DEF = { mus: 7, sfx: 8, voice: true, mute: false, textSpeed: 1, battleSpeed: 1, moveMs: 200, shake: 1, vibrate: true, hand: 'right', lang: '', assist: false, oneHand: false, bright: 0, phoneBass: true, sndCap: '' };
+  const DEF = { mus: 7, sfx: 8, voice: true, mute: false, textSpeed: 1, battleSpeed: 1, moveMs: 200, shake: 1, vibrate: true, hand: 'right', lang: '', assist: false, oneHand: false, bright: 0, phoneBass: true, sndCap: '', tone: 'sfc' };   // [snd75] tone = 음악 음색 'sfc'(16비트, 기본) | 'nes'(클래식 8비트 — 비교·회귀용, music.js)
   const GRADE_RANK = { S: 3, A: 2, B: 1 };
   const gradeOf = r => (r && r.escape && typeof r.escape.grade === 'string' ? r.escape.grade : (r && typeof r.grade === 'string' ? r.grade : null));
   let warned = false;
@@ -5686,7 +5686,9 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 </script>
 <script>/* ==== src/engine/music.js ==== */
 /* music.js — 룩어헤드 시퀀서(MC.music): 텍스트 트래커 곡(MC.data.bgm) 재생·크로스페이드·징글·템포/필터/디튠·레이어(보류 중 요청 기억·박 단위 반영·채널 페이드·S4 레이어별 반영 단위 lqL·채널 unless)·drop·덕킹·이어 재생(레이어·템포 유지)·컨텍스트 재구성 때 같은 마디에서 다시(_rebind, audio-fix)·마디 쉼(rest, S3 광기의 왕 물음 직전)·음 치환(remap, S4 최종전 장조화)·
-   (S4 2차) 클립 연동: play·stop·cut이 MC.clip(src/engine/clips.js)을 같은 fade로 끔. */
+   (S4 2차) 클립 연동: play·stop·cut이 MC.clip(src/engine/clips.js)을 같은 fade로 끔.
+   (snd75) 16비트 음색: 악기 은행(합성 샘플 21종 + 드럼 13 — 현·관·금관·아코디언·합창·하프·기타·만돌린·하프시코드·피치카토·피아노·글로켄·팀파니)과
+   곡별 편곡 덧씌우기(bgm.js 곡의 sfc). 설정 tone 'sfc'(기본) | 'nes'(클래식 = 옛 소리 그대로). 바꾸면 지금 곡을 같은 마디에서 새 음색으로 잇는다. */
 (function (MC) {
   'use strict';
 
@@ -5769,11 +5771,40 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     }
     return { len: tk.length, at };
   }
+  /* (snd75) 음색 모드: 'sfc'(16비트, 기본) | 'nes'(클래식 8비트). 설정 tone, 점검용으로 M._tone이 덮어씀 */
+  function sfcOn() { if (M._tone) return M._tone !== 'nes'; const st = A.settings(); return !st || st.tone !== 'nes'; }
+  const ENVK = ['a', 'd', 's', 'r', 'gate'];
+  /**
+   * (snd75) 16비트 편곡 덧씌우기: 곡의 sfc {곡 키(vol·echo·order·loopTo…), ch:{채널: 얕은 병합 | null=뺌}, pat:{패턴:{채널: 줄 | null}}}.
+   * 선율·화성·박 줄은 옛 데이터를 그대로 쓰고 채널 음색·새 성부·새 패턴만 더한다. 채널이 샘플 악기로 바뀌면서 엔벨로프를 안 주면 옛 펄스용 a d s r gate는 지우고 악기 기본값을 쓴다(패드 pad:true는 제외).
+   * 값이 null인 채널 속성은 지운다(예: "lp": null).
+   */
+  function mergeSfc(raw) {
+    const o = raw.sfc, d = Object.assign({}, raw); delete d.sfc;
+    for (const k in o) if (k !== 'ch' && k !== 'pat') d[k] = o[k];
+    d.ch = Object.assign({}, raw.ch);
+    const och = o.ch || {};
+    for (const cn in och) {
+      const v = och[cn];
+      if (v === null) { delete d.ch[cn]; continue; }
+      const b = raw.ch[cn], m = Object.assign({}, b || {});
+      if (b && v.w && INST[v.w] && !INST[b.w] && !b.pad) for (let i = 0; i < ENVK.length; i++) if (!(ENVK[i] in v)) delete m[ENVK[i]];   // 패드의 느린 부풂은 음악 설계라 그대로 둔다
+      for (const k in v) { if (v[k] === null) delete m[k]; else m[k] = v[k]; }
+      d.ch[cn] = m;
+    }
+    d.pat = {};
+    for (const pn in raw.pat) d.pat[pn] = Object.assign({}, raw.pat[pn]);
+    for (const pn in (o.pat || {})) d.pat[pn] = Object.assign({}, d.pat[pn] || {}, o.pat[pn]);
+    for (const pn in d.pat) for (const cn in d.pat[pn]) if (!d.ch[cn] || d.pat[pn][cn] == null) delete d.pat[pn][cn];
+    return d;
+  }
   function compile(id) {
-    if (cache[id]) return cache[id];
-    const d = MC.data && MC.data.bgm && MC.data.bgm[id];
-    if (!d) { A.warn('bgm:' + id, '없는 곡 id: ' + id); return null; }
-    const spb = d.spb || 4, s = { id, d, spb, bar: d.bar || spb * 4, bpm: d.bpm || 120, pats: {}, order: d.order, loopTo: d.loopTo || 0, loop: d.loop != null ? !!d.loop : !d.jingle };
+    const raw0 = MC.data && MC.data.bgm && MC.data.bgm[id];
+    const sfc = !!(raw0 && raw0.sfc && sfcOn()), ck = id + (sfc ? '|sfc' : '|nes');
+    if (cache[ck]) return cache[ck];
+    if (!raw0) { A.warn('bgm:' + id, '없는 곡 id: ' + id); return null; }
+    const d = sfc ? mergeSfc(raw0) : raw0;
+    const spb = d.spb || 4, s = { id, d, sfc, spb, bar: d.bar || spb * 4, bpm: d.bpm || 120, pats: {}, order: d.order, loopTo: d.loopTo || 0, loop: d.loop != null ? !!d.loop : !d.jingle };
     for (const pn in d.pat) {
       const P = d.pat[pn], idx = [], chords = {}; let len = 0;
       const lens = {};
@@ -5790,7 +5821,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     }
     s.order = (s.order || Object.keys(s.pats)).filter(function (p) { return s.pats[p]; });
     if (!s.order.length) { A.warn('bgmord:' + id, '곡 ' + id + ': 패턴 없음'); return null; }
-    cache[id] = s;
+    cache[ck] = s;
     return s;
   }
 
@@ -5832,6 +5863,248 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     b: [{ o: 'sine', f: [62, 36], a: 2, d: 320, g: 0.34 }, { n: 'brown', lp: 300, a: 2, d: 200, g: 0.1 }, { o: 'triangle', f: [124, 70], a: 2, d: 120, g: 0.06 }]
   };
 
+  /* ================================================================ (snd75) 16비트 악기 은행
+     슈퍼패미컴(SPC700)처럼 '짧은 샘플 + 반복 구간'을 우리 합성으로 미리 만들어 둔다 — 녹음 샘플·외부 파일 없음(완전 오프라인 단일 파일).
+     · 지속음(현·관·아코디언·합창, k 'L'): 배음 진폭(기울기·포먼트·고역 감쇠)으로 '정확히 주기적인' 루프를 역FFT로 만든다 → 루프 이음매 클릭이 없다.
+       겹친 목소리(vo)는 FFT 칸을 하나씩 어긋나게 둬 루프 안에서 1~2Hz로 맥놀이(합주 결). 앞에 어택 구간(어두움 → 밝음 + 활·숨 잡음)을 붙인다.
+     · 뜯는 소리(하프·기타·만돌린·하프시코드·피치카토·콘트라베이스, k 'K'): 카플러스-스트롱. · 치는 소리(피아노·글로켄·팀파니, k 'A'): 감쇠 배음 합.
+     · 드럼(K16): 한 번 울리는 샘플. 표본율 32kHz(SFC와 같음), 옥타브마다 C 음 하나(zone, 위아래 반 옥타브는 playbackRate로).
+     · 음 하나 = AudioBufferSource 1 + 이득 1(비브라토면 +1) — 옛 오르골(7)·pad(5)보다 노드가 적다.
+     · 버퍼는 컨텍스트에 묶이지 않아 재구성·오프라인 렌더에서도 다시 쓴다. 첫 소리 뒤 쉬는 틈에 조금씩 미리 만들고(warm), 아직 없으면 그 자리에서 만든다.
+     · 결정적: 악기·zone마다 고정 씨앗 난수라 렌더가 늘 같다(전·후 비교용). */
+  const SSR = 32000;
+  const BANK = {};
+  const bankSt = { made: 0, ms: 0, bytes: 0 };
+  function seeded(seed) { let s = (seed >>> 0) || 1; return function () { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+  function hashStr(t) { let h = 2166136261; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  const m2f = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  // RBJ 2차 필터(JS, 샘플 만들 때만): lp·hp·bp(봉우리 0dB)
+  function bq(x, type, f, q) {
+    const w = 2 * Math.PI * Math.min(f, SSR * 0.45) / SSR, cs = Math.cos(w), sn = Math.sin(w), al = sn / (2 * (q || 0.707));
+    let b0, b1, b2; const a0 = 1 + al, a1 = -2 * cs, a2 = 1 - al;
+    if (type === 'lp') { b0 = (1 - cs) / 2; b1 = 1 - cs; b2 = b0; } else if (type === 'hp') { b0 = (1 + cs) / 2; b1 = -(1 + cs); b2 = b0; } else { b0 = al; b1 = 0; b2 = -al; }
+    const y = new Float32Array(x.length); let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < x.length; i++) { const v = (b0 * x[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2) / a0; x2 = x1; x1 = x[i]; y2 = y1; y1 = v; y[i] = v; }
+    return y;
+  }
+  // 복소 역FFT(제자리, N=2^k ≤ 65536, 1/N 생략)
+  let FT = null;
+  function ifft(re, im) {
+    const N = re.length;
+    if (!FT) { const TN = 65536, c = new Float64Array(TN / 2), s = new Float64Array(TN / 2); for (let i = 0; i < TN / 2; i++) { c[i] = Math.cos(2 * Math.PI * i / TN); s[i] = Math.sin(2 * Math.PI * i / TN); } FT = { N: TN, c, s }; }
+    for (let i = 1, j = 0; i < N; i++) { let bit = N >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+    for (let size = 2; size <= N; size <<= 1) {
+      const half = size >> 1, step = FT.N / size;
+      for (let i = 0; i < N; i += size) for (let j = 0, k = 0; j < half; j++, k += step) {
+        const wr = FT.c[k], wi = FT.s[k], a = i + j, b = a + half, tr = re[b] * wr - im[b] * wi, ti = re[b] * wi + im[b] * wr;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+      }
+    }
+  }
+  function rmsOf(x, a, b) { let s = 0; a = a || 0; b = Math.min(x.length, b || x.length); for (let i = a; i < b; i++) s += x[i] * x[i]; return Math.sqrt(s / Math.max(1, b - a)); }
+  function fit(x, target, a, b) { const r = rmsOf(x, a, b); let k = r > 1e-9 ? target / r : 1, pk = 0; for (let i = 0; i < x.length; i++) { const v = Math.abs(x[i]); if (v > pk) pk = v; } if (pk * k > 0.97) k = 0.97 / pk; for (let i = 0; i < x.length; i++) x[i] *= k; return x; }
+  function tail(x, ms) { const n = Math.min(x.length, Math.round(ms * SSR / 1000)); for (let i = 0; i < n; i++) x[x.length - 1 - i] *= i / n; return x; }
+  // 대역 잡음(백색 → bp)
+  function bandNoise(n, lo, hi, R) { const w = new Float32Array(n); for (let i = 0; i < n; i++) w[i] = R() * 2 - 1; const fc = Math.sqrt(lo * hi); return bq(w, 'bp', fc, Math.max(0.4, fc / Math.max(50, hi - lo))); }
+
+  /* 배음 진폭: h^-tilt × 짝수 배율 × 바탕음 배율 × (1 + Σ 포먼트) × 고역 감쇠 */
+  function hAmp(sp, h, f) {
+    let a = Math.pow(h, -(sp.tilt == null ? 1 : sp.tilt));
+    if (sp.ev != null && (h & 1) === 0) a *= sp.ev;
+    if (h === 1 && sp.h1 != null) a *= sp.h1;
+    let fm = 1; const F = sp.fm;
+    if (F) for (let i = 0; i < F.length; i++) { const x = (f - F[i][0]) / F[i][2]; fm += F[i][1] / (1 + x * x); }
+    return a * fm * (sp.lp ? 1 / (1 + Math.pow(f / sp.lp[0], sp.lp[1])) : 1);
+  }
+  // 지속음 zone: [어택 M | 정확히 주기적인 루프 N]
+  function mkLoop(I, midi, R) {
+    const sp = I.sp, f0 = m2f(midi), N = sp.N || (midi >= 60 ? 16384 : midi >= 48 ? 32768 : 65536), bin = SSR / N;
+    const k0 = Math.max(2, Math.round(f0 / bin)), HMAX = 10500, vo = sp.vo || [[0, 1]];
+    const parts = []; let pw = 0;
+    for (let v = 0; v < vo.length; v++) {
+      const kv = k0 + vo[v][0];
+      for (let h = 1; h * kv * bin < HMAX && h * kv < N / 2; h++) { const f = h * kv * bin, a = vo[v][1] * hAmp(sp, h, f); parts.push([h * kv, a, R() * 2 * Math.PI, f]); pw += a * a / 2; }
+    }
+    if (sp.nz) {
+      const k1 = Math.max(1, Math.round(sp.nz[0] / bin)), k2 = Math.min(N / 2 - 1, Math.round(sp.nz[1] / bin)), nb = Math.max(1, k2 - k1 + 1), an = Math.sqrt(2 * sp.nz[2] * sp.nz[2] * pw / nb);
+      for (let k = k1; k <= k2; k++) parts.push([k, an * (0.6 + 0.8 * R()), R() * 2 * Math.PI, k * bin]);
+    }
+    const build = function (dark) {
+      const re = new Float64Array(N), im = new Float64Array(N);
+      for (let i = 0; i < parts.length; i++) { const p = parts[i]; let a = p[1]; if (dark) a /= 1 + (p[3] / dark) * (p[3] / dark); re[p[0]] += a * Math.cos(p[2]); im[p[0]] += a * Math.sin(p[2]); }
+      for (let k = 1; k < N / 2; k++) { re[N - k] = re[k]; im[N - k] = -im[k]; }
+      ifft(re, im);
+      const out = new Float32Array(N); for (let i = 0; i < N; i++) out[i] = re[i]; return out;
+    };
+    const lp = build(0), at = sp.atk || {}, M = Math.min(N - 1, Math.round((at.ms || 0) * SSR / 1000));
+    const dk = at.dark ? build(at.dark) : null;
+    const data = new Float32Array(M + N);
+    for (let j = 0; j < M; j++) { const ix = (N - M + j) % N, w = Math.pow(j / M, 0.8); data[j] = dk ? w * lp[ix] + (1 - w) * dk[ix] : lp[ix]; }
+    data.set(lp, M);
+    const lr = rmsOf(lp);
+    if (at.ch && M > 0) {   // 활·숨 잡음: 어택 처음에서 지수 감쇠
+      const cn = bandNoise(M, at.ch[0], at.ch[1], R), cr = rmsOf(cn) || 1, tau = Math.max(1, at.ch[3]) * SSR / 1000;
+      for (let j = 0; j < M; j++) data[j] += cn[j] / cr * lr * at.ch[2] * Math.exp(-j / tau) * Math.min(1, (M - j) / 64);
+    }
+    fit(data, 0.25, M, M + N);
+    return { data, f: k0 * bin, loop: true, ls: M / SSR, le: (M + N) / SSR };
+  }
+  // 뜯는 소리: 카플러스-스트롱(선형 보간 분수 지연) — o {len 초, br 들뜸 밝기(1극 LP), pos 뜯는 자리(빗살), b 고리 필터(0.5=평균), t60 C4 기준 감쇠(초), tk 음높이 기울기,
+  //   str[[센트, 진폭, 배수]] 줄, body[[Hz, 이득, Q]] 울림통, click 뜯는 순간 잡음, sine 둥근 바탕음}
+  function mkKS(I, midi, R) {
+    const o = I.ks, f0 = m2f(midi), n = Math.round(o.len * SSR), out = new Float32Array(n), strs = o.str || [[0, 1]], bb = o.b == null ? 0.5 : o.b;
+    const B = new Float64Array(8192), MK = 8191;
+    for (let si = 0; si < strs.length; si++) {
+      const f = f0 * Math.pow(2, strs[si][0] / 1200) * (strs[si][2] || 1), amp = strs[si][1], P = Math.max(2, Math.round(SSR / f));
+      // 고리 지연 = 정수 Nd + 평균 필터 b + 1차 올패스 Δ(0.5~1.5, 크기 손실 없음 — 선형 보간은 높은 음에서 초당 수십 dB를 깎았다)
+      const Dt = SSR / f, Nd = Math.max(1, Math.floor(Dt - bb - 0.5)), dl = Dt - bb - Nd, C = (1 - dl) / (1 + dl);
+      // 들뜸 밝기: hb(바탕음의 몇 배음까지)를 2극 LP 차단 주파수로 — 음높이와 상관없이 같은 결(높은 음이 '딸깍'만 남지 않게). 없으면 br(옛 1극 계수)
+      const br = o.hb ? 1 - Math.exp(-2 * Math.PI * Math.min(SSR * 0.45, f * o.hb) / SSR) : o.br;
+      const ex = new Float64Array(P); let l1 = 0, l2 = 0;
+      for (let i = 0; i < P * 3; i++) { l1 += br * ((R() * 2 - 1) - l1); l2 += br * (l1 - l2); if (i >= P * 2) ex[i - P * 2] = o.hb ? l2 : l1; }
+      if (o.pos) { const q = Math.max(1, Math.round(o.pos * P)); for (let i = P - 1; i >= q; i--) ex[i] -= ex[i - q]; }
+      let mean = 0; for (let i = 0; i < P; i++) mean += ex[i]; mean /= P; for (let i = 0; i < P; i++) ex[i] -= mean;
+      const t60 = o.t60 * Math.pow(261.63 / f, o.tk || 0), gp = Math.pow(10, -3 / (t60 * f));
+      B.fill(0);
+      let uP = 0, aP = 0;
+      for (let i = 0; i < n; i++) {
+        const u = (1 - bb) * B[(i - Nd) & MK] + bb * B[(i - Nd - 1) & MK], ap = C * u + uP - C * aP;
+        uP = u; aP = ap;
+        let y = gp * ap;
+        if (i < P) y += ex[i];
+        B[i & MK] = y; out[i] += y * amp;
+      }
+    }
+    if (o.sine) { const t60 = o.t60 * Math.pow(261.63 / f0, o.tk || 0), r0 = rmsOf(out, 0, 6400), w = 2 * Math.PI * f0 / SSR; for (let i = 0; i < n; i++) out[i] += o.sine * r0 * 1.41 * Math.sin(w * i) * Math.exp(-6.9 * i / (t60 * SSR)) * Math.min(1, i / 32); }
+    if (o.body) { const src = Float32Array.from(out); for (let k = 0; k < o.body.length; k++) { const y = bq(src, 'bp', o.body[k][0], o.body[k][2]); for (let i = 0; i < n; i++) out[i] += o.body[k][1] * y[i]; } }
+    if (o.click) { const r0 = rmsOf(out, 0, 3200), m = Math.round(0.004 * SSR), cn = bandNoise(m, 2500, 9000, R), cr = rmsOf(cn) || 1; for (let i = 0; i < m; i++) out[i] += cn[i] / cr * r0 * o.click * (1 - i / m); }
+    tail(out, 40);
+    fit(out, 0.25, 0, Math.round(0.3 * SSR));
+    return { data: out, f: f0, loop: false };
+  }
+  // 치는 소리: 감쇠 배음 합 — o {len, parts(f0)→[[배수, 진폭, t60(초), 센트]], gl[양, ms] 처음 음높이 내려앉음, nz[lp Hz, ms, 양] 망치·채 잡음}
+  function mkAdd(I, midi, R) {
+    const o = I.ad, f0 = m2f(midi), n = Math.round(o.len * SSR), out = new Float32Array(n);
+    const parts = typeof o.parts === 'function' ? o.parts(f0) : o.parts;
+    for (let k = 0; k < parts.length; k++) {
+      const p = parts[k], f = f0 * p[0] * Math.pow(2, (p[3] || 0) / 1200); if (f > 11000) continue;
+      const dec = Math.exp(-6.9078 / (p[2] * SSR)); let a = p[1], ph = R() * 2 * Math.PI;
+      if (o.gl) { const gt = o.gl[1] * SSR / 1000; for (let i = 0; i < n; i++) { ph += 2 * Math.PI * f * (1 + o.gl[0] * Math.exp(-i / gt)) / SSR; out[i] += a * Math.sin(ph); a *= dec; } continue; }
+      const w = 2 * Math.PI * f / SSR, cw = Math.cos(w), sw = Math.sin(w); let x = Math.cos(ph), y = Math.sin(ph);
+      for (let i = 0; i < n; i++) { out[i] += a * y; const nx = x * cw - y * sw; y = x * sw + y * cw; x = nx; a *= dec; if (a < 1e-6) break; }
+    }
+    if (o.nz) { const r0 = rmsOf(out, 0, 3200), m = Math.round(o.nz[1] * SSR / 1000), w = new Float32Array(m); for (let i = 0; i < m; i++) w[i] = R() * 2 - 1; const cn = bq(w, 'lp', o.nz[0], 0.7), cr = rmsOf(cn) || 1; for (let i = 0; i < m; i++) out[i] += cn[i] / cr * r0 * o.nz[2] * Math.exp(-4 * i / m); }
+    for (let i = 0; i < 24 && i < n; i++) out[i] *= i / 24;
+    tail(out, 60);
+    fit(out, 0.25, 0, Math.round(0.3 * SSR));
+    return { data: out, f: f0, loop: false };
+  }
+  // 드럼 한 번(샘플): 층 {o 'sine'|'tri'|'sq'|'n'(잡음)|'m'(금속: 사각파 여럿 mf Hz), f Hz 또는 [f0,f1,ms], hp·lp·bp[fc,q], a·d(ms, −60dB까지), g, t(ms 지연)}
+  function mkDrum(L, R) {
+    let len = 0; for (let i = 0; i < L.length; i++) len = Math.max(len, (L[i].t || 0) + (L[i].a || 1) + L[i].d);
+    const n = Math.round((len + 20) * SSR / 1000), out = new Float32Array(n);
+    for (let li = 0; li < L.length; li++) {
+      const y = L[li], t0 = Math.round((y.t || 0) * SSR / 1000), an = Math.max(1, Math.round((y.a || 1) * SSR / 1000)), dn = Math.round(y.d * SSR / 1000), m = an + dn;
+      let x = new Float32Array(m), ph = R() * 6.283;
+      for (let i = 0; i < m; i++) {
+        let f = 0; if (y.f != null) f = Array.isArray(y.f) ? y.f[1] + (y.f[0] - y.f[1]) * Math.exp(-i / (y.f[2] * SSR / 1000)) : y.f;
+        let v;
+        if (y.o === 'n') v = R() * 2 - 1;
+        else if (y.o === 'm') { v = 0; for (let k = 0; k < y.mf.length; k++) v += ((i * y.mf[k] / SSR + k * 0.37) % 1) < 0.5 ? 1 : -1; v /= y.mf.length; }
+        else { ph += 2 * Math.PI * f / SSR; v = y.o === 'tri' ? 2 / Math.PI * Math.asin(Math.sin(ph)) : y.o === 'sq' ? (Math.sin(ph) >= 0 ? 1 : -1) : Math.sin(ph); }
+        x[i] = v;
+      }
+      if (y.hp) x = bq(x, 'hp', y.hp, 0.7);
+      if (y.lp) x = bq(x, 'lp', y.lp, 0.7);
+      if (y.bp) x = bq(x, 'bp', y.bp[0], y.bp[1]);
+      const k = 6.9078 / Math.max(1, dn);
+      for (let i = 0; i < m && t0 + i < n; i++) out[t0 + i] += y.g * x[i] * (i < an ? i / an : Math.exp(-(i - an) * k));
+    }
+    tail(out, 8);
+    return { data: out, f: 0, loop: false };
+  }
+
+  /* 악기 표 — z: zone(C 음 midi) · 기본 엔벨로프 a d s r(ms)·gate·vib(채널이 vib을 안 주면, null=없음) · g 이득(샘플 RMS .25 → p25·삼각파와 비슷한 크기) */
+  const STR_SP = { tilt: 1, fm: [[280, 1.0, 100], [500, 0.8, 150], [1150, 0.45, 400], [2700, 0.6, 900]], lp: [5000, 3], nz: [2200, 7000, 0.035], vo: [[0, 1], [1, 0.75], [-1, 0.6]] };
+  const INST = {
+    // 현악 합주(바이올린 군) · 짧게 끊는 현(스피카토) · 첼로 · 콘트라베이스(활)
+    str: { k: 'L', z: [48, 60, 72, 84], a: 80, d: 400, s: 0.88, r: 280, gate: 0.95, vib: [5.4, 9, 180], g: 2.3, sp: Object.assign({ atk: { ms: 140, dark: 700, ch: [1200, 5000, 0.18, 60] } }, STR_SP) },
+    sp:  { k: 'L', z: [48, 60, 72, 84], a: 5, d: 110, s: 0.5, r: 80, gate: 0.6, vib: null, g: 2.4, sp: Object.assign({ atk: { ms: 40, dark: 1600, ch: [1500, 6500, 0.4, 22] } }, STR_SP) },
+    vc:  { k: 'L', z: [36, 48, 60], a: 70, d: 400, s: 0.9, r: 260, gate: 0.95, vib: [5, 8, 200], g: 2.3,
+      sp: { tilt: 0.9, fm: [[220, 1.1, 90], [420, 0.7, 150], [1400, 0.35, 500]], lp: [2800, 3], nz: [1500, 5000, 0.02], vo: [[0, 1], [1, 0.35]], atk: { ms: 120, dark: 500, ch: [800, 3500, 0.15, 50] } } },
+    cb:  { k: 'L', z: [24, 36, 48], a: 60, d: 400, s: 0.9, r: 260, gate: 0.9, vib: [4.8, 5, 260], g: 2.3,
+      sp: { tilt: 0.75, fm: [[110, 1.0, 50], [260, 1.0, 120], [700, 0.35, 300]], lp: [1700, 3], vo: [[0, 1], [1, 0.4]], atk: { ms: 120, dark: 300, ch: [400, 2000, 0.12, 50] } } },
+    // 목관: 플루트(숨·첫소리 칩) · 오보에(코맹맹이 포먼트) · 클라리넷(홀수 배음)
+    fl:  { k: 'L', z: [60, 72, 84], a: 45, d: 200, s: 0.9, r: 120, gate: 0.92, vib: [5, 11, 220], g: 2.3,
+      sp: { tilt: 2.0, fm: [[1800, 0.3, 800]], lp: [6000, 2], nz: [700, 7000, 0.07], atk: { ms: 70, dark: 900, ch: [1000, 6000, 0.6, 45] } } },
+    ob:  { k: 'L', z: [60, 72, 84], a: 25, d: 150, s: 0.9, r: 90, gate: 0.92, vib: [5.6, 10, 250], g: 2.2,
+      sp: { tilt: 0.3, h1: 0.35, fm: [[1100, 2.2, 230], [2900, 0.8, 500]], lp: [5500, 4], nz: [1500, 5000, 0.015], atk: { ms: 40, dark: 1200, ch: [1000, 4000, 0.2, 25] } } },
+    cl:  { k: 'L', z: [48, 60, 72], a: 30, d: 150, s: 0.92, r: 100, gate: 0.92, vib: [5, 4, 400], g: 2.3,
+      sp: { tilt: 0.9, ev: 0.12, fm: [[1500, 0.4, 600]], lp: [3200, 3], nz: [1200, 5000, 0.012], atk: { ms: 40, dark: 900, ch: [1500, 5000, 0.15, 25] } } },
+    // 금관: 호른(어둡게 부풀기) · 트럼펫 · 트롬본(낮은 금관)
+    hn:  { k: 'L', z: [48, 60, 72], a: 70, d: 300, s: 0.92, r: 220, gate: 0.95, vib: [4.8, 6, 350], g: 2.3,
+      sp: { tilt: 1.4, fm: [[450, 1.4, 180], [900, 0.4, 300]], lp: [1500, 3], nz: [500, 3000, 0.01], vo: [[0, 1], [1, 0.5]], atk: { ms: 160, dark: 350, ch: [300, 1500, 0.1, 60] } } },
+    tp:  { k: 'L', z: [60, 72, 84], a: 25, d: 200, s: 0.85, r: 120, gate: 0.92, vib: [5.5, 8, 280], g: 2.1,
+      sp: { tilt: 0.65, fm: [[1200, 1.6, 450], [2500, 0.6, 600]], lp: [3800, 4], atk: { ms: 60, dark: 500, ch: [1000, 4000, 0.12, 25] } } },
+    tb:  { k: 'L', z: [36, 48], a: 40, d: 300, s: 0.9, r: 180, gate: 0.92, vib: [4.6, 5, 350], g: 2.3,
+      sp: { tilt: 1.0, fm: [[500, 1.2, 200], [1100, 0.5, 350]], lp: [2200, 4], vo: [[0, 1], [1, 0.5]], atk: { ms: 90, dark: 300, ch: [300, 1500, 0.08, 40] } } },
+    // 아코디언(리드 둘, 칸 하나 어긋남 = 뮈제트 맥놀이) · 합창 '아'
+    acc: { k: 'L', z: [48, 60, 72, 84], a: 35, d: 100, s: 0.95, r: 90, gate: 0.94, vib: null, g: 2.1,
+      sp: { tilt: 0.75, fm: [[1300, 0.8, 600], [3000, 0.4, 800]], lp: [5000, 2], nz: [2000, 6000, 0.01], vo: [[0, 1], [1, 0.85]], atk: { ms: 40, dark: 1500 } } },
+    ch:  { k: 'L', z: [48, 60, 72], a: 280, d: 500, s: 0.9, r: 600, gate: 0.97, vib: [4.6, 10, 300], g: 2.4,
+      sp: { tilt: 1.0, fm: [[730, 3.2, 110], [1100, 2.2, 130], [2500, 1.0, 220], [3400, 0.5, 300]], lp: [4200, 3], nz: [3000, 8000, 0.03], vo: [[0, 1], [1, 0.8], [-1, 0.7], [2, 0.5]], atk: { ms: 300, dark: 600, ch: [2000, 7000, 0.1, 150] } } },
+    // 뜯는 소리
+    hp:  { k: 'K', z: [36, 48, 60, 72, 84], a: 2, d: 100, s: 1, r: 700, gate: 1, vib: null, g: 2.0, ks: { len: 2.2, hb: 7, pos: 0.14, b: 0.4, t60: 4.0, tk: 0.5, sine: 0.25 } },
+    gt:  { k: 'K', z: [48, 60, 72], a: 2, d: 100, s: 1, r: 260, gate: 1, vib: null, g: 2.1, ks: { len: 1.8, hb: 6, pos: 0.18, b: 0.45, t60: 2.8, tk: 0.45, body: [[105, 0.5, 3], [220, 0.35, 4], [2400, 0.12, 1]] } },
+    md:  { k: 'K', z: [60, 72, 84], a: 2, d: 100, s: 1, r: 140, gate: 1, vib: null, g: 2.0, ks: { len: 1.4, hb: 16, pos: 0.1, b: 0.22, t60: 1.8, tk: 0.35, str: [[0, 1], [4, 0.9]], click: 0.15 } },
+    hc:  { k: 'K', z: [36, 48, 60, 72, 84], a: 2, d: 100, s: 1, r: 110, gate: 0.98, vib: null, g: 1.9, ks: { len: 1.6, hb: 26, pos: 0.07, b: 0.12, t60: 3.5, tk: 0.5, str: [[0, 1], [2, 0.3, 2]], click: 0.2 } },
+    pz:  { k: 'K', z: [36, 48, 60, 72], a: 2, d: 100, s: 1, r: 80, gate: 1, vib: null, g: 2.3, ks: { len: 0.8, hb: 5, pos: 0.3, b: 0.5, t60: 0.9, tk: 0.3, str: [[0, 1], [5, 0.7]], body: [[300, 0.3, 2]] } },
+    bas: { k: 'K', z: [24, 36, 48], a: 3, d: 100, s: 1, r: 160, gate: 1, vib: null, g: 2.4, ks: { len: 1.5, hb: 5, pos: 0.22, b: 0.5, t60: 2.0, tk: 0.3, body: [[90, 0.5, 2]] } },
+    // 치는 소리: 피아노(두 줄·비조화도) · 글로켄(유리 종) · 팀파니
+    pn:  { k: 'A', z: [36, 48, 60, 72, 84], a: 2, d: 100, s: 1, r: 300, gate: 1, vib: null, g: 2.0,
+      ad: { len: 2.4, nz: [2500, 6, 0.15], parts: function (f0) { const Bi = 0.00035 * Math.pow(f0 / 261.63, 0.9), T0 = 5.5 * Math.pow(261.63 / f0, 0.65), o = []; for (let n = 1; n <= 40 && f0 * n < 10500; n++) { const r = n * Math.sqrt(1 + Bi * n * n), a = Math.pow(n, -1.15) * (Math.abs(Math.sin(Math.PI * n / 7.3)) + 0.05), t = T0 / (1 + 0.22 * (n - 1)); o.push([r, a, t, -1.2], [r, a * 0.9, t * 0.8, 1.4]); } return o; } } },
+    gl:  { k: 'A', z: [72, 84, 96], a: 2, d: 100, s: 1, r: 900, gate: 1, vib: null, g: 2.0, ad: { len: 1.8, nz: [6000, 3, 0.1], parts: [[1, 1, 1.6], [2.76, 0.32, 0.55], [5.4, 0.12, 0.25], [8.93, 0.05, 0.12]] } },
+    tm:  { k: 'A', z: [36, 48], a: 2, d: 100, s: 1, r: 500, gate: 1, vib: null, g: 2.6, ad: { len: 1.8, gl: [0.035, 60], nz: [1200, 25, 0.5], parts: [[1, 1, 1.5], [1.5, 0.55, 1.1], [1.98, 0.35, 0.8], [2.44, 0.2, 0.55], [2.94, 0.12, 0.4], [0.62, 0.25, 0.25]] } }
+  };
+  /* 16비트 드럼(한 번 샘플). 없는 글자(q 어두운 틱·l 경계 맥박·w 속삭임·f 불똥·g 쇳소리)는 효과음 설계라 옛 레이어 그대로. g: 옛 키트와 비슷한 크기 */
+  const K16 = {
+    k: { g: 1, L: [{ o: 'sine', f: [115, 48, 45], a: 1, d: 260, g: 0.55 }, { o: 'n', lp: 2500, a: 0.5, d: 6, g: 0.12 }, { o: 'n', bp: [110, 1.2], a: 2, d: 90, g: 0.35 }] },
+    s: { g: 1, L: [{ o: 'sine', f: [215, 185, 30], a: 1, d: 70, g: 0.22 }, { o: 'sine', f: 335, a: 1, d: 40, g: 0.08 }, { o: 'n', bp: [1900, 0.7], a: 1, d: 120, g: 0.3 }, { o: 'n', hp: 3200, a: 1, d: 190, g: 0.16 }] },
+    h: { g: 1, L: [{ o: 'm', mf: [205.3, 304.4, 369.6, 522.7, 540, 800], hp: 7000, a: 0.5, d: 45, g: 0.32 }, { o: 'n', hp: 8000, a: 0.5, d: 35, g: 0.12 }] },
+    o: { g: 1, L: [{ o: 'm', mf: [205.3, 304.4, 369.6, 522.7, 540, 800], hp: 6500, a: 0.5, d: 330, g: 0.26 }, { o: 'n', hp: 7500, a: 0.5, d: 260, g: 0.1 }] },
+    c: { g: 1, L: [{ o: 'm', mf: [215, 297, 403, 565, 641, 892, 1031], hp: 4200, a: 1, d: 1500, g: 0.3 }, { o: 'n', hp: 5000, a: 1, d: 1100, g: 0.18 }, { o: 'n', bp: [9000, 1], a: 0.5, d: 300, g: 0.1 }] },
+    t: { g: 1, L: [{ o: 'n', bp: [7600, 2.2], a: 0.5, d: 120, g: 0.3 }, { o: 'n', bp: [7600, 2.2], t: 9, a: 0.5, d: 110, g: 0.22 }, { o: 'n', bp: [8400, 2.5], t: 21, a: 0.5, d: 140, g: 0.18 }, { o: 'm', mf: [5200, 6830, 9050], hp: 4500, a: 0.5, d: 140, g: 0.1 }, { o: 'sine', f: [330, 260, 20], a: 1, d: 35, g: 0.08 }] },
+    z: { g: 1, L: [{ o: 'n', bp: [5600, 1.1], a: 7, d: 40, g: 0.3 }, { o: 'n', hp: 9000, a: 5, d: 25, g: 0.08 }] },
+    p: { g: 1, L: [{ o: 'n', bp: [1250, 1.3], a: 0.5, d: 10, g: 0.4 }, { o: 'n', bp: [1250, 1.3], t: 9, a: 0.5, d: 10, g: 0.34 }, { o: 'n', bp: [1150, 1.1], t: 18, a: 0.5, d: 85, g: 0.38 }] },
+    r: { g: 1, L: [{ o: 'n', bp: [2800, 4], a: 0.3, d: 16, g: 0.5 }, { o: 'sine', f: 2100, a: 0.3, d: 22, g: 0.12 }, { o: 'n', bp: [3100, 4], t: 13, a: 0.3, d: 14, g: 0.35 }] },
+    m: { g: 1, L: [{ o: 'sine', f: [128, 92, 60], a: 1, d: 300, g: 0.45 }, { o: 'n', bp: [420, 1], a: 1, d: 60, g: 0.12 }] },
+    n: { g: 1, L: [{ o: 'sine', f: [185, 140, 60], a: 1, d: 260, g: 0.42 }, { o: 'n', bp: [650, 1], a: 1, d: 50, g: 0.12 }] },
+    x: { g: 1, L: [{ o: 'sine', f: 2093, a: 1, d: 600, g: 0.2 }, { o: 'sine', f: 5777, a: 1, d: 180, g: 0.07 }, { o: 'sine', f: 4186, a: 1, d: 300, g: 0.05 }] },
+    b: { g: 1, L: [{ o: 'sine', f: [66, 38, 80], a: 2, d: 620, g: 0.55 }, { o: 'n', lp: 320, a: 2, d: 320, g: 0.3 }, { o: 'sine', f: [140, 80, 40], a: 1, d: 120, g: 0.12 }] }
+  };
+  function mkBuf(c, data) {
+    let ab = null;
+    try { ab = new AudioBuffer({ length: data.length, sampleRate: SSR, numberOfChannels: 1 }); } catch (e) { ab = c.createBuffer(1, data.length, SSR); }
+    if (ab.copyToChannel) ab.copyToChannel(data, 0); else ab.getChannelData(0).set(data);
+    return ab;
+  }
+  /** zone 하나(없으면 지금 만든다) → {ab, midi(실제 음높이), loop, ls, le, dur} */
+  function zoneGet(c, w, zm) {
+    const key = w + ':' + zm; let z = BANK[key]; if (z) return z;
+    const t0 = performance.now(), R = seeded(hashStr(key));
+    let r;
+    if (w.charAt(0) === '#') r = mkDrum(K16[w.slice(1)].L, R);
+    else { const I = INST[w]; r = I.k === 'L' ? mkLoop(I, zm, R) : I.k === 'K' ? mkKS(I, zm, R) : mkAdd(I, zm, R); }
+    z = BANK[key] = { ab: mkBuf(c, r.data), midi: r.f > 0 ? 69 + 12 * Math.log2(r.f / 440) : 0, loop: r.loop, ls: r.ls, le: r.le, dur: r.data.length / SSR };
+    bankSt.made++; bankSt.ms += performance.now() - t0; bankSt.bytes += r.data.length * 4;
+    return z;
+  }
+  function zoneFor(c, w, m) {
+    const zs = INST[w].z; let best = zs[0];
+    for (let i = 1; i < zs.length; i++) { const d = Math.abs(zs[i] - m), b = Math.abs(best - m); if (d < b || (d === b && zs[i] > best)) best = zs[i]; }
+    return zoneGet(c, w, best);
+  }
+
   /* ---------------------------------------------------------------- 플레이어 */
   // L: 시작할 때 덮어쓸 레이어 상태 {name:bool} (보류 중 요청·resumeAt)
   function Player(g, s, jingle, L) {
@@ -5847,8 +6120,11 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     this.rm = null; this.pendR = null; this.rq = Math.max(1, s.d.rq || s.bar);   // S4 remap: 지금 치환 표 · 보류 요청{v} · 반영 단위(스텝, 기본 마디)
     this.lw = {}; this.log = null;                                               // S4 layerWait 대기 · 오프라인 점검용 음 기록([시각, midi, 채널])
     this.out = A.u.gain(c, 0); this.rev = A.u.gain(c, 0); this.ech = A.u.gain(c, 0);
-    this.out.connect(jingle ? g.mus.jin : g.mus.dry); this.rev.connect(g.mus.revIn); this.ech.connect(g.mus.echoIn);
     this.nodes = [this.out, this.rev, this.ech]; this.lfos = {};
+    // (snd75) 16비트: 마른 소리에 완만한 LP(SFC 32kHz 표본·가우스 보간의 부드러운 고역 — 곡 tlp, 기본 12.5kHz). 클래식은 옛 그래프 그대로
+    if (s.sfc) { const tl = A.u.biquad(c, 'lowpass', s.d.tlp || 12500, 0.6); this.out.connect(tl); tl.connect(jingle ? g.mus.jin : g.mus.dry); this.nodes.push(tl); }
+    else this.out.connect(jingle ? g.mus.jin : g.mus.dry);
+    this.rev.connect(g.mus.revIn); this.ech.connect(g.mus.echoIn);
     this.ch = {};
     const vol = s.d.vol == null ? 1 : s.d.vol;
     for (const cn in s.d.ch) {
@@ -5863,6 +6139,18 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       }
       if (cd.bp) { const f = A.u.biquad(c, 'bandpass', cd.bp, cd.bq || 0.8); tail.connect(f); tail = f; this.nodes.push(f); }   // [s46-sound B4-19] 채널 bp(Hz)·bq — 폰 대역 층
       if (cd.lp) { const f = A.u.biquad(c, 'lowpass', cd.lp, cd.q || 0.707); tail.connect(f); tail = f; this.nodes.push(f); }
+      if (cd.cho && c.createDelay) {
+        // (snd75) 채널 코러스 cho [hz, 깊이 ms, 젖은 양]: 지연 둘(14·21ms)을 같은 LFO로 반대로 흔들어 좌우에 — 현 합주·합창 폭. 노드는 채널마다 한 번(음마다 아님)
+        const ch2 = cd.cho, dry = A.u.gain(c, 1), wet = A.u.gain(c, ch2[2] == null ? 0.5 : ch2[2]), mixg = A.u.gain(c, 1), lf = this.lfo(ch2[0]);
+        tail.connect(dry); dry.connect(mixg); wet.connect(mixg);
+        [[0.014, 1, -0.6], [0.021, -1, 0.6]].forEach((q) => {
+          const dl = c.createDelay(0.1), lg = A.u.gain(c, q[1] * (ch2[1] || 2) / 1000); dl.delayTime.value = q[0];
+          lf.connect(lg); lg.connect(dl.delayTime); tail.connect(dl);
+          const pn = c.createStereoPanner ? A.u.pan(c, q[2]) : null; if (pn) { dl.connect(pn); pn.connect(wet); this.nodes.push(pn); } else dl.connect(wet);
+          this.nodes.push(dl, lg);
+        });
+        tail = mixg; this.nodes.push(dry, wet, mixg);
+      }
       if (cd.pan && c.createStereoPanner) { const p = A.u.pan(c, cd.pan); tail.connect(p); tail = p; this.nodes.push(p); }
       tail.connect(this.out);
       if (cd.send) {
@@ -5876,8 +6164,11 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     //   한 옥타브 위 p50(v 0.04 × 곡 vol, LP 900)을 겹친다. 귀가 배음으로 바닥을 추론한다(missing fundamental). 징글·곡 pb:false는 제외. 설정을 바꾸면 박동마다 따라감
     const T = s.d.ch && s.d.ch.T;
     if (!jingle && T && !T.kit && !T.chord && s.d.pb !== false) {
-      const pd = { w: 'p50', v: 0.04, a: T.a == null ? 4 : T.a, d: T.d, s: T.s, r: T.r, gate: T.gate, lp: 900 };
-      const base = 0.04 * vol, bus = A.u.gain(c, pbOn() ? base : 0), f = A.u.biquad(c, 'lowpass', 900, 0.707);
+      // (snd75) 16비트: 펄스 대신 그 베이스 악기(또는 곡 pbw)를 한 옥타브 위로 — 첼로가 콘트라베이스를 옥타브 위에서 겹치는 관현악 관습과 같은 결. 크기는 곡 pbv(기본 .04)
+      const pw = s.sfc ? (s.d.pbw || (INST[T.w] ? T.w : null)) : null;
+      const pv = pw ? (s.d.pbv == null ? 0.04 : s.d.pbv) : 0.04;
+      const pd = pw ? { w: pw, v: pv, a: T.a, d: T.d, s: T.s, r: T.r, gate: T.gate, lp: 900 } : { w: 'p50', v: 0.04, a: T.a == null ? 4 : T.a, d: T.d, s: T.s, r: T.r, gate: T.gate, lp: 900 };
+      const base = pv * vol, bus = A.u.gain(c, pbOn() ? base : 0), f = A.u.biquad(c, 'lowpass', 900, 0.707);
       bus.connect(f); f.connect(this.out); this.nodes.push(bus, f);
       this.pb = { cn: 'T+', d: pd, bus, base };
     }
@@ -6064,9 +6355,11 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (d.hum && d.hum[2] && A.rand() < d.hum[2]) synth(this, ch, tt + 0.03, dur, m, vel * 0.3, det);
   };
   P_.drum = function (ch, t, e) {
+    if (this.s.sfc && K16[e.k]) { if (this.log) this.log.push([t, e.k, ch.cn]); drum16(this, ch, t, e); return; }
     const L = KIT[e.k]; if (!L) return;
     const gm = e.acc ? 1.35 : 1;
     if (this.log) this.log.push([t, e.k, ch.cn]);
+    if (M._poly) { let ln = 0; for (let i = 0; i < L.length; i++) ln = Math.max(ln, A.u.envLen(L[i]) + (L[i].t || 0) / 1000); polyLog(t, t + ln, L.length * 3); }
     for (let i = 0; i < L.length; i++) MC.sfx._layer(this.g, L[i], t + (L[i].t || 0) / 1000, 1, ch.bus, null, gm, 0);
   };
 
@@ -6084,9 +6377,56 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     return un;
   }
   function unhook(un) { for (let i = 0; i < un.length; i++) { try { if (un[i][1]) un[i][0].disconnect(un[i][1]); else un[i][0].disconnect(); } catch (e) { /* */ } } }
+  // (snd75) 점검용 동시 음 기록: M._poly = [] 이면 음마다 [시작, 끝, 노드 수]를 쌓는다(오프라인 렌더에서 최대 동시 음·노드를 셈)
+  function polyLog(t, end, nodes, cn) { if (M._poly) M._poly.push([t, end, nodes, cn]); }
+  /** (snd75) 16비트 악기 음: AudioBufferSource(zone 샘플·playbackRate) → 이득 엔벨로프 → 채널 버스. 디튠·비브라토는 source.detune에 */
+  function samp(p, ch, t, dur, m, vel, det, w) {
+    const d = ch.d, g = p.g, c = g.c, I = INST[w], z = zoneFor(c, w, m);
+    const src = c.createBufferSource(); src.buffer = z.ab;
+    const hasDet = !!src.detune;
+    let rate = Math.pow(2, (m - z.midi) / 12);
+    if (!hasDet) rate *= Math.pow(2, ((det || 0) + (g.mus.detV || 0)) / 1200);
+    src.playbackRate.value = rate;
+    if (z.loop) { src.loop = true; src.loopStart = z.ls; src.loopEnd = z.le; }
+    const a = Math.max(2, d.a == null ? I.a : d.a) / 1000, dd = Math.max(5, d.d == null ? I.d : d.d) / 1000;
+    const s = d.s == null ? I.s : d.s, r = Math.max(10, d.r == null ? I.r : d.r) / 1000, gate = d.gate == null ? I.gate : d.gate;
+    const tOff = t + Math.max(a + 0.005, dur * gate);
+    const eg = c.createGain(); eg.gain.value = 0; eg.connect(ch.bus);
+    const q = eg.gain, pk = vel * (I.g || 2.3);
+    q.setValueAtTime(0, t); q.linearRampToValueAtTime(pk, t + a);
+    if (s < 1) q.setTargetAtTime(pk * s, t + a, dd / 3);
+    q.setTargetAtTime(0, tOff, r / 4);
+    let stop = tOff + r * 1.6 + 0.02;   // 시상수 r/4의 6.4배 ≈ −56dB에서 멈춤(옛 펄스의 2.2배 −76dB보다 일찍 — 동시 음 수를 옛 수준 근처로)
+    if (!z.loop) stop = Math.min(stop, t + z.dur / rate + 0.005);
+    src.connect(eg);
+    const un = []; let nn = 2;
+    if (hasDet) {
+      src.detune.value = det || 0;
+      try { g.mus.det.node.connect(src.detune); un.push([g.mus.det.node, src.detune]); } catch (e) { src.detune.value += g.mus.detV || 0; }
+      const v = d.vib === undefined ? I.vib : d.vib;
+      if (v) {
+        const lf = p.lfo(v[0]), vg = c.createGain();
+        vg.gain.setValueAtTime(0, t); vg.gain.linearRampToValueAtTime(v[1], t + (v[2] || 0) / 1000 + 0.06);
+        lf.connect(vg); vg.connect(src.detune); un.push([lf, vg], [vg, null]); nn++;
+      }
+    }
+    src.start(t); src.stop(Math.max(t + 0.01, stop));
+    g.mlive++; polyLog(t, stop, nn, ch.cn);
+    src.onended = function () { g.mlive--; unhook(un); try { src.disconnect(); eg.disconnect(); } catch (e) { /* */ } };
+  }
+  /** (snd75) 16비트 드럼: 한 번 샘플(1 source + 1 이득) */
+  function drum16(p, ch, t, e) {
+    const c = p.c, k = K16[e.k], z = zoneGet(c, '#' + e.k, 0);
+    const src = c.createBufferSource(); src.buffer = z.ab;
+    const eg = c.createGain(); eg.gain.value = (e.acc ? 1.35 : 1) * (k.g || 1);
+    src.connect(eg); eg.connect(ch.bus); src.start(t);
+    p.g.mlive++; polyLog(t, t + z.dur, 2, ch.cn);
+    src.onended = function () { p.g.mlive--; try { src.disconnect(); eg.disconnect(); } catch (e2) { /* */ } };
+  }
   function synth(p, ch, t, dur, m, vel, det) {
     const d = ch.d, g = p.g, c = g.c, f = 440 * Math.pow(2, (m - 69) / 12), w = d.w || 'p25';
     if (w === 'orgel' || w === 'bell') return perc(p, ch, t, f, vel, det, w);
+    if (INST[w]) return samp(p, ch, t, dur, m, vel, det, w);
     const gate = d.gate == null ? 0.85 : d.gate;
     const a = Math.max(2, d.a == null ? 4 : d.a) / 1000, dd = Math.max(5, d.d == null ? 150 : d.d) / 1000;
     const s = d.s == null ? 0.7 : d.s, r = Math.max(10, d.r == null ? 80 : d.r) / 1000;
@@ -6113,7 +6453,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       else o.connect(mix || eg);
       o.start(t); o.stop(stop);
     }
-    g.mlive++;
+    g.mlive++; polyLog(t, stop, oscs.length * (d.vib ? 2 : 1) + 1 + (mix ? 2 : 0));
     oscs[0].onended = function () { g.mlive--; unhook(un); for (let i = 0; i < oscs.length; i++) { try { oscs[i].disconnect(); } catch (e) { /* */ } } try { eg.disconnect(); if (mix) mix.disconnect(); } catch (e) { /* */ } };
   }
   // 오르골(사인 + ×3.0 + ×6.27 배음, 배음일수록 빨리 사라짐) / 종(E-8 46 배음 비율)
@@ -6139,7 +6479,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       if (st > stopMax) { stopMax = st; last = o; }
     }
     if (!last) { try { eg.disconnect(); } catch (e) { /* */ } return; }
-    g.mlive++;
+    g.mlive++; polyLog(t, stopMax, 1 + 2 * parts.length + (d.vib ? parts.length : 0));
     last.onended = function () { g.mlive--; unhook(un); try { eg.disconnect(); } catch (e) { /* */ } };
   }
 
@@ -6179,9 +6519,56 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     [main].concat(fading).forEach(function (p) { if (p && p.pb) { try { const t = p.c.currentTime, q = p.pb.bus.gain; q.cancelScheduledValues(0); q.setValueAtTime(on ? 0 : p.pb.base, t); q.linearRampToValueAtTime(on ? p.pb.base : 0, t + 0.12); } catch (e) { /* */ } } });
   }
   M._pb = function () { return { on: pbOn(), last: pbLast, main: !!(main && main.pb), gain: main && main.pb ? +main.pb.bus.gain.value.toFixed(4) : null }; };
+  /* (snd75) 음색 설정이 바뀌면: 지금 곡을 같은 마디·레이어·템포·필터·remap으로 새 음색에서 다시(450ms 크로스페이드). 징글·페이드 중인 곡은 그대로 */
+  let toneLast = null;
+  function toneSync() {
+    const on = sfcOn(); if (toneLast === null) { toneLast = on; return; }
+    if (on === toneLast) return; toneLast = on;
+    if (on) warm();
+    if (!main || main.fo || main.ended || !A.canPlay()) return;
+    const id = main.s.id, raw = MC.data.bgm && MC.data.bgm[id]; if (!raw || !raw.sfc) return;
+    const pos = M.pos(), s = compile(id); if (!s) return;
+    startSong(s, { fade: 450, from: pos, restart: true, L: pos.L, bpm: pos.bpm, fx: { filter: fxHold.filter, detune: fxHold.detune }, R: main.pendR ? main.pendR.v : main.rm });
+  }
+  /* (snd75) 악기 은행 미리 만들기: 16비트 곡들이 쓰는 악기의 모든 zone + 드럼을 한 태스크에 하나씩(첫 소리 1.2초 뒤부터). 이미 있으면 건너뜀 */
+  let warmQ = null;
+  function warmList() {
+    const out = [], seen = {}, bgm = (MC.data && MC.data.bgm) || {};
+    const add = (k) => { if (!seen[k]) { seen[k] = 1; out.push(k); } };
+    for (const id in bgm) {
+      const o = bgm[id].sfc; if (!o) continue;
+      const ch = Object.assign({}, bgm[id].ch, o.ch || {});
+      for (const cn in ch) {
+        const cd = ch[cn] && Object.assign({}, bgm[id].ch[cn] || {}, ch[cn]);
+        if (!cd) continue;
+        if (cd.w && INST[cd.w]) INST[cd.w].z.forEach((z) => add(cd.w + ':' + z));
+        if (cd.kit) for (const k in K16) add('#' + k + ':0');
+      }
+      if (o.pbw && INST[o.pbw]) INST[o.pbw].z.forEach((z) => add(o.pbw + ':' + z));
+    }
+    return out;
+  }
+  function warm(now) {
+    if (warmQ) return; const g = A.graph(); if (!g || g.off) return;
+    warmQ = warmList();
+    const c = g.c;
+    (function step() {
+      const k = warmQ.shift(); if (k == null) return;
+      try { const i = k.lastIndexOf(':'); zoneGet(c, k.slice(0, i), +k.slice(i + 1)); } catch (e) { A.warn('warm', '악기 은행 생성 오류: ' + e.message); }
+      setTimeout(step, 4);
+    })();
+  }
+  A.onReady(function () { if (sfcOn()) setTimeout(warm, 1200); });
+  /** (snd75) 점검: 은행 상태 · 강제 생성 · 악기 목록 */
+  M._bank = { stats: () => Object.assign({ zones: Object.keys(BANK).length, pending: warmQ ? warmQ.length : null }, bankSt), list: warmList, INST, K16,
+    make: function (c) { const t0 = performance.now(); warmList().forEach((k) => { const i = k.lastIndexOf(':'); zoneGet(c || (A.graph() && A.graph().c), k.slice(0, i), +k.slice(i + 1)); }); return performance.now() - t0; },
+    clear: function () { for (const k in BANK) delete BANK[k]; bankSt.made = 0; bankSt.ms = 0; bankSt.bytes = 0; },
+    zone: (w, m, c) => zoneFor(c || A.graph().c, w, m), gen: (k, z, c) => zoneGet(c || A.graph().c, k, z) };
+  M.toneMode = function () { return sfcOn() ? 'sfc' : 'nes'; };
   function loop() {
     try {
       pbSync();
+      toneSync();
       if (main) {
         const c = main.c;
         if (c.state === 'running') {
@@ -6494,6 +6881,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const d = MC.data && MC.data.bgm && MC.data.bgm[id]; if (!d) return [];
     const set = {}; for (const k in (d.layers || {})) set[k] = 1;
     for (const cn in (d.ch || {})) { if (d.ch[cn].layer) set[d.ch[cn].layer] = 1; if (d.ch[cn].unless) set[d.ch[cn].unless] = 1; }
+    const sc = d.sfc && d.sfc.ch; if (sc) for (const cn in sc) { if (sc[cn] && sc[cn].layer) set[sc[cn].layer] = 1; if (sc[cn] && sc[cn].unless) set[sc[cn].unless] = 1; }   // (snd75) 16비트 덧씌우기 채널
     return Object.keys(set);
   };
   M._compile = compile;
@@ -20124,6 +20512,9 @@ MC.data.amb = {
        lq(레이어 반영 단위 스텝, 기본 마디), lqL(S4: 레이어별 반영 단위 {이름:스텝}), rq(S4: MC.music.remap 반영 단위 스텝, 기본 마디), lfade(레이어 채널 페이드 ms, 기본 250), jingle, tail(ms), ch, pat, order, loopTo}
    채널 {w 파형(p12/p25/p50/triangle/sine/square/saw/pad/orgel/bell), v, a d s r(ms), gate, vib[hz,cent,지연ms], trem[hz,깊이](채널 트레몰로), oct, lp, pan, send{rev,echo}, hum[ms,cent,반복확률], layer, unless(S4: 그 레이어가 켜지면 꺼지는 채널),
          kit(드럼), chord(화음 채널: arp 문자열 0~3 근·3·5·7음 4~7 옥타브 위 c 화음 b 베이스 x 쉼, win 창 하한 midi, stack, pad, alen, cmax)}
+   (snd75) 곡 sfc = 16비트 편곡 덧씌우기 {곡 키(vol·order·loopTo·echo·filter·pbw 폰 저음 악기·pbv·tlp), ch:{채널: 얕은 병합 | null}, pat:{패턴:{채널: 줄 | null}}} — 설정 음색이 16비트일 때만.
+     16비트 악기 w: str 현 합주·sp 스피카토·vc 첼로·cb 콘트라베이스·fl 플루트·ob 오보에·cl 클라리넷·hn 호른·tp 트럼펫·tb 트롬본·acc 아코디언·ch 합창 / 뜯음: hp 하프·gt 기타·md 만돌린·hc 하프시코드·pz 피치카토·bas 콘트라베이스 피치카토 /
+     침: pn 피아노·gl 글로켄·tm 팀파니. 채널 cho[hz, 깊이ms, 젖은 양] 코러스. 오르골·종(orgel·bell)은 두 음색에서 같다(이야기 장치).
    토큰: 음 D4 F#4 Bb3 (^ 강세, _ 약하게), '-' 늘임, '.' 쉼, '|' 마디선(무시), *5 = scale에서 무작위(5옥타브). 드럼 k킥 s스네어 h하이햇 o오픈햇 c크래시 t탬버린 z셰이커 p박수 r림 m/n탐 x반짝 q어두운틱 l경계맥박 w속삭임 f불똥 g쇳소리 b낮은쿵(대문자=강세, 붙여 쓰면 동시). 화음 D Bm A7 Em7 Gmaj7 Asus4 D/A 등. */
 MC.data.bgm = {
   "marseille": {
@@ -20156,7 +20547,50 @@ MC.data.bgm = {
         "N":  "kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z"
       }
     },
-    "order": ["A1","B","A2"], "loopTo": 0
+    "order": ["A1","B","A2"], "loopTo": 0,
+    /* (snd75) 16비트: 프로방스 항구 — 아코디언 선율·플루트 대선율·만돌린 뒷박·콘트라베이스 피치카토·셰이커. A1·B·A2는 옛 줄 그대로 음색만.
+       늘림(31.6 → 69.5초): C = 같은 주제를 만돌린이 한 옥타브 위에서 되뜯고(아코디언은 A2 대선율을 옥타브 아래로) · D = B 선율 두 번(둘째는 플루트가 옥타브 위로 겹침, 탬버린) · A3 = A2 + 현 패드·탬버린 */
+    "sfc": {
+      "order": ["A1","B","A2","C","D","A3"], "loopTo": 0, "echo": 0.526, "fb": 0.22, "vol": 0.72,
+      "ch": {
+        "P1": {"w":"acc","v":0.2,"vib":null,"send":{"rev":0.12,"echo":0.05}},
+        "C":  {"w":"fl","v":0.1,"send":{"rev":0.22,"echo":0.08}},
+        "H":  {"w":"md","v":0.13,"win":55,"pan":0.25,"r":220},
+        "T":  {"w":"bas","v":0.3},
+        "N":  {"v":0.7},
+        "MD": {"w":"md","v":0.15,"pan":-0.15,"r":200,"send":{"rev":0.15,"echo":0.1}},
+        "ST": {"chord":true,"pad":true,"w":"str","v":0.05,"a":500,"d":600,"s":0.9,"r":700,"gate":1,"win":57,"cho":[0.43,2.5,0.5],"send":{"rev":0.3}},
+        "TB": {"kit":true,"v":0.4,"pan":0.3}
+      },
+      "pat": {
+        "C": {
+          "P1": "F#4 - - - - - | G4 - - F#4 - - | E4 - - C#4 - - | E4 - - G4 - - | F#4 - - - - - | F#4 - - E4 - - | D4 - - C#4 - - | D4 - - D5 - E5",
+          "MD": "D5 D5 E5 F#5 F#5 A5 | B5 B5 B5 A5 A5 F#5 | G5 G5 F#5 E5 E5 D5 | E5 E5 E5 E5 E5 A4 | D5 D5 E5 F#5 F#5 A5 | D6 D6 D6 C#6 C#6 B5 | A5 A5 F#5 G5 G5 E5 | D5 D5 D5 D5 . .",
+          "H":  "D - - - - - | G - - D - - | G - - A7 - - | A - - A7 - - | D - - - - - | Bm - - A - - | D/A - - A7 - - | D - - - - -",
+          "ST": "D - - - - - | G - - D - - | G - - A7 - - | A - - A7 - - | D - - - - - | Bm - - A - - | D/A - - A7 - - | D - - - - -",
+          "T":  "D3 - - A2 - - | G2 - - D3 - - | G2 - - A2 - - | A2 - - C#3 - - | D3 - - A2 - - | B2 - - A2 - - | A2 - - A2 - - | D3 - - F#2 - -",
+          "N":  "kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z"
+        },
+        "D": {
+          "P1": "F#5 - E5 D5 - B4 | C#5 - - A4 - - | B4 - A4 G4 - F#4 | E4 - - - - A3 | F#5 - E5 D5 - B4 | C#5 - - A4 - - | B4 - A4 G4 - F#4 | E4 - - - - A3",
+          "C":  ". . . . . . | . . . . . . | . . . . . . | . . . . . . | F#6 - E6 D6 - B5 | C#6 - - A5 - - | B5 - A5 G5 - F#5 | E5 - - - - .",
+          "H":  "Bm - - - - - | A - - F#m - - | G - - Em - - | A7 - - - - - | Bm - - - - - | A - - F#m - - | G - - Em - - | A7 - - - - -",
+          "ST": "Bm - - - - - | A - - F#m - - | G - - Em - - | A7 - - - - - | Bm - - - - - | A - - F#m - - | G - - Em - - | A7 - - - - -",
+          "T":  "B2 - - F#2 - - | A2 - - F#2 - - | G2 - - E2 - - | A2 - - C#3 - - | B2 - - F#2 - - | A2 - - F#2 - - | G2 - - E2 - - | A2 - - C#3 - -",
+          "N":  "kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z Z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z Z",
+          "TB": ". . . . . . | . . . . . . | . . . . . . | . . . . . . | t . . t . . | t . . t . . | t . . t . . | t . t T . ."
+        },
+        "A3": {
+          "P1": "D4 - E4 F#4 - A4 | B4 - - A4 - F#4 | G4 - F#4 E4 - D4 | E4 - - - - A3 | D4 - E4 F#4 - A4 | D5 - - C#5 - B4 | A4 - F#4 G4 - E4 | D4 - - - - A3",
+          "C":  "F#5 - - - - - | G5 - - F#5 - - | E5 - - C#5 - - | E5 - - G5 - - | F#5 - - - - - | F#5 - - E5 - - | D5 - - C#5 - - | D5 - - - - -",
+          "H":  "D - - - - - | G - - D - - | G - - A7 - - | A - - A7 - - | D - - - - - | Bm - - A - - | D/A - - A7 - - | D - - - - -",
+          "ST": "D - - - - - | G - - D - - | G - - A7 - - | A - - A7 - - | D - - - - - | Bm - - A - - | D/A - - A7 - - | D - - - - -",
+          "T":  "D3 - - A2 - - | G2 - - D3 - - | G2 - - A2 - - | A2 - - C#3 - - | D3 - - A2 - - | B2 - - A2 - - | A2 - - A2 - - | D3 - - A2 - -",
+          "N":  "kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z",
+          "TB": "t . . t . . | t . . t . . | t . . t . . | t . . t . t | t . . t . . | t . . t . . | t . . t . . | T . . . . ."
+        }
+      }
+    }
   },
 
   "marseille_evening": {
@@ -20183,7 +20617,32 @@ MC.data.bgm = {
         "T":  "D3 - - - - - | E2 - - D3 - - | G2 - - A2 - - | A2 - - - - - | D3 - - C3 - - | B2 - - F#2 - - | G2 - - A2 - - | B2 - - A2 - -"
       }
     },
-    "order": ["A1","B","A2"], "loopTo": 0
+    "order": ["A1","B","A2"], "loopTo": 0,
+    /* (snd75) 16비트: 해 질 녘 카탈루냐 — 클라리넷 선율·나일론 기타 아르페지오(옛 오르골 줄 그대로)·첼로·현 패드·아주 약한 캐스터네츠. 줄은 옛 그대로(40초, 늘리지 않음) */
+    "sfc": {
+      "echo": 0.667, "fb": 0.2, "vol": 0.89,
+      "ch": {
+        "P1": {"w":"cl","v":0.24,"lp":2600,"send":{"rev":0.24,"echo":0.06}},
+        "H":  {"w":"gt","v":0.15,"lp":null,"gate":1,"r":900,"pan":0.15},
+        "T":  {"w":"vc","v":0.2,"lp":null,"a":120,"r":400},
+        "ST": {"chord":true,"pad":true,"w":"str","v":0.035,"a":900,"d":800,"s":0.9,"r":1200,"gate":1,"win":57,"lp":2400,"cho":[0.37,2.5,0.5],"send":{"rev":0.35}},
+        "CA": {"kit":true,"v":0.22,"pan":-0.35,"send":{"rev":0.2}}
+      },
+      "pat": {
+        "A1": {
+          "ST": "D - - - - - | Em7 - - D - - | G - - A7 - - | Asus4 - - A7 - - | D - - D/C - - | Bm - - F#m - - | G - - A7 - - | D - - - - -",
+          "CA": "r . . . . . | . . . . . . | . . . . r r | . . . . . . | r . . . . . | . . . . . . | . . . . r r | r . . . . ."
+        },
+        "B": {
+          "ST": "Bm - - Bm/A - - | A - - F#m - - | G - - Em - - | Asus4 - - A7 - -",
+          "CA": "r . . . . . | . . . . . . | r . . . . . | . . . . r r"
+        },
+        "A2": {
+          "ST": "D - - - - - | Em7 - - D - - | G - - A7 - - | Asus4 - - A7 - - | D - - D/C - - | Bm - - F#m - - | G - - A7 - - | Bm - - - - -",
+          "CA": "r . . . . . | . . . . . . | . . . . r r | . . . . . . | r . . . . . | . . . . . . | . . . . r r | . . . . . ."
+        }
+      }
+    }
   },
 
   "feast": {
@@ -20223,7 +20682,45 @@ MC.data.bgm = {
         "N":  "kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT t pT | kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t T pT T T"
       }
     },
-    "order": ["I","A","A2","C"], "loopTo": 1
+    "order": ["I","A","A2","C"], "loopTo": 1,
+    /* (snd75) 16비트: 레제르브 잔치 — 바이올린 선율·아코디언 화음 줄·피치카토 화음·콘트라베이스·탬버린·손뼉. I·A·A2·C는 옛 줄 그대로 음색만.
+       늘림(30 → 60초, 도입 제외): D = 아코디언이 A 선율, 바이올린은 마르세유 A2 대선율을 G장조로 옮긴 줄(라이트모티프 사슬 안) · C2 = C의 역할 바꿈(아코디언 선율, 바이올린 위 화음)
+       · A3 = 바이올린 옥타브 위 + 아코디언 원 옥타브(합주 맺음). 건배 메아리(toast_a/b/c 효과음)의 머리 네 음은 그대로 */
+    "sfc": {
+      "order": ["I","A","A2","C","D","C2","A3"], "loopTo": 1, "echo": 0.417, "fb": 0.2, "vol": 0.59,
+      "ch": {
+        "P1": {"w":"str","v":0.24,"a":30,"d":300,"s":0.85,"r":150,"gate":0.9,"cho":[0.5,2,0.35],"send":{"rev":0.12}},
+        "P2": {"w":"acc","v":0.13,"vib":null},
+        "H":  {"w":"pz","v":0.12,"lp":null},
+        "T":  {"w":"bas","v":0.3},
+        "N":  {"v":0.62},
+        "AM": {"w":"acc","v":0.17,"vib":null,"pan":0.12,"send":{"rev":0.1,"echo":0.05}}
+      },
+      "pat": {
+        "D": {
+          "AM": "G4 - A4 B4 - D5 | E5 - F#5 D5 - B4 | C5 - B4 A4 - G4 | A4 - B4 A4 - D4 | G4 - A4 B4 - D5 | G5 - A5 G5 F#5 E5 | D5 - B4 C5 - A4 | G4 - - G4 - -",
+          "P1": "B5 - - - - - | C6 - - B5 - - | A5 - - F#5 - - | A5 - - C6 - - | B5 - - - - - | B5 - - A5 - - | G5 - - F#5 - - | G5 - - - - -",
+          "H":  "G - - - - - | C - - G - - | C - - D7 - - | D - - D7 - - | G - - - - - | Em - - D - - | G/D - - D7 - - | G - - - - -",
+          "T":  "G2 - - D2 - - | C3 - - G2 - - | C3 - - D3 - - | D3 - - F#2 - - | G2 - - B2 - - | E2 - - D2 - - | D2 - - D3 - C3 | G2 - - D2 - -",
+          "N":  "kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT T T"
+        },
+        "C2": {
+          "AM": "B4 - B4 B4 - E5 | G5 - F#5 E5 - D#5 | E5 - B4 G4 - B4 | C5 - A4 B4 - F#4 | G5 - E5 C5 - E5 | D5 - B4 A4 - F#4 | G4 - B4 E5 - C#5 | D5 - C5 A4 - F#4",
+          "P1": "G5 - - - - - | E5 - - F#5 - - | G5 - - - - - | E5 - - D#5 - - | E5 - - - - - | D5 - - F#5 - - | E5 - - E5 - - | F#5 - - - - -",
+          "H":  "Em - - - - - | Em - - B7 - - | Em - - - - - | Am - - B7 - - | C - - - - - | G/B - - D - - | Em - - A7 - - | D7 - - - - -",
+          "T":  "E2 - - B2 - - | E3 - - B2 - - | E2 - - B2 - - | A2 - - B2 - - | C3 - - G2 - - | B2 - - D3 - - | E3 - - A2 - - | D3 - - A2 - F#2",
+          "N":  "kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT t pT | kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t T pT T T"
+        },
+        "A3": {
+          "P1": "G5 - A5 B5 - D6 | E6 - F#6 D6 - B5 | C6 - B5 A5 - G5 | A5 - B5 A5 - D5 | G5 - A5 B5 - D6 | G6 - A6 G6 F#6 E6 | D6 - B5 C6 - A5 | G5 - - G5 - -",
+          "AM": "G4 - A4 B4 - D5 | E5 - F#5 D5 - B4 | C5 - B4 A4 - G4 | A4 - B4 A4 - D4 | G4 - A4 B4 - D5 | G5 - A5 G5 F#5 E5 | D5 - B4 C5 - A4 | G4 - - G4 - -",
+          "P2": "D4 - F#4 G4 - B4 | C5 - D5 B4 - G4 | E4 - G4 F#4 - C4 | F#4 - G4 F#4 - A3 | D4 - F#4 G4 - B4 | B4 - C5 B4 A4 G4 | B4 - G4 A4 - F#4 | B3 - - B3 - -",
+          "H":  "G - - - - - | C - - G - - | C - - D7 - - | D - - D7 - - | G - - - - - | Em - - D - - | G/D - - D7 - - | G - - - - -",
+          "T":  "G2 - - D2 - - | C3 - - G2 - - | C3 - - D3 - - | D3 - - F#2 - - | G2 - - B2 - - | E2 - - D2 - - | D2 - - D3 - C3 | G2 - - D2 - -",
+          "N":  "kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT t pT | kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t T pT T T"
+        }
+      }
+    }
   },
 
   "villefort": {
@@ -20245,7 +20742,42 @@ MC.data.bgm = {
         "T":  "Bb2 - . . . . | D3 - . . . . | Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | Bb2 - . . . . | F2 - . . . ."
       }
     },
-    "order": ["A","A2"], "loopTo": 0
+    "order": ["A","A2"], "loopTo": 0,
+    /* (snd75) 16비트: 빌포르 집무실 — 오보에 선율·하프시코드 2·3박 화음(미뉴에트 결)·첼로와 콘트라베이스 스타카토. 먼 방 느낌은 곡 LP(1100 → 1700)로 조금 덜 막히게.
+       늘림(20 → 60초): B = 같은 머리 리듬을 G단조(나란한조)로 · B2 = E♭에서 F7로 돌아오는 줄(A의 끝 마디 그대로) · A3 = A + 하프시코드가 선율을 옥타브 아래로 겹침 */
+    "sfc": {
+      "order": ["A","A2","B","B2","A3","A2"], "loopTo": 0, "filter": 1700, "echo": 0.417, "fb": 0.2, "vol": 0.52,
+      "ch": {
+        "P1": {"w":"ob","v":0.2,"vib":[5.5,10,200],"send":{"rev":0.3}},
+        "H":  {"w":"hc","v":0.12,"pan":0.2},
+        "T":  {"w":"vc","v":0.22,"a":15,"d":200,"s":0.6,"r":90,"gate":0.5},
+        "CB": {"w":"cb","v":0.12,"oct":-1,"a":15,"d":200,"s":0.6,"r":90,"gate":0.45,"send":{"rev":0.2}},
+        "HM": {"w":"hc","v":0.1,"pan":-0.2,"send":{"rev":0.2}}
+      },
+      "pat": {
+        "A":  { "CB": "Bb2 - . . . . | D3 - . . . . | Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | Bb2 - . . . . | F2 - . . . ." },
+        "A2": { "CB": "Bb2 - . . . . | D3 - . . . . | Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | Bb2 - . . . . | F2 - . . . ." },
+        "B": {
+          "P1": "D5 - - - G5 - | Bb5 - - - A5 G5 | A5 - - - F#5 - | G5 - - - - - | Eb5 - - - C5 D5 | D5 - - - Bb4 G4 | A4 - C5 - F#5 - | G5 - D5 - Bb4 G4",
+          "H":  "Gm - - - - - | Gm - - - - - | D7 - - - - - | Gm - - - - - | Cm - - - - - | Gm - - - - - | D7 - - - - - | Gm - - - - -",
+          "T":  "G2 - . . . . | Bb2 - . . . . | D3 - . . . . | G2 - . . . . | C3 - . . . . | Bb2 - . . . . | D3 - . . . . | G2 - . . . .",
+          "CB": "G2 - . . . . | Bb2 - . . . . | D3 - . . . . | G2 - . . . . | C3 - . . . . | Bb2 - . . . . | D3 - . . . . | G2 - . . . ."
+        },
+        "B2": {
+          "P1": "Eb5 - - - G5 - | Bb5 - - - A5 G5 | G5 - - - Eb5 - | F5 - - - - - | D5 - - - G5 F5 | Eb5 - - - D5 C5 | A4 - C5 - F5 - | A5 - G5 - F5 Eb5",
+          "H":  "Eb - - - - - | Bb - - - - - | Cm - - - - - | F7 - - - - - | Gm - - - - - | Eb - - - - - | F - - - - - | F7 - - - - -",
+          "T":  "Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | G2 - . . . . | Eb3 - . . . . | F2 - . . . . | F2 - . . . .",
+          "CB": "Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | G2 - . . . . | Eb3 - . . . . | F2 - . . . . | F2 - . . . ."
+        },
+        "A3": {
+          "P1": "D5 - - - F5 - | Bb5 - - - A5 G5 | G5 - - - Eb5 - | F5 - - - - - | Eb5 - - - C5 D5 | Eb5 - - - C5 A4 | Bb4 - D5 - F5 - | A5 - G5 - F5 Eb5",
+          "HM": "D4 - - - F4 - | Bb4 - - - A4 G4 | G4 - - - Eb4 - | F4 - - - - - | Eb4 - - - C4 D4 | Eb4 - - - C4 A3 | Bb3 - D4 - F4 - | A4 - G4 - F4 Eb4",
+          "H":  "Bb - - - - - | Bb - - - - - | Eb - - - - - | Bb - - - - - | Cm - - - - - | F7 - - - - - | Bb - - - - - | F7 - - - - -",
+          "T":  "Bb2 - . . . . | D3 - . . . . | Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | Bb2 - . . . . | F2 - . . . .",
+          "CB": "Bb2 - . . . . | D3 - . . . . | Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | Bb2 - . . . . | F2 - . . . ."
+        }
+      }
+    }
   },
 
   "dream_b1": {
@@ -20282,7 +20814,17 @@ MC.data.bgm = {
         "E":   ". . . . . . . . | . . . . *5 - . . | . . . . . . . . | . . . . . . . ."
       }
     },
-    "order": ["A","B","C","D"], "loopTo": 0
+    "order": ["A","B","C","D"], "loopTo": 0,
+    /* (snd75) 16비트: 꿈 B1 — 하프 베이스 줄·합창 '아' 패드·유리 종(미궁 주제)·높은 하프 메아리. 줄·층마다 음 빼기(drop)는 그대로 */
+    "sfc": {
+      "vol": 0.8,
+      "ch": {
+        "T":   {"w":"hp","v":0.16,"gate":1,"r":900},
+        "PAD": {"w":"ch","v":0.035,"cho":[0.3,3,0.5]},
+        "L":   {"w":"gl","v":0.13},
+        "E":   {"w":"hp","v":0.05,"gate":1,"r":600}
+      }
+    }
   },
 
   "battle": {
@@ -20313,7 +20855,41 @@ MC.data.bgm = {
         "N":  "kC . h k s . h . k . h k s . h h | k . h k s . h . k . h k s . h h | k . h k s . h . k . h k s . h h | k . h k s . h . k . h k s . h h | k . h k s . h . k . h k s . h h | k . h k s . h . k . h k s . h h | k . h k s . h . k . h k s . h h | k . h k s . h . S . S . S S S S"
       }
     },
-    "order": ["I","A","B"], "loopTo": 1
+    "order": ["I","A","B"], "loopTo": 1,
+    /* (snd75) 16비트: 일반 전투(꿈속) — 바이올린 선율·스피카토 16분 화음·콘트라베이스 마르카토·호른·팀파니·관현악 드럼. I·A·B는 옛 줄 그대로(+팀파니).
+       늘림(25.6 → 64초): C = 주제 머리(D A D E F E D)를 호른이 두 배 길이로, F → Gm으로 올라가며 바이올린이 옥타브 위에서 합류 · A2 = A + 호른 긴 대선율 */
+    "sfc": {
+      "order": ["I","A","B","C","A2","B"], "loopTo": 1, "echo": 0.3, "fb": 0.18, "pbw": "vc", "vol": 0.68,
+      "ch": {
+        "P1": {"w":"str","v":0.22,"a":15,"d":250,"s":0.8,"r":90,"gate":0.9,"cho":[0.6,2,0.35],"send":{"rev":0.1}},
+        "P2": {"w":"sp","v":0.14,"r":40},
+        "T":  {"w":"cb","v":0.24,"a":10,"d":150,"s":0.6,"r":70,"gate":0.75},
+        "N":  {"v":0.62},
+        "BR": {"w":"hn","v":0.17,"send":{"rev":0.15}},
+        "TI": {"w":"tm","v":0.3,"send":{"rev":0.12}}
+      },
+      "pat": {
+        "I": { "TI": "A2 . . A2 . . A2 . A2 . . . A2 A2 A2 A2" },
+        "A": { "TI": "D2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | A2 . . . . . . . A2 . . . . . . . | D2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . A2 . . . | A2 . . . . . . . . . . . A2 A2 A2 A2" },
+        "B": { "TI": ". . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | A2 . . . . . . . . . . . . . . . | D2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | A2 . . . A2 . . . A2 . . . A2 A2 A2 A2" },
+        "C": {
+          "BR": "D4 - - - - - A3 - - - - - D4 - - - | E4 - - - F4 - - - E4 - - - D4 - - - | F4 - - - - - C4 - - - - - F4 - - - | G4 - - - A4 - - - G4 - - - F4 - - - | G4 - - - - - D4 - - - - - G4 - - - | A4 - - - Bb4 - - - A4 - - - G4 - - - | Bb4 - - - A4 - - - G4 - - - F4 - - - | E4 - - - - - - - C#4 - - - E4 - - -",
+          "P1": ". . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | G5 - - - - - D5 - - - - - G5 - - - | A5 - - - Bb5 - - - A5 - - - G5 - - - | Bb5 - - - A5 - - - G5 - - - F5 - - - | E5 - - - - - - - C#5 - - - E5 - - -",
+          "P2": "Dm - - - - - - - - - - - - - - - | Dm - - - - - - - - - - - - - - - | F - - - - - - - - - - - - - - - | F - - - - - - - - - - - - - - - | Gm - - - - - - - - - - - - - - - | Gm - - - - - - - - - - - - - - - | Bb - - - - - - - - - - - - - - - | A7 - - - - - - - - - - - - - - -",
+          "T":  "D2 . D2 . D3 . D2 . D2 . D2 . D3 . D2 . | D2 . D2 . D3 . D2 . D2 . D2 . D3 . A1 . | F2 . F2 . F3 . F2 . F2 . F2 . F3 . F2 . | F2 . F2 . F3 . F2 . F2 . F2 . F3 . C2 . | G1 . G1 . G2 . G1 . G1 . G1 . G2 . G1 . | G1 . G1 . G2 . G1 . G1 . G1 . G2 . D2 . | Bb1 . Bb1 . Bb2 . Bb1 . Bb1 . Bb1 . Bb2 . Bb1 . | A1 . A1 . A2 . A1 . A1 . A1 . A2 . A1 .",
+          "N":  "kC . h . s . h . k . k h s . h h | k . h . s . h . k . k h s . h h | k . h . s . h . k . k h s . h h | k . h . s . h . k . k h s . h h | kC . h . s . h . k . k h s . h h | k . h . s . h . k . k h s . h h | k . h . s . h . k . k h s . h h | k . h . s . h . k . k h S s S S",
+          "TI": "D2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . A2 . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | D2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | A2 . . . A2 . . . A2 . A2 . A2 A2 A2 A2"
+        },
+        "A2": {
+          "P1": "D5 - - A4 - - D5 - E5 - F5 - E5 - D5 - | F5 - - D5 - - Bb4 - C5 - D5 - C5 - Bb4 - | E5 - - C5 - - G4 - A4 - Bb4 - C5 - E5 - | A5 - - - - - E5 - C#5 - - - A4 - - - | D5 - - A4 - - D5 - E5 - F5 - G5 - A5 - | Bb5 - - A5 - - F5 - D5 - - - F5 - - - | G5 - - F5 - - E5 - F5 - E5 - D5 - C#5 - | A4 - - - - - - - E5 - - - C#5 - - -",
+          "P2": "Dm - - - - - - - - - - - - - - - | Bb - - - - - - - - - - - - - - - | C - - - - - - - - - - - - - - - | A - - - - - - - - - - - - - - - | Dm - - - - - - - - - - - - - - - | Bb - - - - - - - - - - - - - - - | Gm - - - - - - - - - - - A7 - - - | A - - - - - - - - - - - - - - -",
+          "T":  "D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | Bb1 . Bb2 . Bb1 . Bb2 . Bb1 . Bb2 . Bb1 . Bb2 . | C2 . C3 . C2 . C3 . C2 . C3 . C2 . C3 . | A1 . A2 . A1 . A2 . A1 . A2 . A1 . A2 . | D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | Bb1 . Bb2 . Bb1 . Bb2 . Bb1 . Bb2 . Bb1 . Bb2 . | G1 . G2 . G1 . G2 . G1 . G2 . A1 . A2 . | A1 . A2 . A1 . A2 . A1 . A2 . A1 . A2 .",
+          "N":  "kC . h . s . h . k . k h s . h h | k . h . s . h . k . k h s . h h | k . h . s . h . k . k h s . h h | k . h . s . h . k . k h s . h h | kC . h . s . h . k . k h s . h h | k . h . s . h . k . k h s . h h | k . h . s . h . k . k h s . h h | k . h . s . h . k . k h S s S S",
+          "BR": "A4 - - - - - - - - - - - - - - - | Bb4 - - - - - - - - - - - - - - - | G4 - - - - - - - C5 - - - - - - - | A4 - - - - - - - C#5 - - - - - - - | D5 - - - - - - - A4 - - - - - - - | Bb4 - - - - - - - F4 - - - - - - - | G4 - - - - - - - - - - - E4 - - - | A4 - - - - - - - - - - - - - - -",
+          "TI": "D2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | A2 . . . . . . . A2 . . . . . . . | D2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . A2 . . . | A2 . . . . . . . . . . . A2 A2 A2 A2"
+        }
+      }
+    }
   },
 
   /* 보스 절망(E-15): E단조 + F♮, ♩112. S4 최종전(despair2)용 레이어 둘 — S1 despair1은 기본값 그대로라 소리 불변.
@@ -20364,7 +20940,77 @@ MC.data.bgm = {
         "N":   "kC . k . s . . k k . k . s . k s | k . k . s . . k k . k . s . k s | k . k . s . . k k . k . s . k s | k . k . s . . k S . S . S S S S"
       }
     },
-    "order": ["A","A2","B","A2"], "loopTo": 1
+    "order": ["A","A2","B","A2"], "loopTo": 1,
+    /* (snd75) 16비트: 절망·최종전 — 현(긴 선율, 높은 A2)·호른(새 패턴에서 옥타브 아래 겹침)·스피카토 E–F 반음 왕복·합창 패드(LP 900)·폰 대역 현 층(bp 500)·콘트라베이스·팀파니.
+       paria 층의 오르골(PA)은 그대로, 장조 패드(PG)는 따뜻한 현. 레이어(paria 4마디·rhythm)·remap(F2·F4, rq 64)·unless 계약 그대로 — 새 채널도 HN은 unless paria, TI는 layer rhythm.
+       늘림(25.7 → 60초, 도입 제외): C = 숨 고르기(E 지속음 위 호른 독주로 A의 선율, 셋째 마디부터 현 합류, 팀파니 연타) · C2 = 같은 지속음 위에서 현이 그 선율을 이어받음
+       · B2 = B + 호른 옥타브 아래 · A3 = A2 + 호른. 모든 패턴이 4마디라 paria(4마디 경계)·remap(rq 64) 경계가 그대로 맞는다 */
+    "sfc": {
+      "order": ["A","A2","B","A2","C","C2","B2","A3"], "loopTo": 1, "pbw": "vc", "vol": 0.83,
+      "ch": {
+        "P1":  {"w":"str","v":0.2,"a":120,"vib":[4.5,14,250],"cho":[0.35,3,0.4]},
+        "P2":  {"w":"sp","v":0.13,"r":40},
+        "PAD": {"w":"ch","v":0.045,"r":300},
+        "PADM":{"w":"str","v":0.04,"r":300},
+        "PG":  {"w":"str","v":0.04,"r":480,"cho":[0.3,2.5,0.5]},
+        "T":   {"w":"cb","v":0.24,"a":8,"d":200,"s":0.7,"r":60,"gate":0.8},
+        "N":   {"v":0.62},
+        "HN":  {"w":"hn","v":0.17,"unless":"paria","send":{"rev":0.2}},
+        "TI":  {"w":"tm","v":0.3,"r":300,"layer":"rhythm","send":{"rev":0.15}}
+      },
+      "pat": {
+        "A":  { "TI": "E2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | E2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . E2 . E2 ." },
+        "A2": { "TI": "E2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | E2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . E2 . E2 ." },
+        "B":  { "TI": "A2 . . . . . . . . . . . . . . . | F2 . . . . . . . . . . . . . . . | D2 . . . . . . . . . . . . . . . | E2 . . . . . . . E2 . . . E2 . E2 ." },
+        "C": {
+          "T":   "E2 - - - - - - - - - - - - - - - | F2 - - - - - - - - - - - - - - - | E2 - - - - - - - - - - - - - - - | F2 - - - - - - - - - - - E2 - - -",
+          "HN":  "B4 - - - - - - - - - - - - - - - | C5 - - - - - - - - - - - B4 - A4 - | G4 - - - - - - - A4 - - - B4 - - - | F4 - - - - - - - - - - - E4 - - -",
+          "P1":  ". . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | G5 - - - - - - - A5 - - - B5 - - - | F5 - - - - - - - - - - - E5 - - -",
+          "P2":  "E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4",
+          "PAD": "Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - Em - - -",
+          "PADM":"Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - Em - - -",
+          "PA":  "D5 - - - G5 - - - F#5 - - - E5 - - - | D5 - - - - - - - B4 - - - - - - - | C5 - - - E5 - - - D5 - - - C5 - - - | B4 - - - - - - - - - - - - - - -",
+          "PG":  "G - - - - - - - - - - - - - - - | G - - - - - - - - - - - - - - - | C - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - -",
+          "N":   "k . . . . . . . . . . . . . . . | k . . . . . . . . . . . . . . . | k . . . . . . . k . . . . . . . | k . . . s . . . s . s . S S S S",
+          "TI":  "E2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | E2 . . . . . . . E2 . . . . . . . | E2_ . E2_ . E2 . E2 . E2 . E2 . E2^ . E2^ ."
+        },
+        "C2": {
+          "T":   "E2 - - - - - - - - - - - - - - - | F2 - - - - - - - - - - - - - - - | E2 - - - - - - - - - - - - - - - | F2 - - - - - - - - - - - E2 - - -",
+          "P1":  "B4 - - - - - - - - - - - - - - - | C5 - - - - - - - - - - - B4 - A4 - | G4 - - - - - - - A4 - - - B4 - - - | F4 - - - - - - - - - - - E4 - - -",
+          "P2":  "E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4",
+          "PAD": "Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - Em - - -",
+          "PADM":"Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - Em - - -",
+          "PA":  "D5 - - - G5 - - - F#5 - - - E5 - - - | D5 - - - - - - - B4 - - - - - - - | C5 - - - E5 - - - D5 - - - C5 - - - | B4 - - - - - - - - - - - - - - -",
+          "PG":  "G - - - - - - - - - - - - - - - | G - - - - - - - - - - - - - - - | C - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - -",
+          "N":   "k . . . s . . . k . . . s . . . | k . . . s . . . k . . . s . . . | k . . . s . . . k . . . s . k . | k . . . s . . . s . s . S S S S",
+          "TI":  "E2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | E2 . . . . . . . . . . . . . . . | . . . . . . . . E2 . . . E2 . E2 ."
+        },
+        "B2": {
+          "T":   "A2 - A2 - Bb2 - A2 - . . A2 - C3 - Bb2 - | F2 - F2 - Gb2 - F2 - . . F2 - Ab2 - Gb2 - | D2 - D2 - Eb2 - D2 - . . D2 - F2 - Eb2 - | E2 - E2 - F2 - E2 - . . E2 - G2 - F2 -",
+          "P1":  "A4 - - - C5 - - - E5 - - - D5 - C5 - | C5 - - - - - - - Ab4 - - - F4 - - - | D5 - - - F5 - - - A5 - - - G5 - F5 - | E5 - - - - - - - D5 - - - B4 - - -",
+          "HN":  "A3 - - - C4 - - - E4 - - - D4 - C4 - | C4 - - - - - - - Ab3 - - - F3 - - - | D4 - - - F4 - - - A4 - - - G4 - F4 - | E4 - - - - - - - D4 - - - B3 - - -",
+          "P2":  "A4 Bb4 A4 Bb4 A4 Bb4 A4 Bb4 A4 Bb4 A4 Bb4 A4 Bb4 A4 Bb4 | F4 Gb4 F4 Gb4 F4 Gb4 F4 Gb4 F4 Gb4 F4 Gb4 F4 Gb4 F4 Gb4 | D4 Eb4 D4 Eb4 D4 Eb4 D4 Eb4 D4 Eb4 D4 Eb4 D4 Eb4 D4 Eb4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4",
+          "PAD": "Am - - - - - - - - - - - - - - - | Fm - - - - - - - - - - - - - - - | Dm - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - -",
+          "PADM":"Am - - - - - - - - - - - - - - - | Fm - - - - - - - - - - - - - - - | Dm - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - -",
+          "PA":  "A4 - - - C5 - - - B4 - - - A4 - - - | A4 - - - - - - - C5 - - - - - - - | E5 - - - D5 - - - C5 - B4 - A4 - - - | G4 - - - - - - - - - - - - - - -",
+          "PG":  "Am - - - - - - - - - - - - - - - | Am - - - - - - - - - - - - - - - | C - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - -",
+          "N":   "kC . k . s . . k k . k . s . k s | k . k . s . . k k . k . s . k s | k . k . s . . k k . k . s . k s | k . k . s . . k S . S . S S S S",
+          "TI":  "A2 . . . . . . . . . . . . . . . | F2 . . . . . . . . . . . . . . . | D2 . . . . . . . . . . . . . . . | E2 . . . . . . . E2 . . . E2 . E2 ."
+        },
+        "A3": {
+          "T":   "E2 - E2 - F2 - E2 - . . E2 - G2 - F2 - | E2 - E2 - F2 - E2 - . . E2 - G2 - F2 - | E2 - E2 - F2 - E2 - . . E2 - G2 - F2 - | E2 - E2 - F2 - E2 - . . E2 - G2 - F2 -",
+          "P1":  "B5 - - - - - - - - - - - - - - - | C6 - - - - - - - - - - - B5 - A5 - | G5 - - - - - - - A5 - - - B5 - - - | F5 - - - - - - - - - - - E5 - - -",
+          "HN":  "B4 - - - - - - - - - - - - - - - | C5 - - - - - - - - - - - B4 - A4 - | G4 - - - - - - - A4 - - - B4 - - - | F4 - - - - - - - - - - - E4 - - -",
+          "P2":  "E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 | E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4 E4 F4",
+          "PAD": "Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - Em - - -",
+          "PADM":"Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - - | F - - - - - - - - - - - Em - - -",
+          "PA":  "D5 - - - G5 - - - F#5 - - - E5 - - - | D5 - - - - - - - B4 - - - - - - - | C5 - - - E5 - - - D5 - - - C5 - - - | B4 - - - - - - - - - - - - - - -",
+          "PG":  "G - - - - - - - - - - - - - - - | G - - - - - - - - - - - - - - - | C - - - - - - - - - - - - - - - | Em - - - - - - - - - - - - - - -",
+          "N":   "kC . . . s . . k k . . . s . k s | k . . . s . . k k . . . s . k s | kC . . . s . . k k . . . s . k s | k . . . s . . k k . . . S S S S",
+          "TI":  "E2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | E2 . . . . . . . . . . . . . . . | . . . . . . . . E2 . . . E2 . E2 ."
+        }
+      }
+    }
   },
 
   /* [s46-sound B4-19] 최종전 자루 속 대기 드론(battle.js despair2 music.sack — 곡을 끊은 뒤 1.2초에 걸쳐): E·F 반음 부딪힘 톱니 패드를 bp500(폰 대역)으로만, 아래에 아주 낮은 패드.
@@ -20381,7 +21027,15 @@ MC.data.bgm = {
         "LO": "Em - - - | F - - - | Em - - - | F - - -"
       }
     },
-    "order": ["A"], "loopTo": 0
+    "order": ["A"], "loopTo": 0,
+    /* (snd75) 16비트: 자루 속 — 현 드론(bp 500 폰 대역 그대로)·콘트라베이스 패드. 선율·박 없음(그대로) */
+    "sfc": {
+      "vol": 0.79,
+      "ch": {
+        "DR": {"w":"str","v":0.05,"vib":[0.2,8,0]},
+        "LO": {"w":"cb","v":0.03}
+      }
+    }
   },
 
   "title": {
@@ -20416,7 +21070,14 @@ MC.data.bgm = {
         "PAD": "Dm - - - - - | Gm - - Dm - - | Gm - - A7 - - | A - - A7 - - | Dm - - - - - | Bb - - C - - | Dm/A - - A7 - - | D - - - - -"
       }
     },
-    "order": ["A1","B","A2"], "loopTo": 0
+    "order": ["A1","B","A2"], "loopTo": 0,
+    /* (snd75) 16비트: 타이틀·크레딧 — 오르골·종은 그대로(수미상관). 패드만 현으로, 사인 베이스는 여린 첼로로 */
+    "sfc": {
+      "ch": {
+        "B":   {"w":"vc","v":0.1,"a":300,"d":1500,"s":0.6,"r":900,"vib":[4.6,6,400]},
+        "PAD": {"w":"str","v":0.026,"cho":[0.3,2.5,0.5]}
+      }
+    }
   },
 
   /* ───────────────────────── S2 ───────────────────────── */
@@ -20469,7 +21130,37 @@ MC.data.bgm = {
         "EC": ". . . . . . | . . . . C6 . | . . . . . . | . . . F6 . . | . . . . . . | . . . . A5 . | . . . . . . | . . F6 . . ."
       }
     },
-    "order": ["I","Ib","B","A","B","A2"], "loopTo": 2
+    "order": ["I","Ib","B","A","B","A2"], "loopTo": 2,
+    /* (snd75) 16비트: 파리아의 나날 — 오르골 O1·O2·B는 그대로(이야기 장치). 대선율 층(counter)은 현, 메아리 층(echo)은 높은 하프.
+       받침 둘을 '있는 층'에 묶었다(이벤트·층 이름 그대로): VC 첼로 = waltz 층(오르골 베이스를 길게 받침 — 1822 waltz 끔이면 같이 빠져 빈 방의 오르골 유지),
+       HC 하프시코드 한 번 튕김(마디 첫 박) = counter 층(수업이 늘면 함께 들어옴). 디튠(보물 아침)·템포(♩76)도 그대로 따른다 */
+    "sfc": {
+      "vol": 0.93,
+      "ch": {
+        "CT": {"w":"str","v":0.11,"a":200,"r":400,"cho":[0.4,2,0.4]},
+        "EC": {"w":"hp","v":0.05,"gate":1,"r":600},
+        "VC": {"w":"vc","v":0.09,"a":150,"r":400,"vib":[4.8,5,400],"layer":"waltz","send":{"rev":0.3}},
+        "HC": {"chord":true,"w":"hc","v":0.06,"arp":"c.....","win":53,"stack":true,"cmax":3,"layer":"counter","pan":0.2,"send":{"rev":0.25}}
+      },
+      "pat": {
+        "Ib": {
+          "VC": "C3 - - - - - | F2 - - - - - | Bb2 - - C3 - - | F2 - - - - -",
+          "HC": "C7 - - - - - | F - - - - - | Bb - - C7 - - | F - - - - -"
+        },
+        "B": {
+          "VC": "D3 - - - - - | D3 - - A2 - - | G2 - - - - - | A2 - - - - - | D3 - - - - - | Bb2 - - - - - | C3 - - - - - | F2 - - C3 - -",
+          "HC": "Dm - - - - - | Dm - - - - - | Gm - - - - - | A7 - - - - - | Dm - - - - - | Bb - - - - - | C7 - - - - - | F - - - - -"
+        },
+        "A": {
+          "VC": "F2 - - - - - | F2 - - C3 - - | Bb2 - - - - - | F2 - - - - - | C3 - - - - - | F2 - - - - - | Bb2 - - C3 - - | F2 - - - - -",
+          "HC": "F - - - - - | F - - - - - | Bb - - - - - | F - - - - - | C7 - - - - - | F - - - - - | Bb - - C7 - - | F - - - - -"
+        },
+        "A2": {
+          "VC": "F2 - - - - - | F2 - - C3 - - | Bb2 - - - - - | F2 - - - - - | C3 - - - - - | F2 - - - - - | Bb2 - - C3 - - | F2 - - - C3 -",
+          "HC": "F - - - - - | F - - - - - | Bb - - - - - | F - - - - - | C7 - - - - - | F - - - - - | Bb - - C7 - - | F - - - C7 -"
+        }
+      }
+    }
   },
 
   /* 땅굴(E-17): A 중심 ♩=84 16분 격자. 심장 같은 저음 A1 두 번 + 어두운 틱(5·13번째 스텝) + 5마디부터 p12 D6·E♭6 트레몰로.
@@ -20518,7 +21209,44 @@ MC.data.bgm = {
         "OR": "F5 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . ."
       }
     },
-    "order": ["T1","T2","T3"], "loopTo": 1
+    "order": ["T1","T2","T3"], "loopTo": 1,
+    /* (snd75) 16비트: 땅굴 — 심장 A1은 팀파니(낮은 북), 폰 대역 층 TD는 피치카토(옥타브 위), 드론은 어두운 합창, 긴장 층은 높은 현 트레몰로, 경계 하이햇은 샘플.
+       어두운 틱(q)·경계 맥박(l)·오르골 층은 그대로. 레이어(alert1·alert2·orgel·tick·tension)·박 단위 반영(lq 4) 그대로.
+       늘림(22.9 → 68.6초, 도입 제외): T4 = 심장이 B♭1로 반음 올라 버팀(현 F6 → E6) · T5 = A1으로 돌아와 피치카토 걸음(A–E–B♭, tension 층) */
+    "sfc": {
+      "order": ["T1","T2","T3","T4","T5","T2","T3"], "loopTo": 1, "pbw": "pz", "pbv": 0.01, "vol": 0.78,
+      "ch": {
+        "T":  {"w":"tm","v":0.24,"gate":1},
+        "TD": {"w":"pz","v":0.05,"lp":null},
+        "DR": {"w":"ch","v":0.025},
+        "P2": {"w":"str","v":0.03,"vib":null},
+        "PZ": {"w":"pz","v":0.08,"layer":"tension","send":{"rev":0.2,"echo":0.15}}
+      },
+      "pat": {
+        "T4": {
+          "T":  "Bb1 - . . . . Bb1 - . . . . . . . . | Bb1 - . . . . Bb1 - . . . . . . . . | A1 - . . . . A1 - . . . . . . . . | A1 - . . . . A1 - . . . . . . . .",
+          "TD": "Bb1 - . . . . Bb1 - . . . . . . . . | Bb1 - . . . . Bb1 - . . . . . . . . | A1 - . . . . A1 - . . . . . . . . | A1 - . . . . A1 - . . . . . . . .",
+          "N":  ". . . . q . . . . . . . q . . . | . . . . q . . . . . . . q . . . | . . . . q . . . . . . . q . . . | . . . . q . . . . . . . q . q .",
+          "DR": "Bb5 - - - - - - - - - - - - - - - | - - - - - - - - - - - - - - - - | A5 - - - - - - - - - - - - - - - | - - - - - - - - - - - - - - - -",
+          "P2": "F6 - - - - - - - - - - - - - - - | - - - - - - - - - - - - - - - - | E6 - - - - - - - - - - - - - - - | - - - - - - - - - - - - - - - -",
+          "PZ": "Bb2 . . . . . . . F3 . . . . . . . | Bb2 . . . . . . . E3 . . . . . . . | A2 . . . . . . . E3 . . . . . . . | A2 . . . . . . . Bb2 . . . . . . .",
+          "K1": "l . . . l . . . l . . . l . . . | l . . . l . . . l . . . l . . . | l . . . l . . . l . . . l . . . | l . . . l . . . l . . . l . . .",
+          "H2": "h . h . H . h . h . h . H . h . | h . h . H . h . h . h . H . h . | h . h . H . h . h . h . H . h . | h . h . H . h . h . h . H . h .",
+          "OR": "F5 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . ."
+        },
+        "T5": {
+          "T":  "A1 - . . . . A1 - . . . . . . . . | A1 - . . . . A1 - . . . . . . . . | A1 - . . . . A1 - . . . . . . . . | A1 - . . . . A1 - . . . . . . . .",
+          "TD": "A1 - . . . . A1 - . . . . . . . . | A1 - . . . . A1 - . . . . . . . . | A1 - . . . . A1 - . . . . . . . . | A1 - . . . . A1 - . . . . . . . .",
+          "N":  ". . . . q . . . . . . . q . . . | . . . . q . . . . . . . q . . . | . . . . q . . . . . . . q . . . | . . . . q . . . . . . . q . . .",
+          "DR": "A5 - - - - - - - - - - - - - - - | - - - - - - - - - - - - - - - - | - - - - - - - - - - - - - - - - | - - - - - - - - - - - - - - - -",
+          "P2": "E6 - - - - - - - - - - - - - - - | - - - - - - - - - - - - - - - - | Eb6 - - - - - - - - - - - - - - - | - - - - - - - - - - - - - - - -",
+          "PZ": "A2 . E3 . A2 . . . Bb2 . A2 . . . E3 . | A2 . E3 . A2 . . . Bb2 . A2 . . . E3 . | A2 . E3 . A2 . . . Bb2 . A2 . . . E3 . | A2 . E3 . A2 . . . Bb2 . A2 . Bb2 . A2 .",
+          "K1": "l . . . l . . . l . . . l . . . | l . . . l . . . l . . . l . . . | l . . . l . . . l . . . l . . . | l . . . l . . . l . . . l . . .",
+          "H2": "h . h . H . h . h . h . H . h . | h . h . H . h . h . h . H . h . | h . h . H . h . h . h . H . h . | h . h . H . h . h . h . H . h .",
+          "OR": "F5 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . ."
+        }
+      }
+    }
   },
 
   /* 기억의 마르세유(B2, E-13): 미궁 주제에서 D를 뺀 층(E 에올리안 6음, LP 2000, 메아리). 별도 id라 drop 기억 문제 없음.
@@ -20562,7 +21290,18 @@ MC.data.bgm = {
         "E":   ". . . . . . . . | . . . . *5 - . . | . . . . . . . . | . . . . . . . ."
       }
     },
-    "order": ["A","B","M","A","B","M2"], "loopTo": 0
+    "order": ["A","B","M","A","B","M2"], "loopTo": 0,
+    /* (snd75) 16비트: 꿈 B2 — 하프 베이스 줄·합창 패드(pad 층)·유리 종(미궁 주제)·높은 하프 메아리. 붉은 층의 떨리는 오르골(R)은 그대로(이야기 장치), 붉은 드론(W)은 어두운 첼로(LP 480 그대로) */
+    "sfc": {
+      "vol": 0.8,
+      "ch": {
+        "T":   {"w":"hp","v":0.16,"gate":1,"r":900},
+        "PAD": {"w":"ch","v":0.035,"cho":[0.3,3,0.5]},
+        "L":   {"w":"gl","v":0.12},
+        "E":   {"w":"hp","v":0.045,"gate":1,"r":600},
+        "W":   {"w":"vc","v":0.018}
+      }
+    }
   },
 
   /* 복수심(분노 계열 보스): F단조(파리아의 F장조가 뒤집힌 거울) ♩=160. 16분 3+3+2 강박(트레실로), 셋씩 묶인 불꽃 음형(FL).
@@ -20645,7 +21384,32 @@ MC.data.bgm = {
         "FB": "Fm - - - - - - - - - - - - - - - | Gb - - - - - - - - - - - - - - - | Fm - - - - - - - - - - - - - - - | C7 - - - - - - - - - - - - - - -"
       }
     },
-    "order": ["I","A","B","A2","C"], "loopTo": 1
+    "order": ["I","A","B","A2","C"], "loopTo": 1,
+    /* (snd75) 16비트: 복수심 — 트럼펫 선율·호른 옥타브 아래(A2)·플루트 불꽃 음형·스피카토 3+3+2 화음·콘트라베이스·첼로 베이스 겹침·팀파니.
+       유혹 층: 합창 패드(LP 1300)·넓은 비브라토 오보에(비틀린 마르세유)·속삭임 그대로. 폭주 층: 16분 하이햇(샘플)·16분 첼로. 줄·레이어 그대로(43.5초, 늘리지 않음) */
+    "sfc": {
+      "echo": 0.281, "fb": 0.3, "pbw": "vc", "vol": 0.69,
+      "ch": {
+        "P1": {"w":"tp","v":0.17,"a":15,"d":150,"s":0.8,"r":60,"gate":0.85},
+        "PL": {"w":"hn","v":0.1,"lp":null,"r":80},
+        "FL": {"w":"fl","v":0.06,"a":10,"d":80,"s":0.7,"r":40,"gate":0.8,"vib":null},
+        "ST": {"w":"sp","v":0.1,"lp":null,"r":40},
+        "T":  {"w":"cb","v":0.26,"a":6,"d":120,"s":0.6,"r":50,"gate":0.7},
+        "TS": {"w":"vc","v":0.06,"a":6,"d":90,"s":0.5,"r":40,"gate":0.6},
+        "N":  {"v":0.66},
+        "TP": {"w":"ch","v":0.03},
+        "TL": {"w":"ob","v":0.08,"a":60},
+        "FB": {"w":"vc","v":0.1,"a":4,"d":60,"s":0.4,"r":30,"gate":0.5},
+        "TI": {"w":"tm","v":0.28,"send":{"rev":0.12}}
+      },
+      "pat": {
+        "I":  { "TI": "F2 . . . . . . . . . . . C2 C2 C2 C2" },
+        "A":  { "TI": "F2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | C2 . . . . . . . C2 . . . . . . . | F2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | C2 . . . . . . . C2 . C2 . C2 C2 C2 C2" },
+        "A2": { "TI": "F2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | C2 . . . . . . . C2 . . . . . . . | F2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | C2 . . . . . . . C2 . C2 . C2 C2 C2 C2" },
+        "B":  { "TI": "F2 . . . . . . . . . . . . . . . | F2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | F2 . . . . . . . . . . . . . . . | F2 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . . | C2 . . . C2 . . . C2 . C2 . C2 C2 C2 C2" },
+        "C":  { "TI": "F2 . . . . . . . F2 . . . . . . . | . . . . . . . . . . . . . . . . | F2 . . . . . . . F2 . . . . . . . | C2 . . . C2 . . . C2 . C2 . C2 C2 C2 C2" }
+      }
+    }
   },
 
   /* ───────────────────────── S3 ───────────────────────── */
@@ -20685,7 +21449,17 @@ MC.data.bgm = {
         "N":   "q . . . q . . . | q . . . . q . . . . | q . . . q . . . | . q . . q . . ."
       }
     },
-    "order": ["A","B","S","B"], "loopTo": 0
+    "order": ["A","B","S","B"], "loopTo": 0,
+    /* (snd75) 16비트: 꿈 B3 — 하프 베이스 줄·합창 패드·유리 종(역행 미궁 주제)·거꾸로 부푸는 현(RV: 느린 어택, 뚝 끊김 그대로). 어두운 틱 그대로 */
+    "sfc": {
+      "vol": 0.8,
+      "ch": {
+        "T":   {"w":"hp","v":0.16,"gate":1,"r":900},
+        "PAD": {"w":"ch","v":0.032,"cho":[0.3,3,0.5]},
+        "L":   {"w":"gl","v":0.12},
+        "RV":  {"w":"str","v":0.05,"a":1100,"d":50,"s":1,"r":25,"gate":1}
+      }
+    }
   },
 
   /* 바다 밑의 자루들(B4, E-13): D·G·F#를 뺀 층(E·A·B·C 네 음), ♩=52, LP 900. 거의 음이 없다 — 낮은 삼각파 베이스와 물속 저음 드론(E·B),
@@ -20709,7 +21483,16 @@ MC.data.bgm = {
         "EC": ". . . . . . . . | . . *5 . . . . . | . . . . . . . . | . . . . . . *4 ."
       }
     },
-    "order": ["A","B"], "loopTo": 0
+    "order": ["A","B"], "loopTo": 0,
+    /* (snd75) 16비트: 꿈 B4 — 물속 콘트라베이스(느린 부풂)·어두운 합창 드론·유리 종 메아리(E·B만, 긴 에코 그대로) */
+    "sfc": {
+      "vol": 0.95,
+      "ch": {
+        "T":  {"w":"cb","v":0.2,"a":300,"d":1500,"s":0.6,"r":900,"gate":0.95,"vib":null},
+        "DR": {"w":"ch","v":0.03},
+        "EC": {"w":"gl","v":0.06}
+      }
+    }
   },
 
   /* 광기의 왕(B3 보스): 3/4 왈츠(12스텝 마디: 쿵 W B·짝짝 W 화음·틱 N3) 위에 4/4 베이스와 킥(16스텝 T·N4)이 엇갈려 돈다 — 네 마디마다 겨우 만남(LCM 48).
@@ -20767,7 +21550,22 @@ MC.data.bgm = {
         "N3":  ". . . . q . . . q . . . | . . . . q . . . q . . . | . . . . q . . . q . . . | . . . . q . . . q . . . | . . . . q . . . q . . . | . . . . q . . . q . . . | . . . . q . . . q . . . | . . . . q . . . q . . ."
       }
     },
-    "order": ["I","A","B","A2"], "loopTo": 1
+    "order": ["I","A","B","A2"], "loopTo": 1,
+    /* (snd75) 16비트: 광기의 왕 — 걸린 오르골(O, 파리아 주제 역행)은 그대로. 회전목마 왈츠 화음은 아코디언, 왈츠 '쿵'은 콘트라베이스 피치카토,
+       엇갈리는 4/4 베이스는 팀파니 + 콘트라베이스(LP 650), 거울 선율(M)은 유리 종, 패드는 현. rest(1마디 무음)·줄 그대로(35.5초, 늘리지 않음) */
+    "sfc": {
+      "pbw": "vc", "vol": 0.72,
+      "ch": {
+        "M":   {"w":"gl","v":0.07,"lp":null},
+        "W":   {"w":"acc","v":0.1,"lp":null,"vib":null},
+        "WB":  {"w":"bas","v":0.2},
+        "T":   {"w":"tm","v":0.18,"r":300},
+        "TS":  {"w":"cb","v":0.045,"a":6,"d":120,"s":0.4,"r":40,"gate":0.55},
+        "PAD": {"w":"str","v":0.02},
+        "N4":  {"v":0.62},
+        "N3":  {"v":0.5}
+      }
+    }
   },
 
   /* ───────────────────────── S4 2차 ───────────────────────── */
@@ -20809,7 +21607,23 @@ MC.data.bgm = {
         "N":   "b . . . . . | . . . . . . | b . . . . . | . . . . . . | b . . . . . | . . . . . . | b . . . . . | . . . b . ."
       }
     },
-    "order": ["A1","B","A2"], "loopTo": 0
+    "order": ["A1","B","A2"], "loopTo": 0,
+    /* (snd75) 16비트: 바다 — 선율(바다 위의 목소리)은 첼로 독주, 오르골 표시음 O2는 그대로, 물결 베이스는 콘트라베이스(LP 900), 현 패드, 새 하프 아르페지오(패드와 같은 화음 줄),
+       먼 파도는 큰북 샘플. 장조 remap(major: F→F#·C→C#·B♭→B, rq 3)은 하프 화음 음까지 그대로 따른다 */
+    "sfc": {
+      "pbw": "vc", "vol": 0.89,
+      "ch": {
+        "O1":  {"w":"vc","v":0.22,"lp":null,"send":{"rev":0.35}},
+        "T":   {"w":"cb","v":0.2,"a":200,"d":700,"s":0.6,"r":400,"gate":0.95},
+        "PAD": {"w":"str","v":0.028,"cho":[0.3,2.5,0.5]},
+        "HA":  {"chord":true,"w":"hp","v":0.08,"arp":"012421","win":50,"stack":true,"gate":1,"r":800,"pan":0.2,"send":{"rev":0.35}}
+      },
+      "pat": {
+        "A1": { "HA": "Dm - - - - - | Gm - - Dm - - | Gm - - Am - - | Am - - - - - | Dm - - - - - | Bb - - C - - | Dm - - Am - - | Dm - - - - -" },
+        "B":  { "HA": "Bb - - - - - | F - - - - - | Gm - - - - - | Am - - - - -" },
+        "A2": { "HA": "Dm - - - - - | Gm - - Dm - - | Gm - - Am - - | Am - - - - - | Dm - - - - - | Bb - - C - - | Dm - - Am - - | Dm - - - - -" }
+      }
+    }
   },
 
   /* 엔딩(장면 14 「끝」 → 15 기록 → 타이틀, H2-15 — 클립 ending 대신 합성): 파도(amb sea_calm) 위 오르골 한 줄. F장조 3/4 ♩60.
@@ -20861,7 +21675,8 @@ MC.data.bgm = {
         "N":  "k . . . s . . . k . . . kC . . . . . . ."
       }
     },
-    "order": ["J"]
+    "order": ["J"],
+    "sfc": { "ch": { "P1": {"w":"tp","v":0.16}, "P2": {"w":"hn","v":0.1}, "S": {"w":"gl","v":0.05}, "T": {"w":"cb","v":0.25,"r":300}, "N": {"v":0.7} } }   /* (snd75) 트럼펫·호른·유리 종·콘트라베이스 — vol .63(꿈속 절제) 그대로 */
   },
 
   "levelup": {
@@ -20882,7 +21697,8 @@ MC.data.bgm = {
         "N":  ". . . . . . x . . . . . . . . . . . . . . . . ."
       }
     },
-    "order": ["J"]
+    "order": ["J"],
+    "sfc": { "ch": { "P1": {"w":"hp","v":0.22}, "P2": {"w":"gl","v":0.06}, "S": {"w":"gl","v":0.05}, "T": {"w":"vc","v":0.24,"r":300} } }   /* (snd75) 하프 상행·유리 종·첼로 */
   },
 
   "item": {
@@ -20899,7 +21715,8 @@ MC.data.bgm = {
         "T":  "D3 - - - - - - - - - - -"
       }
     },
-    "order": ["J"]
+    "order": ["J"],
+    "sfc": { "ch": { "P1": {"w":"hp","v":0.15}, "P2": {"w":"gl","v":0.045}, "T": {"w":"vc","v":0.2,"r":300} } }   /* (snd75) 하프·유리 종·첼로 */
   },
 
   "faint": {
@@ -20916,7 +21733,8 @@ MC.data.bgm = {
         "PAD": "Dm - - - Bb - - - A - - - Dm - - -"
       }
     },
-    "order": ["J"]
+    "order": ["J"],
+    "sfc": { "ch": { "P1": {"w":"ob","v":0.2,"lp":null}, "T": {"w":"vc","v":0.18,"a":60,"r":500}, "PAD": {"w":"str","v":0.02} } }   /* (snd75) 오보에 하행·첼로·현 */
   },
 
   "boss_clear": {
@@ -20937,7 +21755,8 @@ MC.data.bgm = {
         "N":   "k . . . s . . . k . . . kC . . . . . . . . . . . . . . . . . . ."
       }
     },
-    "order": ["J"]
+    "order": ["J"],
+    "sfc": { "ch": { "P1": {"w":"tp","v":0.13,"r":500}, "P2": {"w":"hn","v":0.08,"r":500}, "T": {"w":"cb","v":0.25,"r":500}, "PAD": {"w":"str","v":0.03}, "N": {"v":0.7} } }   /* (snd75) 트럼펫·호른·콘트라베이스·현 */
   },
 
   /* [b43 T4·B4-4] 복수심을 이긴 뒤(troops.revenge.clear): 팡파르 대신 F단조 오르골 화음을 아래에서 위로 굴린다(F4·A♭4·C5·F5, 0.125초 간격) + 낮은 F3.
@@ -20960,7 +21779,8 @@ MC.data.bgm = {
         "T":  "F3 - - - - - - - - - - - - - - -"
       }
     },
-    "order": ["J"]
+    "order": ["J"],
+    "sfc": { "ch": { "T": {"w":"vc","v":0.13,"a":30,"d":900,"s":0.6,"r":900} } }   /* (snd75) 오르골 넷은 그대로, 낮은 F만 첼로 */
   },
 
   /* [b43 T4·B4-4] 광기의 왕을 이긴 뒤(troops.madking.clear): 태엽이 풀리는 오르골 — E5 → D#5 → D5, 반음씩 내려가며 간격이 늘고 마지막 음은 짧게 멎는다. */
@@ -20995,7 +21815,8 @@ MC.data.bgm = {
         "T": "D3 - - - - - - - - - - -"
       }
     },
-    "order": ["J"]
+    "order": ["J"],
+    "sfc": { "ch": { "P": {"w":"gl","v":0.03}, "T": {"w":"vc","v":0.16,"r":400} } }   /* (snd75) 오르골 그대로 + 유리 종 겹침·첼로 */
   },
 
   /* 동료 합류(E-9 ally, 약 3초): 파리아 주제 첫 마디를 오르골로 + 왈츠 반주, 삼각파 F3→C3→F3, 끝에 작은 종. F장조라 아래에 깔린 faria 곡과 어울린다. */
@@ -21015,7 +21836,8 @@ MC.data.bgm = {
         "BL": ". . . . . . | F5 - - -"
       }
     },
-    "order": ["J"]
+    "order": ["J"],
+    "sfc": { "ch": { "T": {"w":"vc","v":0.18,"r":500} } }   /* (snd75) 오르골·종 그대로, 베이스만 첼로 */
   },
 
   /* 공방(craft, 약 1초): 두드림(효과음 craft)이 먼저 나가도록 세 스텝 쉬고, 오르골 F장조 상행 + 작은 종. */
@@ -55563,6 +56385,9 @@ MC.addLang('ko', {
     "set.sfx": "효과음",
     "set.voice": "대사음",
     "set.phoneBass": "폰 저음 보강",
+    "set.tone": "음색",
+    "set.toneSfc": "16비트",
+    "set.toneNes": "클래식",
     "set.mute": "소리 끄기",
     "set.sndCap": "소리 자막",
     "set.textSpeed": "대사 속도",
@@ -56067,6 +56892,9 @@ MC.addLang('ko', {
     "set.voice": { "w": 96, "font": "body", "lines": 1, "note": "설정 행(대사 타자음 켬/끔) — 켬/끔 줄은 이름 칸 약 96px" },
     "set.mute": { "w": 96, "font": "body", "lines": 1, "note": "설정 행(모든 소리 끄기) — 켬/끔 줄, 이름 칸 약 96px" },
     "set.phoneBass": { "w": 96, "font": "body", "lines": 1, "note": "설정 '소리' 탭 켬/끔 줄([s46-sound B4-2] 폰 스피커 저음 보강 — 이름 칸 96px에 「폰 스피커 저음 보강」(111px)이 안 들어가 「폰 저음 보강」(70px). 음악의 낮은 베이스를 한 옥타브 위로 겹쳐 작은 스피커에서도 들리게. 이어폰이면 끄는 사람도 있음). 이름 칸 약 96px" },
+    "set.tone": { "w": 96, "font": "body", "lines": 1, "note": "설정 '소리' 탭 ◀ ▶ 줄([snd75] 음악 음색 — 16비트(기본: 현·관·하프 같은 샘플 결 악기 + 늘린 곡) / 클래식(예전 8비트 펄스 음색, 비교·회귀용). 바꾸면 지금 곡이 같은 자리에서 새 음색으로 이어진다). 이름 칸 약 96px" },
+    "set.toneSfc": { "w": 44, "font": "body", "lines": 1, "note": "음색 값 — 16비트(슈퍼패미컴 결 악기). 값 칸 ◀ ▶ 사이 44px, 38px를 넘으면 그 줄 값 전부 small" },
+    "set.toneNes": { "w": 44, "font": "body", "lines": 1, "note": "음색 값 — 클래식(예전 8비트 펄스·삼각파 음색). 값 칸 44px" },
     "set.sndCap": { "w": 96, "font": "body", "lines": 1, "note": "설정 '소리' 탭 켬/끔 줄([u51 B8-7] 소리 자막 — 이야기에서 들어야 하는 효과음(노크·긁는 소리·발소리·철문·물방울·종·대포…)을 대사창 위에 「[벽 너머 · 긁는 소리]」 한 줄로. 처음엔 자동: 소리를 껐거나 효과음 0이면 켬). 이름 칸 약 96px" },
     "set.textSpeed": { "w": 66, "font": "body", "lines": 1, "note": "설정 행(대사 글자 속도) — ◀ 값 ▶ 줄은 오른쪽 92px(타이틀 설정 창 폭 168 기준 이름 칸 약 66px)" },
     "set.battleSpeed": { "w": 66, "font": "body", "lines": 1, "note": "설정 행(전투 진행 속도) — ◀ 값 ▶ 줄, 이름 칸 약 66px" },
@@ -70598,6 +71426,8 @@ MC.addLang('en', {
       { k: 'sfx', label: L('set.sfx'), type: 'vol' },
       { k: 'voice', label: L('set.voice'), type: 'bool' },
       { k: 'phoneBass', label: L('set.phoneBass'), type: 'bool' },   // [s46-sound B4-2] 폰 스피커 저음 보강(음악 베이스 한 옥타브 위 — music.js가 박동마다 따라감)
+      // [snd75] 음악 음색: ◀ 클래식(8비트) / 16비트 ▶ — 저장값 없으면 16비트(opt 기본 칸 1). music.js가 박동마다 따라가 지금 곡을 같은 마디에서 새 음색으로 잇는다
+      { k: 'tone', label: L('set.tone'), type: 'opt', opts: [['nes', L('set.toneNes')], ['sfc', L('set.toneSfc')]] },
       { k: 'mute', label: L('set.mute'), type: 'bool' },
       // [u51 B8-7] 소리 자막(단서 효과음을 [ ] 한 줄로) — 저장값 ''(자동)이면 무음(소리 끄기·효과음 0)일 때 켬으로 보인다. 누르면 그 반대를 'on'/'off'로 저장(get/set: 저장값이 불이 아닌 줄)
       { k: 'sndCap', label: L('set.sndCap'), type: 'bool', get: () => !!(MC.sfx && MC.sfx.capOn && MC.sfx.capOn()), set: v => { MC.save.settings.sndCap = v ? 'on' : 'off'; } }] },
