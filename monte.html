@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.17-tapfb';
+  var VERSION = '0.7.18-intropage';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -74100,11 +74100,12 @@ MC.addLang('en', {
     });
   }
 
-  // 소개 순서: 본 것으로 적고(중간에 끊겨도 다시 뜨지 않게) → 대화창이 열려 있으면 닫고 → 카드
+  // 소개 순서: 본 것으로 적고(중간에 끊겨도 다시 뜨지 않게) → 대화창이 열려 있으면 닫고 → 인물 기록 쪽(선 그림이 있으면 — [intro-page]) 또는 카드
   async function present(id, opt) {
     mark(id); readBits(id, 1);
     if (MC.dialogue && MC.dialogue.close) await MC.dialogue.close();
-    await card(id, opt);
+    if (hasIl(id)) await page(id, { intro: true, ms: opt && opt.ms });
+    else await card(id, opt);
   }
   // events.js say op 훅: 소개가 필요하면 Promise(카드가 끝난 뒤 풀림), 아니면 null(대사를 곧바로 — 한 박도 늦추지 않는다)
   function before(who, o) {
@@ -74131,7 +74132,9 @@ MC.addLang('en', {
      그 아래: 명패(게임 속 도트 인물 + 이름 + 직업) → 소개 두 줄 → 가는 줄 → 열린 기록 줄(새 줄 금색 점) → 「─ 아직 모른다 ─ (n)」. 길면 위아래로 끌어 넘긴다(쪽 전체).
      에드몽: 세 시기(열아홉 il_dantes_e15 · 이프 성 e20 · 탈옥 뒤 e33)를 옆으로 넘긴다. 지나지 않은 시기는 없다. 기본은 지금 시기(main.js growth: 0~2 → 0 · 3~5 → 1 · 6 → 2).
        e20은 1820 무렵 얼굴(긴 머리·턱수염)이라 growth 3(d3, 1820)부터 연다 — 수감 초기 1~2(1815~1817)에는 열아홉 한 장만(직업은 지금 직업).
-     장소 그림(data/vistas.js vs_*)을 플레이어가 본 뒤에는 톤 바탕 위·선 그림 밑에 그 그림을 어둡고 흐릿하게 깐다(아래 §12 vsLayer · 인계 §12). */
+     장소 그림(data/vistas.js vs_*)을 플레이어가 본 뒤에는 톤 바탕 위·선 그림 밑에 그 그림을 어둡고 흐릿하게 깐다(아래 §12 vsLayer · 인계 §12).
+     [intro-page] 처음 만날 때(present)도 선 그림이 있으면 이 쪽을 opt.intro로 띄운다(10-29 사용자 결정 — 띠 카드 대신).
+       뒤로 단추·열린 기록 줄·「아직 모른다」 없이 소개까지만 · 250ms 뒤 아무 데나 탭하면 닫힘 · 카드와 같은 셈으로 저절로 닫힘 · 페이드가 걸려 있으면 월드 아래로(coverBegin). */
   const ERA_IL = ['il_dantes_e15', 'il_dantes_e20', 'il_dantes_e33'];
   const ERA_KEY = ['people.era0', 'people.era1', 'people.era2'];
   const tf = (k, p) => MC.i18n.tf(k, p);
@@ -74341,6 +74344,7 @@ MC.addLang('en', {
     const sc = { name: 'people_page', opaque: true, blocking: true, id, t: 0, wait: 0, closing: -1, scroll: 0, vel: 0, maxScroll: 0, drag: null, dragX: 0,
       era: list0[list0.length - 1], eraFrom: -1, eraT: 999, eraDir: 0, eraOff: 0, fresh: new Set(opt.fresh || []), lastKey: null, holes: [] };
     if (opt.era != null && list0.indexOf(opt.era) >= 0) sc.era = opt.era;
+    const INTRO = !!opt.intro, HOLD_I = opt.ms != null ? Math.max(600, +opt.ms) : 3400 + Array.from(introOf(id).replace(/\s/g, '')).length * 55;   // [intro-page]
     const P = () => g.uiPal;
     const bBack = new MC.ui.Button({ w: 24, h: 24, style: 'ghost', sfx: 'ui_cancel', onTap: () => close() });
     const bPrev = new MC.ui.Button({ w: 30, h: 14, style: 'ghost', sfx: null, onTap: () => step(-1) });
@@ -74358,7 +74362,7 @@ MC.addLang('en', {
       setEra(L[n], d, off);
       return true;
     }
-    function buttons() { const out = [bBack]; if (list().length > 1) out.push(bPrev, bNext); return out; }
+    function buttons() { if (INTRO) return []; const out = [bBack]; if (list().length > 1) out.push(bPrev, bNext); return out; }
 
     // ---- 배치(매 프레임) ----
     function lay() {
@@ -74370,6 +74374,7 @@ MC.addLang('en', {
       const lw = 152, items = [];
       const intro = introOf(id);
       if (intro) items.push({ kind: 'intro', ls: MC.text.wrap(intro, 160, 'body') });
+      if (INTRO) return items;
       for (const l of lines(id)) if (l.k > 0) items.push({ kind: 'bio', k: l.k, ls: MC.text.wrap(l.t, lw, 'body') });
       const e = entry(id), nLock = (e && e.bio || []).filter(b => b && b.t && !MC.game.check(b.cond)).length;
       if (nLock) items.push({ kind: 'lock', ls: [tf('people.locked', { n: nLock })] });
@@ -74389,6 +74394,10 @@ MC.addLang('en', {
       if (sc.t > 400 && !sc.drag && sc.eraT > 300) { const n0 = VSB.n; for (const v of list()) if (VSB.n === n0) vsFor(v, true); else break; }   // 넘길 시기 판은 들어온 뒤 가만할 때 한 프레임에 하나
       if (sc.wait < 300 && (!g.ilReady(ilKey(id, sc.era)) || vsFor(sc.era, false) === false)) { sc.wait += dt; return; }   // 그림 디코드(보통 1~3프레임) 뒤에 미끄러져 들어온다
       sc.t += dt; sc.eraT += dt;
+      if (INTRO) {                                          // [intro-page] 여는 소리 · 저절로 닫힘(누르던 손가락이면 0.7초 뒤)
+        if (!sc.sfxd) { sc.sfxd = true; U.sfx('page', { gain: 0.7, pitch: 0.9 }); }
+        if (sc.closing < 0 && (sc.t >= HOLD_I || (sc.t >= 700 && MC.input.heldMs && MC.input.heldMs() >= 350))) close();
+      }
       for (const b of buttons()) if (b.update) b.update();
       const kd = MC.input.keyDir ? MC.input.keyDir() : null;
       if (kd !== sc.lastKey) { sc.lastKey = kd; if (kd === 'left') step(-1); else if (kd === 'right') step(1); }
@@ -74397,10 +74406,12 @@ MC.addLang('en', {
         sc.scroll += sc.vel * dt; sc.vel *= Math.pow(0.994, dt);
         if (sc.scroll < 0 || sc.scroll > sc.maxScroll) { sc.scroll = MC.clamp(sc.scroll, 0, sc.maxScroll); sc.vel = 0; }
       }
-      if (sc.closing >= 0) { sc.closing += dt; if (sc.closing >= 140) { MC.scene.remove(sc); } }
+      if (sc.closing >= 0) { sc.closing += dt; if (sc.closing >= 140) { if (INTRO) U.coverEnd(); MC.scene.remove(sc); } }
     };
+    if (INTRO) sc.enter = () => { U.coverBegin(); };
     sc.onInput = ev => {
       if (sc.closing >= 0) return true;
+      if (INTRO) { if ((ev.type === 'tap' || ev.type === 'long') && sc.t >= IGNORE) close(); return true; }
       for (const b of buttons()) if (b.onInput(ev)) return true;
       const d = sc.drag;
       switch (ev.type) {
@@ -74441,7 +74452,7 @@ MC.addLang('en', {
       }
       return true;
     };
-    sc.onBack = () => { U.sfx('ui_cancel'); close(); };
+    sc.onBack = () => { if (INTRO) { if (sc.t >= IGNORE) close(); return; } U.sfx('ui_cancel'); close(); };
 
     // ---- 그리기 ----
     function figX(era, W) { const e = (MC.data.ilC || {})[ilKey(id, era)] || {}; return e.side === 'R' ? W - IL_W : 0; }
@@ -74479,8 +74490,8 @@ MC.addLang('en', {
       const sprY = plY + plH - 4 - ss.h;
       holes.push([plX, Math.min(plY, sprY) - 1, plW, plH + Math.max(0, plY - sprY) + 2]);
       bBack.x = X0 + 2; bBack.y = 2 + top;
-      holes.push([bBack.x, bBack.y, bBack.w, bBack.h + 1]);
-      const barH = top + 30, bar = slotY + slotH < barH + 12;   // 그림이 위로 다 넘어가면 뒤로 단추 뒤에 어두운 띠(글이 그 밑으로 지나간다)
+      if (!INTRO) holes.push([bBack.x, bBack.y, bBack.w, bBack.h + 1]);
+      const barH = top + 30, bar = !INTRO && slotY + slotH < barH + 12;   // 그림이 위로 다 넘어가면 뒤로 단추 뒤에 어두운 띠(글이 그 밑으로 지나간다)
       if (bar) holes.push([0, 0, W, barH + 4]);
       const L = list(), multi = L.length > 1;
       let pill = null;
@@ -74541,6 +74552,7 @@ MC.addLang('en', {
       }
       // 뒤로 단추(그림 위)
       if (bar) { g.rect(0, 0, W, barH, PAGE_BG); g.ditherRect(0, barH, W, 4, PAGE_BG, 8); g.hline(X0 + 4, barH - 1, 172, g.mix(Pl.f, Pl.D, 0.6)); }
+      if (INTRO) return;
       bBack.render();
       const by = bBack.y + (bBack.pressed ? 1 : 0);
       g.frame(bBack.x, by, bBack.w, bBack.h, { small: true });
