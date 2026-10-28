@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.5-sound';
+  var VERSION = '0.7.6-fix';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -5779,8 +5779,16 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
    * 선율·화성·박 줄은 옛 데이터를 그대로 쓰고 채널 음색·새 성부·새 패턴만 더한다. 채널이 샘플 악기로 바뀌면서 엔벨로프를 안 주면 옛 펄스용 a d s r gate는 지우고 악기 기본값을 쓴다(패드 pad:true는 제외).
    * 값이 null인 채널 속성은 지운다(예: "lp": null).
    */
+  /**
+   * (snd75b) 곡의 16비트 편곡: sfcv {v1:{…}, v2:{…}} + sfcUse "v1"(판 고르기 — 이 한 줄만 바꾸면 된다) 또는 옛 형식 sfc {…}.
+   * sfcPat = 판들이 함께 쓰는 새 패턴(판의 pat보다 먼저 병합, 판에 없는 채널 줄은 빠진다)
+   */
+  function sfcOf(raw) { if (!raw) return null; if (raw.sfcv) return raw.sfcv[raw.sfcUse || 'v1'] || null; return raw.sfc || null; }
+  M._sfcOf = sfcOf;
   function mergeSfc(raw) {
-    const o = raw.sfc, d = Object.assign({}, raw); delete d.sfc;
+    const o0 = sfcOf(raw), o = Object.assign({}, o0, { pat: Object.assign({}, raw.sfcPat || {}) });
+    for (const pn in (o0.pat || {})) o.pat[pn] = Object.assign({}, o.pat[pn] || {}, o0.pat[pn]);
+    const d = Object.assign({}, raw); delete d.sfc; delete d.sfcv; delete d.sfcPat; delete d.sfcUse;
     for (const k in o) if (k !== 'ch' && k !== 'pat') d[k] = o[k];
     d.ch = Object.assign({}, raw.ch);
     const och = o.ch || {};
@@ -5800,7 +5808,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   }
   function compile(id) {
     const raw0 = MC.data && MC.data.bgm && MC.data.bgm[id];
-    const sfc = !!(raw0 && raw0.sfc && sfcOn()), ck = id + (sfc ? '|sfc' : '|nes');
+    const sfc = !!(sfcOf(raw0) && sfcOn()), ck = id + (sfc ? '|sfc:' + (raw0.sfcv ? (raw0.sfcUse || 'v1') : '') : '|nes');
     if (cache[ck]) return cache[ck];
     if (!raw0) { A.warn('bgm:' + id, '없는 곡 id: ' + id); return null; }
     const d = sfc ? mergeSfc(raw0) : raw0;
@@ -6526,7 +6534,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (on === toneLast) return; toneLast = on;
     if (on) warm();
     if (!main || main.fo || main.ended || !A.canPlay()) return;
-    const id = main.s.id, raw = MC.data.bgm && MC.data.bgm[id]; if (!raw || !raw.sfc) return;
+    const id = main.s.id, raw = MC.data.bgm && MC.data.bgm[id]; if (!sfcOf(raw)) return;
     const pos = M.pos(), s = compile(id); if (!s) return;
     startSong(s, { fade: 450, from: pos, restart: true, L: pos.L, bpm: pos.bpm, fx: { filter: fxHold.filter, detune: fxHold.detune }, R: main.pendR ? main.pendR.v : main.rm });
   }
@@ -6536,7 +6544,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const out = [], seen = {}, bgm = (MC.data && MC.data.bgm) || {};
     const add = (k) => { if (!seen[k]) { seen[k] = 1; out.push(k); } };
     for (const id in bgm) {
-      const o = bgm[id].sfc; if (!o) continue;
+      const o = sfcOf(bgm[id]); if (!o) continue;
       const ch = Object.assign({}, bgm[id].ch, o.ch || {});
       for (const cn in ch) {
         const cd = ch[cn] && Object.assign({}, bgm[id].ch[cn] || {}, ch[cn]);
@@ -6881,7 +6889,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const d = MC.data && MC.data.bgm && MC.data.bgm[id]; if (!d) return [];
     const set = {}; for (const k in (d.layers || {})) set[k] = 1;
     for (const cn in (d.ch || {})) { if (d.ch[cn].layer) set[d.ch[cn].layer] = 1; if (d.ch[cn].unless) set[d.ch[cn].unless] = 1; }
-    const sc = d.sfc && d.sfc.ch; if (sc) for (const cn in sc) { if (sc[cn] && sc[cn].layer) set[sc[cn].layer] = 1; if (sc[cn] && sc[cn].unless) set[sc[cn].unless] = 1; }   // (snd75) 16비트 덧씌우기 채널
+    const sc = sfcOf(d) && sfcOf(d).ch; if (sc) for (const cn in sc) { if (sc[cn] && sc[cn].layer) set[sc[cn].layer] = 1; if (sc[cn] && sc[cn].unless) set[sc[cn].unless] = 1; }   // (snd75) 16비트 덧씌우기 채널
     return Object.keys(set);
   };
   M._compile = compile;
@@ -18467,6 +18475,9 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       for (const a of e.ai || []) if (!acts[a.act] && !skills[a.act]) err(w, '없는 행동 ' + a.act);
       for (const d of e.drops || []) if (!items[d.id]) err(w, '없는 드롭 ' + d.id);
       if (e.fam && bt.families && !bt.families[e.fam]) err(w, '없는 계열 ' + e.fam);
+      // [bug-battle] 능력치가 숫자가 아니면 피해 계산이 NaN이 되어 아군 HP까지 NaN으로 번진다(left_hand: 능력치가 주석 안에 빠져 있었음)
+      for (const k of ['hp', 'str', 'def', 'spd']) if (!(typeof e[k] === 'number' && isFinite(e[k]))) err(w, '능력치 ' + k + ' 없음(숫자 아님)');
+      for (const k of ['lv', 'mp', 'wis', 'exp']) if (e[k] != null && !(typeof e[k] === 'number' && isFinite(e[k]))) err(w, '능력치 ' + k + ' 숫자 아님');
     }
     for (const id of ['bread', 'water', 'memory_pipe', 'inspector_note']) if (!items[id]) err('battle', '계약 아이템 없음 ' + id);
     for (const id of ['memory', 'thought', 'endure']) if (!skills[id]) err('battle', '계약 기술 없음 ' + id);
@@ -20512,6 +20523,7 @@ MC.data.amb = {
        lq(레이어 반영 단위 스텝, 기본 마디), lqL(S4: 레이어별 반영 단위 {이름:스텝}), rq(S4: MC.music.remap 반영 단위 스텝, 기본 마디), lfade(레이어 채널 페이드 ms, 기본 250), jingle, tail(ms), ch, pat, order, loopTo}
    채널 {w 파형(p12/p25/p50/triangle/sine/square/saw/pad/orgel/bell), v, a d s r(ms), gate, vib[hz,cent,지연ms], trem[hz,깊이](채널 트레몰로), oct, lp, pan, send{rev,echo}, hum[ms,cent,반복확률], layer, unless(S4: 그 레이어가 켜지면 꺼지는 채널),
          kit(드럼), chord(화음 채널: arp 문자열 0~3 근·3·5·7음 4~7 옥타브 위 c 화음 b 베이스 x 쉼, win 창 하한 midi, stack, pad, alen, cmax)}
+   (snd75b) 판이 여럿인 곡: sfcv {v1:{…}, v2:{…}} + sfcUse "v1"(이 한 줄로 판 고르기) + sfcPat(판들이 함께 쓰는 새 패턴). 판이 하나면 sfc만.
    (snd75) 곡 sfc = 16비트 편곡 덧씌우기 {곡 키(vol·order·loopTo·echo·filter·pbw 폰 저음 악기·pbv·tlp), ch:{채널: 얕은 병합 | null}, pat:{패턴:{채널: 줄 | null}}} — 설정 음색이 16비트일 때만.
      16비트 악기 w: str 현 합주·sp 스피카토·vc 첼로·cb 콘트라베이스·fl 플루트·ob 오보에·cl 클라리넷·hn 호른·tp 트럼펫·tb 트롬본·acc 아코디언·ch 합창 / 뜯음: hp 하프·gt 기타·md 만돌린·hc 하프시코드·pz 피치카토·bas 콘트라베이스 피치카토 /
      침: pn 피아노·gl 글로켄·tm 팀파니. 채널 cho[hz, 깊이ms, 젖은 양] 코러스. 오르골·종(orgel·bell)은 두 음색에서 같다(이야기 장치).
@@ -20548,46 +20560,56 @@ MC.data.bgm = {
       }
     },
     "order": ["A1","B","A2"], "loopTo": 0,
-    /* (snd75) 16비트: 프로방스 항구 — 아코디언 선율·플루트 대선율·만돌린 뒷박·콘트라베이스 피치카토·셰이커. A1·B·A2는 옛 줄 그대로 음색만.
-       늘림(31.6 → 69.5초): C = 같은 주제를 만돌린이 한 옥타브 위에서 되뜯고(아코디언은 A2 대선율을 옥타브 아래로) · D = B 선율 두 번(둘째는 플루트가 옥타브 위로 겹침, 탬버린) · A3 = A2 + 현 패드·탬버린 */
-    "sfc": {
-      "order": ["A1","B","A2","C","D","A3"], "loopTo": 0, "echo": 0.526, "fb": 0.22, "vol": 0.72,
-      "ch": {
-        "P1": {"w":"acc","v":0.2,"vib":null,"send":{"rev":0.12,"echo":0.05}},
-        "C":  {"w":"fl","v":0.1,"send":{"rev":0.22,"echo":0.08}},
-        "H":  {"w":"md","v":0.13,"win":55,"pan":0.25,"r":220},
-        "T":  {"w":"bas","v":0.3},
-        "N":  {"v":0.7},
-        "MD": {"w":"md","v":0.15,"pan":-0.15,"r":200,"send":{"rev":0.15,"echo":0.1}},
-        "ST": {"chord":true,"pad":true,"w":"str","v":0.05,"a":500,"d":600,"s":0.9,"r":700,"gate":1,"win":57,"cho":[0.43,2.5,0.5],"send":{"rev":0.3}},
-        "TB": {"kit":true,"v":0.4,"pan":0.3}
+    /* (snd75b) 16비트 — 사용자 청취 뒤 다시 짬: 덜 얹고 합성 관악기는 뺐다. 판 둘(sfcUse 한 줄로 고름):
+       v1 = 항구 결(아코디언 선율·기타 뒷박·만돌린·콘트라베이스 피치카토·셰이커·탬버린) · v2 = 차분한 결(현 선율·하프 뒷박·피치카토 베이스).
+       늘림(31.6 → 69.5초, 두 판 같음): C = 같은 주제를 옥타브 위에서 되뜯음(아코디언·현은 A2 대선율을 옥타브 아래로) · D = B 선율 두 번 · A3 = A2(+탬버린). 옛 A1·B·A2 줄은 그대로 */
+    "sfcUse": "v1",
+    "sfcPat": {
+      "C": {
+        "P1": "F#4 - - - - - | G4 - - F#4 - - | E4 - - C#4 - - | E4 - - G4 - - | F#4 - - - - - | F#4 - - E4 - - | D4 - - C#4 - - | D4 - - D5 - E5",
+        "MD": "D5 D5 E5 F#5 F#5 A5 | B5 B5 B5 A5 A5 F#5 | G5 G5 F#5 E5 E5 D5 | E5 E5 E5 E5 E5 A4 | D5 D5 E5 F#5 F#5 A5 | D6 D6 D6 C#6 C#6 B5 | A5 A5 F#5 G5 G5 E5 | D5 D5 D5 D5 . .",
+        "H":  "D - - - - - | G - - D - - | G - - A7 - - | A - - A7 - - | D - - - - - | Bm - - A - - | D/A - - A7 - - | D - - - - -",
+        "T":  "D3 - - A2 - - | G2 - - D3 - - | G2 - - A2 - - | A2 - - C#3 - - | D3 - - A2 - - | B2 - - A2 - - | A2 - - A2 - - | D3 - - F#2 - -",
+        "N":  "kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z"
       },
-      "pat": {
-        "C": {
-          "P1": "F#4 - - - - - | G4 - - F#4 - - | E4 - - C#4 - - | E4 - - G4 - - | F#4 - - - - - | F#4 - - E4 - - | D4 - - C#4 - - | D4 - - D5 - E5",
-          "MD": "D5 D5 E5 F#5 F#5 A5 | B5 B5 B5 A5 A5 F#5 | G5 G5 F#5 E5 E5 D5 | E5 E5 E5 E5 E5 A4 | D5 D5 E5 F#5 F#5 A5 | D6 D6 D6 C#6 C#6 B5 | A5 A5 F#5 G5 G5 E5 | D5 D5 D5 D5 . .",
-          "H":  "D - - - - - | G - - D - - | G - - A7 - - | A - - A7 - - | D - - - - - | Bm - - A - - | D/A - - A7 - - | D - - - - -",
-          "ST": "D - - - - - | G - - D - - | G - - A7 - - | A - - A7 - - | D - - - - - | Bm - - A - - | D/A - - A7 - - | D - - - - -",
-          "T":  "D3 - - A2 - - | G2 - - D3 - - | G2 - - A2 - - | A2 - - C#3 - - | D3 - - A2 - - | B2 - - A2 - - | A2 - - A2 - - | D3 - - F#2 - -",
-          "N":  "kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z"
-        },
-        "D": {
-          "P1": "F#5 - E5 D5 - B4 | C#5 - - A4 - - | B4 - A4 G4 - F#4 | E4 - - - - A3 | F#5 - E5 D5 - B4 | C#5 - - A4 - - | B4 - A4 G4 - F#4 | E4 - - - - A3",
-          "C":  ". . . . . . | . . . . . . | . . . . . . | . . . . . . | F#6 - E6 D6 - B5 | C#6 - - A5 - - | B5 - A5 G5 - F#5 | E5 - - - - .",
-          "H":  "Bm - - - - - | A - - F#m - - | G - - Em - - | A7 - - - - - | Bm - - - - - | A - - F#m - - | G - - Em - - | A7 - - - - -",
-          "ST": "Bm - - - - - | A - - F#m - - | G - - Em - - | A7 - - - - - | Bm - - - - - | A - - F#m - - | G - - Em - - | A7 - - - - -",
-          "T":  "B2 - - F#2 - - | A2 - - F#2 - - | G2 - - E2 - - | A2 - - C#3 - - | B2 - - F#2 - - | A2 - - F#2 - - | G2 - - E2 - - | A2 - - C#3 - -",
-          "N":  "kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z Z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z Z",
-          "TB": ". . . . . . | . . . . . . | . . . . . . | . . . . . . | t . . t . . | t . . t . . | t . . t . . | t . t T . ."
-        },
-        "A3": {
-          "P1": "D4 - E4 F#4 - A4 | B4 - - A4 - F#4 | G4 - F#4 E4 - D4 | E4 - - - - A3 | D4 - E4 F#4 - A4 | D5 - - C#5 - B4 | A4 - F#4 G4 - E4 | D4 - - - - A3",
-          "C":  "F#5 - - - - - | G5 - - F#5 - - | E5 - - C#5 - - | E5 - - G5 - - | F#5 - - - - - | F#5 - - E5 - - | D5 - - C#5 - - | D5 - - - - -",
-          "H":  "D - - - - - | G - - D - - | G - - A7 - - | A - - A7 - - | D - - - - - | Bm - - A - - | D/A - - A7 - - | D - - - - -",
-          "ST": "D - - - - - | G - - D - - | G - - A7 - - | A - - A7 - - | D - - - - - | Bm - - A - - | D/A - - A7 - - | D - - - - -",
-          "T":  "D3 - - A2 - - | G2 - - D3 - - | G2 - - A2 - - | A2 - - C#3 - - | D3 - - A2 - - | B2 - - A2 - - | A2 - - A2 - - | D3 - - A2 - -",
-          "N":  "kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z",
-          "TB": "t . . t . . | t . . t . . | t . . t . . | t . . t . t | t . . t . . | t . . t . . | t . . t . . | T . . . . ."
+      "D": {
+        "P1": "F#5 - E5 D5 - B4 | C#5 - - A4 - - | B4 - A4 G4 - F#4 | E4 - - - - A3 | F#5 - E5 D5 - B4 | C#5 - - A4 - - | B4 - A4 G4 - F#4 | E4 - - - - A3",
+        "H":  "Bm - - - - - | A - - F#m - - | G - - Em - - | A7 - - - - - | Bm - - - - - | A - - F#m - - | G - - Em - - | A7 - - - - -",
+        "T":  "B2 - - F#2 - - | A2 - - F#2 - - | G2 - - E2 - - | A2 - - C#3 - - | B2 - - F#2 - - | A2 - - F#2 - - | G2 - - E2 - - | A2 - - C#3 - -",
+        "N":  "kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z Z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z Z",
+        "TB": ". . . . . . | . . . . . . | . . . . . . | . . . . . . | t . . t . . | t . . t . . | t . . t . . | t . t T . ."
+      },
+      "A3": {
+        "P1": "D4 - E4 F#4 - A4 | B4 - - A4 - F#4 | G4 - F#4 E4 - D4 | E4 - - - - A3 | D4 - E4 F#4 - A4 | D5 - - C#5 - B4 | A4 - F#4 G4 - E4 | D4 - - - - A3",
+        "C":  "F#5 - - - - - | G5 - - F#5 - - | E5 - - C#5 - - | E5 - - G5 - - | F#5 - - - - - | F#5 - - E5 - - | D5 - - C#5 - - | D5 - - - - -",
+        "H":  "D - - - - - | G - - D - - | G - - A7 - - | A - - A7 - - | D - - - - - | Bm - - A - - | D/A - - A7 - - | D - - - - -",
+        "T":  "D3 - - A2 - - | G2 - - D3 - - | G2 - - A2 - - | A2 - - C#3 - - | D3 - - A2 - - | B2 - - A2 - - | A2 - - A2 - - | D3 - - A2 - -",
+        "N":  "kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z | kZ z z Z z z | Z z z Z z z",
+        "TB": "t . . t . . | t . . t . . | t . . t . . | t . . t . t | t . . t . . | t . . t . . | t . . t . . | T . . . . ."
+      }
+    },
+    "sfcv": {
+      "v1": {
+        "order": ["A1","B","A2","C","D","A3"], "loopTo": 0, "echo": 0.526, "fb": 0.2, "vol": 0.75,
+        "ch": {
+          "P1": {"w":"acc","v":0.2,"vib":null,"send":{"rev":0.12,"echo":0.04}},
+          "C":  {"w":"md","v":0.08,"pan":0.3,"r":300,"send":{"rev":0.2}},
+          "H":  {"w":"gt","v":0.13,"win":55,"pan":0.2,"r":250},
+          "T":  {"w":"bas","v":0.3},
+          "N":  {"v":0.6},
+          "MD": {"w":"md","v":0.14,"pan":-0.15,"r":200,"send":{"rev":0.15,"echo":0.08}},
+          "TB": {"kit":true,"v":0.32,"pan":0.3}
+        }
+      },
+      "v2": {
+        "order": ["A1","B","A2","C","D","A3"], "loopTo": 0, "echo": 0.526, "fb": 0.25, "vol": 0.8,
+        "ch": {
+          "P1": {"w":"str","v":0.2,"a":60,"cho":[0.45,2,0.35],"send":{"rev":0.2,"echo":0.04}},
+          "C":  {"w":"str","v":0.06,"a":250,"r":450,"send":{"rev":0.25}},
+          "H":  {"w":"hp","v":0.11,"win":55,"pan":0.2,"gate":1,"r":500},
+          "T":  {"w":"pz","v":0.26},
+          "N":  {"v":0.28},
+          "MD": {"w":"hp","v":0.12,"pan":-0.15,"gate":1,"r":500,"send":{"rev":0.2}}
         }
       }
     }
@@ -20618,29 +20640,19 @@ MC.data.bgm = {
       }
     },
     "order": ["A1","B","A2"], "loopTo": 0,
-    /* (snd75) 16비트: 해 질 녘 카탈루냐 — 클라리넷 선율·나일론 기타 아르페지오(옛 오르골 줄 그대로)·첼로·현 패드·아주 약한 캐스터네츠. 줄은 옛 그대로(40초, 늘리지 않음) */
+    /* (snd75b) 16비트 — 다시 짬: 해 질 녘 카탈루냐. 선율은 나일론 기타, 옛 오르골 아르페지오 줄은 여린 하프, 베이스는 콘트라베이스 피치카토, 아주 여린 현 패드. 관악기·캐스터네츠 뺌. 줄은 옛 그대로(40초) */
     "sfc": {
-      "echo": 0.667, "fb": 0.2, "vol": 0.89,
+      "echo": 0.667, "fb": 0.2, "vol": 1.2,
       "ch": {
-        "P1": {"w":"cl","v":0.24,"lp":2600,"send":{"rev":0.24,"echo":0.06}},
-        "H":  {"w":"gt","v":0.15,"lp":null,"gate":1,"r":900,"pan":0.15},
-        "T":  {"w":"vc","v":0.2,"lp":null,"a":120,"r":400},
-        "ST": {"chord":true,"pad":true,"w":"str","v":0.035,"a":900,"d":800,"s":0.9,"r":1200,"gate":1,"win":57,"lp":2400,"cho":[0.37,2.5,0.5],"send":{"rev":0.35}},
-        "CA": {"kit":true,"v":0.22,"pan":-0.35,"send":{"rev":0.2}}
+        "P1": {"w":"gt","v":0.28,"lp":null,"vib":null,"gate":1,"r":600,"send":{"rev":0.22,"echo":0.05}},
+        "H":  {"w":"hp","v":0.12,"lp":null,"gate":1,"r":900,"pan":0.15},
+        "T":  {"w":"bas","v":0.28,"lp":null},
+        "ST": {"chord":true,"pad":true,"w":"str","v":0.03,"a":1200,"d":800,"s":0.9,"r":1200,"gate":1,"win":57,"lp":2000,"cho":[0.37,2.5,0.5],"send":{"rev":0.35}}
       },
       "pat": {
-        "A1": {
-          "ST": "D - - - - - | Em7 - - D - - | G - - A7 - - | Asus4 - - A7 - - | D - - D/C - - | Bm - - F#m - - | G - - A7 - - | D - - - - -",
-          "CA": "r . . . . . | . . . . . . | . . . . r r | . . . . . . | r . . . . . | . . . . . . | . . . . r r | r . . . . ."
-        },
-        "B": {
-          "ST": "Bm - - Bm/A - - | A - - F#m - - | G - - Em - - | Asus4 - - A7 - -",
-          "CA": "r . . . . . | . . . . . . | r . . . . . | . . . . r r"
-        },
-        "A2": {
-          "ST": "D - - - - - | Em7 - - D - - | G - - A7 - - | Asus4 - - A7 - - | D - - D/C - - | Bm - - F#m - - | G - - A7 - - | Bm - - - - -",
-          "CA": "r . . . . . | . . . . . . | . . . . r r | . . . . . . | r . . . . . | . . . . . . | . . . . r r | . . . . . ."
-        }
+        "A1": { "ST": "D - - - - - | Em7 - - D - - | G - - A7 - - | Asus4 - - A7 - - | D - - D/C - - | Bm - - F#m - - | G - - A7 - - | D - - - - -" },
+        "B":  { "ST": "Bm - - Bm/A - - | A - - F#m - - | G - - Em - - | Asus4 - - A7 - -" },
+        "A2": { "ST": "D - - - - - | Em7 - - D - - | G - - A7 - - | Asus4 - - A7 - - | D - - D/C - - | Bm - - F#m - - | G - - A7 - - | Bm - - - - -" }
       }
     }
   },
@@ -20683,40 +20695,30 @@ MC.data.bgm = {
       }
     },
     "order": ["I","A","A2","C"], "loopTo": 1,
-    /* (snd75) 16비트: 레제르브 잔치 — 바이올린 선율·아코디언 화음 줄·피치카토 화음·콘트라베이스·탬버린·손뼉. I·A·A2·C는 옛 줄 그대로 음색만.
-       늘림(30 → 60초, 도입 제외): D = 아코디언이 A 선율, 바이올린은 마르세유 A2 대선율을 G장조로 옮긴 줄(라이트모티프 사슬 안) · C2 = C의 역할 바꿈(아코디언 선율, 바이올린 위 화음)
-       · A3 = 바이올린 옥타브 위 + 아코디언 원 옥타브(합주 맺음). 건배 메아리(toast_a/b/c 효과음)의 머리 네 음은 그대로 */
+    /* (snd75b) 16비트 — 다시 짬: 레제르브 잔치. 아코디언 선율·만돌린 화음 줄·기타 뒷박·콘트라베이스 피치카토·탬버린·손뼉. 바이올린·관악기 뺌.
+       늘림(30 → 60초, 도입 제외): D = 아코디언이 A 선율, 만돌린은 마르세유 A2 대선율을 G장조로 옮긴 줄 · C2 = C의 역할 바꿈(만돌린 선율, 아코디언 위 화음) · 끝은 A2 되풀이 */
     "sfc": {
-      "order": ["I","A","A2","C","D","C2","A3"], "loopTo": 1, "echo": 0.417, "fb": 0.2, "vol": 0.59,
+      "order": ["I","A","A2","C","D","C2","A2"], "loopTo": 1, "echo": 0.417, "fb": 0.2, "vol": 0.62,
       "ch": {
-        "P1": {"w":"str","v":0.24,"a":30,"d":300,"s":0.85,"r":150,"gate":0.9,"cho":[0.5,2,0.35],"send":{"rev":0.12}},
-        "P2": {"w":"acc","v":0.13,"vib":null},
-        "H":  {"w":"pz","v":0.12,"lp":null},
+        "P1": {"w":"acc","v":0.18,"vib":null,"send":{"rev":0.1,"echo":0.04}},
+        "P2": {"w":"md","v":0.12,"pan":-0.2,"r":200},
+        "H":  {"w":"gt","v":0.11,"lp":null,"pan":0.2,"r":150},
         "T":  {"w":"bas","v":0.3},
-        "N":  {"v":0.62},
-        "AM": {"w":"acc","v":0.17,"vib":null,"pan":0.12,"send":{"rev":0.1,"echo":0.05}}
+        "N":  {"v":0.6}
       },
       "pat": {
         "D": {
-          "AM": "G4 - A4 B4 - D5 | E5 - F#5 D5 - B4 | C5 - B4 A4 - G4 | A4 - B4 A4 - D4 | G4 - A4 B4 - D5 | G5 - A5 G5 F#5 E5 | D5 - B4 C5 - A4 | G4 - - G4 - -",
-          "P1": "B5 - - - - - | C6 - - B5 - - | A5 - - F#5 - - | A5 - - C6 - - | B5 - - - - - | B5 - - A5 - - | G5 - - F#5 - - | G5 - - - - -",
+          "P1": "G4 - A4 B4 - D5 | E5 - F#5 D5 - B4 | C5 - B4 A4 - G4 | A4 - B4 A4 - D4 | G4 - A4 B4 - D5 | G5 - A5 G5 F#5 E5 | D5 - B4 C5 - A4 | G4 - - G4 - -",
+          "P2": "B5 - - - - - | C6 - - B5 - - | A5 - - F#5 - - | A5 - - C6 - - | B5 - - - - - | B5 - - A5 - - | G5 - - F#5 - - | G5 - - - - -",
           "H":  "G - - - - - | C - - G - - | C - - D7 - - | D - - D7 - - | G - - - - - | Em - - D - - | G/D - - D7 - - | G - - - - -",
           "T":  "G2 - - D2 - - | C3 - - G2 - - | C3 - - D3 - - | D3 - - F#2 - - | G2 - - B2 - - | E2 - - D2 - - | D2 - - D3 - C3 | G2 - - D2 - -",
           "N":  "kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT T T"
         },
         "C2": {
-          "AM": "B4 - B4 B4 - E5 | G5 - F#5 E5 - D#5 | E5 - B4 G4 - B4 | C5 - A4 B4 - F#4 | G5 - E5 C5 - E5 | D5 - B4 A4 - F#4 | G4 - B4 E5 - C#5 | D5 - C5 A4 - F#4",
+          "P2": "B4 - B4 B4 - E5 | G5 - F#5 E5 - D#5 | E5 - B4 G4 - B4 | C5 - A4 B4 - F#4 | G5 - E5 C5 - E5 | D5 - B4 A4 - F#4 | G4 - B4 E5 - C#5 | D5 - C5 A4 - F#4",
           "P1": "G5 - - - - - | E5 - - F#5 - - | G5 - - - - - | E5 - - D#5 - - | E5 - - - - - | D5 - - F#5 - - | E5 - - E5 - - | F#5 - - - - -",
           "H":  "Em - - - - - | Em - - B7 - - | Em - - - - - | Am - - B7 - - | C - - - - - | G/B - - D - - | Em - - A7 - - | D7 - - - - -",
           "T":  "E2 - - B2 - - | E3 - - B2 - - | E2 - - B2 - - | A2 - - B2 - - | C3 - - G2 - - | B2 - - D3 - - | E3 - - A2 - - | D3 - - A2 - F#2",
-          "N":  "kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT t pT | kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t T pT T T"
-        },
-        "A3": {
-          "P1": "G5 - A5 B5 - D6 | E6 - F#6 D6 - B5 | C6 - B5 A5 - G5 | A5 - B5 A5 - D5 | G5 - A5 B5 - D6 | G6 - A6 G6 F#6 E6 | D6 - B5 C6 - A5 | G5 - - G5 - -",
-          "AM": "G4 - A4 B4 - D5 | E5 - F#5 D5 - B4 | C5 - B4 A4 - G4 | A4 - B4 A4 - D4 | G4 - A4 B4 - D5 | G5 - A5 G5 F#5 E5 | D5 - B4 C5 - A4 | G4 - - G4 - -",
-          "P2": "D4 - F#4 G4 - B4 | C5 - D5 B4 - G4 | E4 - G4 F#4 - C4 | F#4 - G4 F#4 - A3 | D4 - F#4 G4 - B4 | B4 - C5 B4 A4 G4 | B4 - G4 A4 - F#4 | B3 - - B3 - -",
-          "H":  "G - - - - - | C - - G - - | C - - D7 - - | D - - D7 - - | G - - - - - | Em - - D - - | G/D - - D7 - - | G - - - - -",
-          "T":  "G2 - - D2 - - | C3 - - G2 - - | C3 - - D3 - - | D3 - - F#2 - - | G2 - - B2 - - | E2 - - D2 - - | D2 - - D3 - C3 | G2 - - D2 - -",
           "N":  "kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t t pT t pT | kT t t pT t t | kT t t pT t t | kT t t pT t t | kT t T pT T T"
         }
       }
@@ -20743,38 +20745,25 @@ MC.data.bgm = {
       }
     },
     "order": ["A","A2"], "loopTo": 0,
-    /* (snd75) 16비트: 빌포르 집무실 — 오보에 선율·하프시코드 2·3박 화음(미뉴에트 결)·첼로와 콘트라베이스 스타카토. 먼 방 느낌은 곡 LP(1100 → 1700)로 조금 덜 막히게.
-       늘림(20 → 60초): B = 같은 머리 리듬을 G단조(나란한조)로 · B2 = E♭에서 F7로 돌아오는 줄(A의 끝 마디 그대로) · A3 = A + 하프시코드가 선율을 옥타브 아래로 겹침 */
+    /* (snd75b) 16비트 — 다시 짬: 빌포르 집무실. 선율은 하프시코드, 2·3박 화음은 피치카토(미뉴에트 결), 베이스는 콘트라베이스 피치카토. 오보에·겹친 저음 뺌. 먼 방 느낌의 곡 LP는 1100 → 1900.
+       늘림(20 → 60초): B = 같은 머리 리듬을 G단조(나란한조)로 · B2 = E♭에서 F7로 돌아옴(A의 끝 마디 그대로) · 끝은 A·A2 되풀이 */
     "sfc": {
-      "order": ["A","A2","B","B2","A3","A2"], "loopTo": 0, "filter": 1700, "echo": 0.417, "fb": 0.2, "vol": 0.52,
+      "order": ["A","A2","B","B2","A","A2"], "loopTo": 0, "filter": 1900, "echo": 0.417, "fb": 0.2, "vol": 0.75,
       "ch": {
-        "P1": {"w":"ob","v":0.2,"vib":[5.5,10,200],"send":{"rev":0.3}},
-        "H":  {"w":"hc","v":0.12,"pan":0.2},
-        "T":  {"w":"vc","v":0.22,"a":15,"d":200,"s":0.6,"r":90,"gate":0.5},
-        "CB": {"w":"cb","v":0.12,"oct":-1,"a":15,"d":200,"s":0.6,"r":90,"gate":0.45,"send":{"rev":0.2}},
-        "HM": {"w":"hc","v":0.1,"pan":-0.2,"send":{"rev":0.2}}
+        "P1": {"w":"hc","v":0.22,"pan":-0.1,"send":{"rev":0.3}},
+        "H":  {"w":"pz","v":0.1,"pan":0.2,"send":{"rev":0.25}},
+        "T":  {"w":"bas","v":0.26,"gate":0.6}
       },
       "pat": {
-        "A":  { "CB": "Bb2 - . . . . | D3 - . . . . | Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | Bb2 - . . . . | F2 - . . . ." },
-        "A2": { "CB": "Bb2 - . . . . | D3 - . . . . | Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | Bb2 - . . . . | F2 - . . . ." },
         "B": {
           "P1": "D5 - - - G5 - | Bb5 - - - A5 G5 | A5 - - - F#5 - | G5 - - - - - | Eb5 - - - C5 D5 | D5 - - - Bb4 G4 | A4 - C5 - F#5 - | G5 - D5 - Bb4 G4",
           "H":  "Gm - - - - - | Gm - - - - - | D7 - - - - - | Gm - - - - - | Cm - - - - - | Gm - - - - - | D7 - - - - - | Gm - - - - -",
-          "T":  "G2 - . . . . | Bb2 - . . . . | D3 - . . . . | G2 - . . . . | C3 - . . . . | Bb2 - . . . . | D3 - . . . . | G2 - . . . .",
-          "CB": "G2 - . . . . | Bb2 - . . . . | D3 - . . . . | G2 - . . . . | C3 - . . . . | Bb2 - . . . . | D3 - . . . . | G2 - . . . ."
+          "T":  "G2 - . . . . | Bb2 - . . . . | D3 - . . . . | G2 - . . . . | C3 - . . . . | Bb2 - . . . . | D3 - . . . . | G2 - . . . ."
         },
         "B2": {
           "P1": "Eb5 - - - G5 - | Bb5 - - - A5 G5 | G5 - - - Eb5 - | F5 - - - - - | D5 - - - G5 F5 | Eb5 - - - D5 C5 | A4 - C5 - F5 - | A5 - G5 - F5 Eb5",
           "H":  "Eb - - - - - | Bb - - - - - | Cm - - - - - | F7 - - - - - | Gm - - - - - | Eb - - - - - | F - - - - - | F7 - - - - -",
-          "T":  "Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | G2 - . . . . | Eb3 - . . . . | F2 - . . . . | F2 - . . . .",
-          "CB": "Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | G2 - . . . . | Eb3 - . . . . | F2 - . . . . | F2 - . . . ."
-        },
-        "A3": {
-          "P1": "D5 - - - F5 - | Bb5 - - - A5 G5 | G5 - - - Eb5 - | F5 - - - - - | Eb5 - - - C5 D5 | Eb5 - - - C5 A4 | Bb4 - D5 - F5 - | A5 - G5 - F5 Eb5",
-          "HM": "D4 - - - F4 - | Bb4 - - - A4 G4 | G4 - - - Eb4 - | F4 - - - - - | Eb4 - - - C4 D4 | Eb4 - - - C4 A3 | Bb3 - D4 - F4 - | A4 - G4 - F4 Eb4",
-          "H":  "Bb - - - - - | Bb - - - - - | Eb - - - - - | Bb - - - - - | Cm - - - - - | F7 - - - - - | Bb - - - - - | F7 - - - - -",
-          "T":  "Bb2 - . . . . | D3 - . . . . | Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | Bb2 - . . . . | F2 - . . . .",
-          "CB": "Bb2 - . . . . | D3 - . . . . | Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | Bb2 - . . . . | F2 - . . . ."
+          "T":  "Eb3 - . . . . | D3 - . . . . | C3 - . . . . | F2 - . . . . | G2 - . . . . | Eb3 - . . . . | F2 - . . . . | F2 - . . . ."
         }
       }
     }
@@ -20815,14 +20804,13 @@ MC.data.bgm = {
       }
     },
     "order": ["A","B","C","D"], "loopTo": 0,
-    /* (snd75) 16비트: 꿈 B1 — 하프 베이스 줄·합창 '아' 패드·유리 종(미궁 주제)·높은 하프 메아리. 줄·층마다 음 빼기(drop)는 그대로 */
+    /* (snd75b) 16비트 — 다시 짬: 꿈 B1. 미궁 주제는 오르골 그대로(유리 종 → 되돌림), 베이스 줄은 하프, 패드는 여린 현(합창 뺌), 메아리는 높은 하프. 줄·층마다 음 빼기 그대로 */
     "sfc": {
-      "vol": 0.8,
+      "vol": 0.95,
       "ch": {
-        "T":   {"w":"hp","v":0.16,"gate":1,"r":900},
-        "PAD": {"w":"ch","v":0.035,"cho":[0.3,3,0.5]},
-        "L":   {"w":"gl","v":0.13},
-        "E":   {"w":"hp","v":0.05,"gate":1,"r":600}
+        "T":   {"w":"hp","v":0.12,"gate":1,"r":900},
+        "PAD": {"w":"str","v":0.028,"lp":2000,"cho":[0.3,3,0.5]},
+        "E":   {"w":"hp","v":0.045,"gate":1,"r":600}
       }
     }
   },
@@ -21071,11 +21059,10 @@ MC.data.bgm = {
       }
     },
     "order": ["A1","B","A2"], "loopTo": 0,
-    /* (snd75) 16비트: 타이틀·크레딧 — 오르골·종은 그대로(수미상관). 패드만 현으로, 사인 베이스는 여린 첼로로 */
+    /* (snd75b) 16비트 — 다시 짬: 타이틀·크레딧. 오르골·종·사인 베이스는 그대로(수미상관), 패드만 아주 여린 현으로 */
     "sfc": {
       "ch": {
-        "B":   {"w":"vc","v":0.1,"a":300,"d":1500,"s":0.6,"r":900,"vib":[4.6,6,400]},
-        "PAD": {"w":"str","v":0.026,"cho":[0.3,2.5,0.5]}
+        "PAD": {"w":"str","v":0.022,"cho":[0.3,2.5,0.5]}
       }
     }
   },
@@ -21131,33 +21118,49 @@ MC.data.bgm = {
       }
     },
     "order": ["I","Ib","B","A","B","A2"], "loopTo": 2,
-    /* (snd75) 16비트: 파리아의 나날 — 오르골 O1·O2·B는 그대로(이야기 장치). 대선율 층(counter)은 현, 메아리 층(echo)은 높은 하프.
-       받침 둘을 '있는 층'에 묶었다(이벤트·층 이름 그대로): VC 첼로 = waltz 층(오르골 베이스를 길게 받침 — 1822 waltz 끔이면 같이 빠져 빈 방의 오르골 유지),
-       HC 하프시코드 한 번 튕김(마디 첫 박) = counter 층(수업이 늘면 함께 들어옴). 디튠(보물 아침)·템포(♩76)도 그대로 따른다 */
-    "sfc": {
-      "vol": 0.93,
-      "ch": {
-        "CT": {"w":"str","v":0.11,"a":200,"r":400,"cho":[0.4,2,0.4]},
-        "EC": {"w":"hp","v":0.05,"gate":1,"r":600},
-        "VC": {"w":"vc","v":0.09,"a":150,"r":400,"vib":[4.8,5,400],"layer":"waltz","send":{"rev":0.3}},
-        "HC": {"chord":true,"w":"hc","v":0.06,"arp":"c.....","win":53,"stack":true,"cmax":3,"layer":"counter","pan":0.2,"send":{"rev":0.25}}
+    /* (snd75b) 16비트 — 다시 짬(사용자: 「오르골의 관악기 부분이 안 맞는다」): 관악기처럼 들리던 지속 대선율(현)·첼로·하프시코드를 모두 뺐다. 오르골 O1·O2·B가 주인공.
+       판 셋(sfcUse 한 줄로 고름) — v1 = 오르골 + 여린 하프(대선율 층·메아리 층·waltz 층 하프 베이스) · v2 = 오르골 + 여린 현 패드(waltz 층) · v3 = 클래식(8비트) 그대로 + 아주 여린 현 패드.
+       받침은 모두 waltz·counter·echo 층에 묶여 1822 「빈 방의 오르골」(waltz·counter 끔)과 S4 임종(같음)·pulse_fade의 느려짐·멎음은 오르골 한 줄 그대로다 */
+    "sfcUse": "v1",
+    "sfcPat": {
+      "Ib": {
+        "HB": "C3 . . . . . | F2 . . . . . | Bb2 . . C3 . . | F2 . . . . .",
+        "PS": "C7 - - - - - | F - - - - - | Bb - - C7 - - | F - - - - -"
       },
-      "pat": {
-        "Ib": {
-          "VC": "C3 - - - - - | F2 - - - - - | Bb2 - - C3 - - | F2 - - - - -",
-          "HC": "C7 - - - - - | F - - - - - | Bb - - C7 - - | F - - - - -"
-        },
-        "B": {
-          "VC": "D3 - - - - - | D3 - - A2 - - | G2 - - - - - | A2 - - - - - | D3 - - - - - | Bb2 - - - - - | C3 - - - - - | F2 - - C3 - -",
-          "HC": "Dm - - - - - | Dm - - - - - | Gm - - - - - | A7 - - - - - | Dm - - - - - | Bb - - - - - | C7 - - - - - | F - - - - -"
-        },
-        "A": {
-          "VC": "F2 - - - - - | F2 - - C3 - - | Bb2 - - - - - | F2 - - - - - | C3 - - - - - | F2 - - - - - | Bb2 - - C3 - - | F2 - - - - -",
-          "HC": "F - - - - - | F - - - - - | Bb - - - - - | F - - - - - | C7 - - - - - | F - - - - - | Bb - - C7 - - | F - - - - -"
-        },
-        "A2": {
-          "VC": "F2 - - - - - | F2 - - C3 - - | Bb2 - - - - - | F2 - - - - - | C3 - - - - - | F2 - - - - - | Bb2 - - C3 - - | F2 - - - C3 -",
-          "HC": "F - - - - - | F - - - - - | Bb - - - - - | F - - - - - | C7 - - - - - | F - - - - - | Bb - - C7 - - | F - - - C7 -"
+      "B": {
+        "HB": "D3 . . . . . | D3 . . A2 . . | G2 . . . . . | A2 . . . . . | D3 . . . . . | Bb2 . . . . . | C3 . . . . . | F2 . . C3 . .",
+        "PS": "Dm - - - - - | Dm - - - - - | Gm - - - - - | A7 - - - - - | Dm - - - - - | Bb - - - - - | C7 - - - - - | F - - - - -"
+      },
+      "A": {
+        "HB": "F2 . . . . . | F2 . . C3 . . | Bb2 . . . . . | F2 . . . . . | C3 . . . . . | F2 . . . . . | Bb2 . . C3 . . | F2 . . . . .",
+        "PS": "F - - - - - | F - - - - - | Bb - - - - - | F - - - - - | C7 - - - - - | F - - - - - | Bb - - C7 - - | F - - - - -"
+      },
+      "A2": {
+        "HB": "F2 . . . . . | F2 . . C3 . . | Bb2 . . . . . | F2 . . . . . | C3 . . . . . | F2 . . . . . | Bb2 . . C3 . . | F2 . . . C3 .",
+        "PS": "F - - - - - | F - - - - - | Bb - - - - - | F - - - - - | C7 - - - - - | F - - - - - | Bb - - C7 - - | F - - - C7 -"
+      }
+    },
+    "sfcv": {
+      "v1": {
+        "vol": 1,
+        "ch": {
+          "CT": {"w":"hp","v":0.08,"gate":1,"r":700,"vib":null,"send":{"rev":0.3}},
+          "EC": {"w":"hp","v":0.04,"gate":1,"r":500},
+          "HB": {"w":"hp","v":0.06,"gate":1,"r":900,"layer":"waltz","send":{"rev":0.3}}
+        }
+      },
+      "v2": {
+        "vol": 1,
+        "ch": {
+          "CT": {"w":"hp","v":0.07,"gate":1,"r":700,"vib":null,"send":{"rev":0.3}},
+          "EC": {"w":"hp","v":0.04,"gate":1,"r":500},
+          "PS": {"chord":true,"pad":true,"w":"str","v":0.016,"a":1500,"d":800,"s":0.9,"r":1500,"gate":1,"win":53,"lp":1500,"layer":"waltz","cho":[0.3,2.5,0.5],"send":{"rev":0.35}}
+        }
+      },
+      "v3": {
+        "vol": 1, "tlp": 20000,
+        "ch": {
+          "PS": {"chord":true,"pad":true,"w":"str","v":0.012,"a":1500,"d":800,"s":0.9,"r":1500,"gate":1,"win":53,"lp":1400,"layer":"waltz","cho":[0.3,2.5,0.5],"send":{"rev":0.35}}
         }
       }
     }
@@ -21210,17 +21213,16 @@ MC.data.bgm = {
       }
     },
     "order": ["T1","T2","T3"], "loopTo": 1,
-    /* (snd75) 16비트: 땅굴 — 심장 A1은 팀파니(낮은 북), 폰 대역 층 TD는 피치카토(옥타브 위), 드론은 어두운 합창, 긴장 층은 높은 현 트레몰로, 경계 하이햇은 샘플.
-       어두운 틱(q)·경계 맥박(l)·오르골 층은 그대로. 레이어(alert1·alert2·orgel·tick·tension)·박 단위 반영(lq 4) 그대로.
-       늘림(22.9 → 68.6초, 도입 제외): T4 = 심장이 B♭1로 반음 올라 버팀(현 F6 → E6) · T5 = A1으로 돌아와 피치카토 걸음(A–E–B♭, tension 층) */
+    /* (snd75b) 16비트 — 다시 짬: 땅굴. 심장 A1은 팀파니, 폰 대역 층은 피치카토, 드론은 어두운 현(합창 뺌), 긴장 층은 높은 현 트레몰로. 틱·맥박·오르골 그대로.
+       늘림(22.9 → 68.6초, 도입 제외): T4 = 심장이 B♭1로 반음 올라 버팀 · T5 = A1으로 돌아와 피치카토 걸음(tension 층, 여리게) */
     "sfc": {
-      "order": ["T1","T2","T3","T4","T5","T2","T3"], "loopTo": 1, "pbw": "pz", "pbv": 0.01, "vol": 0.78,
+      "order": ["T1","T2","T3","T4","T5","T2","T3"], "loopTo": 1, "pbw": "pz", "pbv": 0.01, "vol": 0.8,
       "ch": {
         "T":  {"w":"tm","v":0.24,"gate":1},
         "TD": {"w":"pz","v":0.05,"lp":null},
-        "DR": {"w":"ch","v":0.025},
-        "P2": {"w":"str","v":0.03,"vib":null},
-        "PZ": {"w":"pz","v":0.08,"layer":"tension","send":{"rev":0.2,"echo":0.15}}
+        "DR": {"w":"str","v":0.02},
+        "P2": {"w":"str","v":0.028,"vib":null},
+        "PZ": {"w":"pz","v":0.06,"layer":"tension","send":{"rev":0.2,"echo":0.12}}
       },
       "pat": {
         "T4": {
@@ -21291,15 +21293,13 @@ MC.data.bgm = {
       }
     },
     "order": ["A","B","M","A","B","M2"], "loopTo": 0,
-    /* (snd75) 16비트: 꿈 B2 — 하프 베이스 줄·합창 패드(pad 층)·유리 종(미궁 주제)·높은 하프 메아리. 붉은 층의 떨리는 오르골(R)은 그대로(이야기 장치), 붉은 드론(W)은 어두운 첼로(LP 480 그대로) */
+    /* (snd75b) 16비트 — 다시 짬: 꿈 B2. 미궁 주제·붉은 층 오르골은 그대로, 베이스 줄은 하프, 패드는 여린 현(합창 뺌), 메아리는 높은 하프, 붉은 드론은 옛 그대로 */
     "sfc": {
-      "vol": 0.8,
+      "vol": 0.95,
       "ch": {
-        "T":   {"w":"hp","v":0.16,"gate":1,"r":900},
-        "PAD": {"w":"ch","v":0.035,"cho":[0.3,3,0.5]},
-        "L":   {"w":"gl","v":0.12},
-        "E":   {"w":"hp","v":0.045,"gate":1,"r":600},
-        "W":   {"w":"vc","v":0.018}
+        "T":   {"w":"hp","v":0.12,"gate":1,"r":900},
+        "PAD": {"w":"str","v":0.028,"lp":2000,"cho":[0.3,3,0.5]},
+        "E":   {"w":"hp","v":0.04,"gate":1,"r":600}
       }
     }
   },
@@ -21450,14 +21450,13 @@ MC.data.bgm = {
       }
     },
     "order": ["A","B","S","B"], "loopTo": 0,
-    /* (snd75) 16비트: 꿈 B3 — 하프 베이스 줄·합창 패드·유리 종(역행 미궁 주제)·거꾸로 부푸는 현(RV: 느린 어택, 뚝 끊김 그대로). 어두운 틱 그대로 */
+    /* (snd75b) 16비트 — 다시 짬: 꿈 B3. 역행 미궁 주제는 오르골 그대로, 베이스 줄은 하프, 패드는 여린 현(합창 뺌), 거꾸로 부푸는 메아리는 현(느린 어택·뚝 끊김 그대로). 틱 그대로 */
     "sfc": {
-      "vol": 0.8,
+      "vol": 0.95,
       "ch": {
-        "T":   {"w":"hp","v":0.16,"gate":1,"r":900},
-        "PAD": {"w":"ch","v":0.032,"cho":[0.3,3,0.5]},
-        "L":   {"w":"gl","v":0.12},
-        "RV":  {"w":"str","v":0.05,"a":1100,"d":50,"s":1,"r":25,"gate":1}
+        "T":   {"w":"hp","v":0.12,"gate":1,"r":900},
+        "PAD": {"w":"str","v":0.026,"lp":1800,"cho":[0.3,3,0.5]},
+        "RV":  {"w":"str","v":0.045,"a":1100,"d":50,"s":1,"r":25,"gate":1}
       }
     }
   },
@@ -21484,13 +21483,11 @@ MC.data.bgm = {
       }
     },
     "order": ["A","B"], "loopTo": 0,
-    /* (snd75) 16비트: 꿈 B4 — 물속 콘트라베이스(느린 부풂)·어두운 합창 드론·유리 종 메아리(E·B만, 긴 에코 그대로) */
+    /* (snd75b) 16비트 — 다시 짬: 꿈 B4. 거의 음이 없는 물속 층이라 덜 얹었다 — 드론만 어두운 현(합창 뺌), 물속 베이스(삼각)·오르골 메아리(E·B, 긴 에코)는 옛 그대로 */
     "sfc": {
-      "vol": 0.95,
+      "vol": 1,
       "ch": {
-        "T":  {"w":"cb","v":0.2,"a":300,"d":1500,"s":0.6,"r":900,"gate":0.95,"vib":null},
-        "DR": {"w":"ch","v":0.03},
-        "EC": {"w":"gl","v":0.06}
+        "DR": {"w":"str","v":0.02,"lp":900}
       }
     }
   },
@@ -21608,15 +21605,15 @@ MC.data.bgm = {
       }
     },
     "order": ["A1","B","A2"], "loopTo": 0,
-    /* (snd75) 16비트: 바다 — 선율(바다 위의 목소리)은 첼로 독주, 오르골 표시음 O2는 그대로, 물결 베이스는 콘트라베이스(LP 900), 현 패드, 새 하프 아르페지오(패드와 같은 화음 줄),
-       먼 파도는 큰북 샘플. 장조 remap(major: F→F#·C→C#·B♭→B, rq 3)은 하프 화음 음까지 그대로 따른다 */
+    /* (snd75b) 16비트 — 다시 짬: 바다. 선율(바다 위의 목소리)은 여린 현, 오르골 표시음 O2 그대로, 물결 베이스는 콘트라베이스(LP 900), 하프 아르페지오(옛 패드 화음 줄), 먼 파도는 큰북 샘플.
+       첼로 독주·패드는 뺐다(덜 얹기). 장조 remap(F→F#·C→C#·B♭→B, rq 3)은 하프 화음 음까지 따른다 */
     "sfc": {
-      "pbw": "vc", "vol": 0.89,
+      "pbw": "vc", "vol": 0.95,
       "ch": {
-        "O1":  {"w":"vc","v":0.22,"lp":null,"send":{"rev":0.35}},
+        "O1":  {"w":"str","v":0.22,"a":150,"lp":2600,"cho":[0.35,2,0.35],"send":{"rev":0.35}},
         "T":   {"w":"cb","v":0.2,"a":200,"d":700,"s":0.6,"r":400,"gate":0.95},
-        "PAD": {"w":"str","v":0.028,"cho":[0.3,2.5,0.5]},
-        "HA":  {"chord":true,"w":"hp","v":0.08,"arp":"012421","win":50,"stack":true,"gate":1,"r":800,"pan":0.2,"send":{"rev":0.35}}
+        "PAD": null,
+        "HA":  {"chord":true,"w":"hp","v":0.09,"arp":"012421","win":50,"stack":true,"gate":1,"r":800,"pan":0.2,"send":{"rev":0.35}}
       },
       "pat": {
         "A1": { "HA": "Dm - - - - - | Gm - - Dm - - | Gm - - Am - - | Am - - - - - | Dm - - - - - | Bb - - C - - | Dm - - Am - - | Dm - - - - -" },
@@ -21676,7 +21673,7 @@ MC.data.bgm = {
       }
     },
     "order": ["J"],
-    "sfc": { "ch": { "P1": {"w":"tp","v":0.16}, "P2": {"w":"hn","v":0.1}, "S": {"w":"gl","v":0.05}, "T": {"w":"cb","v":0.25,"r":300}, "N": {"v":0.7} } }   /* (snd75) 트럼펫·호른·유리 종·콘트라베이스 — vol .63(꿈속 절제) 그대로 */
+    "sfc": { "ch": { "P1": {"w":"str","v":0.15,"a":15,"r":300}, "P2": {"w":"hp","v":0.08,"gate":1,"r":500}, "S": {"w":"gl","v":0.045}, "T": {"w":"cb","v":0.24,"r":300}, "N": {"v":0.7} } }   /* (snd75b) 현·하프·유리 종·콘트라베이스(금관 뺌) — vol .63(꿈속 절제) 그대로 */
   },
 
   "levelup": {
@@ -21734,7 +21731,7 @@ MC.data.bgm = {
       }
     },
     "order": ["J"],
-    "sfc": { "ch": { "P1": {"w":"ob","v":0.2,"lp":null}, "T": {"w":"vc","v":0.18,"a":60,"r":500}, "PAD": {"w":"str","v":0.02} } }   /* (snd75) 오보에 하행·첼로·현 */
+    "sfc": { "vol": 1.23, "ch": { "P1": {"w":"pn","v":0.2,"lp":null}, "T": {"w":"vc","v":0.14,"a":80,"r":500,"vib":null}, "PAD": {"w":"str","v":0.018} } }   /* (snd75b) 피아노 하행·여린 첼로·현(오보에 뺌) */
   },
 
   "boss_clear": {
@@ -21756,7 +21753,7 @@ MC.data.bgm = {
       }
     },
     "order": ["J"],
-    "sfc": { "ch": { "P1": {"w":"tp","v":0.13,"r":500}, "P2": {"w":"hn","v":0.08,"r":500}, "T": {"w":"cb","v":0.25,"r":500}, "PAD": {"w":"str","v":0.03}, "N": {"v":0.7} } }   /* (snd75) 트럼펫·호른·콘트라베이스·현 */
+    "sfc": { "ch": { "P1": {"w":"str","v":0.14,"a":15,"r":500}, "P2": {"w":"hp","v":0.08,"gate":1,"r":700}, "T": {"w":"cb","v":0.24,"r":500}, "PAD": {"w":"str","v":0.025}, "N": {"v":0.7} } }   /* (snd75b) 현·하프·콘트라베이스(금관 뺌) */
   },
 
   /* [b43 T4·B4-4] 복수심을 이긴 뒤(troops.revenge.clear): 팡파르 대신 F단조 오르골 화음을 아래에서 위로 굴린다(F4·A♭4·C5·F5, 0.125초 간격) + 낮은 F3.
@@ -21780,7 +21777,7 @@ MC.data.bgm = {
       }
     },
     "order": ["J"],
-    "sfc": { "ch": { "T": {"w":"vc","v":0.13,"a":30,"d":900,"s":0.6,"r":900} } }   /* (snd75) 오르골 넷은 그대로, 낮은 F만 첼로 */
+    "sfc": { "ch": { "T": {"w":"hp","v":0.12,"gate":1,"r":1200} } }   /* (snd75b) 오르골 넷 그대로, 낮은 F만 여린 하프 */
   },
 
   /* [b43 T4·B4-4] 광기의 왕을 이긴 뒤(troops.madking.clear): 태엽이 풀리는 오르골 — E5 → D#5 → D5, 반음씩 내려가며 간격이 늘고 마지막 음은 짧게 멎는다. */
@@ -21816,7 +21813,7 @@ MC.data.bgm = {
       }
     },
     "order": ["J"],
-    "sfc": { "ch": { "P": {"w":"gl","v":0.03}, "T": {"w":"vc","v":0.16,"r":400} } }   /* (snd75) 오르골 그대로 + 유리 종 겹침·첼로 */
+    "sfc": { "vol": 1.4, "ch": { "P": null, "T": {"w":"hp","v":0.12,"gate":1,"r":900} } }   /* (snd75b) 오르골 혼자(겹친 펄스 뺌) + 여린 하프 바닥 */
   },
 
   /* 동료 합류(E-9 ally, 약 3초): 파리아 주제 첫 마디를 오르골로 + 왈츠 반주, 삼각파 F3→C3→F3, 끝에 작은 종. F장조라 아래에 깔린 faria 곡과 어울린다. */
@@ -21837,7 +21834,7 @@ MC.data.bgm = {
       }
     },
     "order": ["J"],
-    "sfc": { "ch": { "T": {"w":"vc","v":0.18,"r":500} } }   /* (snd75) 오르골·종 그대로, 베이스만 첼로 */
+    "sfc": { "vol": 1.18, "ch": { "T": {"w":"hp","v":0.14,"gate":1,"r":900} } }   /* (snd75b) 오르골·종 그대로, 베이스만 여린 하프 */
   },
 
   /* 공방(craft, 약 1초): 두드림(효과음 craft)이 먼저 나가도록 세 스텝 쉬고, 오르골 F장조 상행 + 작은 종. */
@@ -40564,7 +40561,8 @@ MC.data.battle = {
     },
 
     "left_hand": {
-      get "name"() { return LEFT() ? "왼손의 글씨" : "비뚤어진 글씨"; }, "fam": "anger",   // [s44-writer B3-26] "lv": 4, "hp": 30, "mp": 0, "str": 16, "def": 4, "spd": 10, "wis": 2, "exp": 8,
+      get "name"() { return LEFT() ? "왼손의 글씨" : "비뚤어진 글씨"; }, "fam": "anger", "lv": 4, "hp": 30, "mp": 0, "str": 16, "def": 4, "spd": 10, "wis": 2, "exp": 8,   // [s44-writer B3-26] 이름 getter
+      // [bug-battle 0.7.5] 위 능력치(lv~exp)가 0.4.4부터 줄 끝 주석 안에 들어가 빠져 있었다 → 붉은 잉크 전투에서 아군 HP가 NaN이 되어 다음 전투가 시작하자마자 패배(또는 즉시 승리로 HP 1)
       "sprite": "en_left_hand",
       "ai": [ { "act": "spark", "w": 60 }, { "act": "swell", "w": 40 } ],
       "drops": [ { "id": "oil", "p": 0.35 } ],
