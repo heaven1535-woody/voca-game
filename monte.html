@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.8-story';
+  var VERSION = '0.7.9-people';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -189,7 +189,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     'src/engine/battle_core.js', 'src/engine/battle_view.js', 'src/engine/debug.js',
     'data/sfx.js', 'data/bgm.js', 'data/clips_s4.js',
     'data/spr_chars.js', 'data/spr_portraits.js', 'data/spr_chars_s2.js', 'data/spr_chars_s3.js', 'data/spr_chars_s4.js', 'data/spr_world.js', 'data/spr_world_s2.js', 'data/spr_world_s3.js', 'data/spr_world_s4.js', 'data/spr_ships_c50.js', 'data/spr_cine_a.js', 'data/spr_cine_b.js', 'data/spr_sea_s4.js', 'data/spr_still_c.js', 'data/spr_s1b.js', 'data/comics.js', 'data/tilesets.js',
-    'data/speakers.js', 'data/battle.js', 'data/hub_s2.js', 'data/clues_s2.js',
+    'data/speakers.js', 'data/people.js', 'data/battle.js', 'data/hub_s2.js', 'data/clues_s2.js',
     'data/maps/port.js', 'data/maps/catalan.js', 'data/maps/reserve.js', 'data/maps/villefort.js', 'data/maps/boat.js', 'data/maps/if_yard.js', 'data/maps/if_room.js',
     'data/maps/alley.js', 'data/maps/house.js',
     'data/maps/cell.js', 'data/maps/faria_cell.js', 'data/maps/b1.js', 'data/maps/tunnel1.js', 'data/maps/b2.js',
@@ -197,9 +197,9 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     'data/events_sys.js', 'data/events_a0.js', 'data/events_a1.js', 'data/events_a1e.js', 'data/events_a1b.js', 'data/events_a2.js', 'data/events_a2i.js', 'data/events_a3.js', 'data/events_a3w.js',
     'data/events_a4.js', 'data/events_a4m.js', 'data/events_a4t.js', 'data/events_a4d.js', 'data/events_a4c.js', 'data/debug_s2.js',
     'data/events_s3.js', 'data/events_s3y.js', 'data/events_s3k.js', 'data/events_s3f.js', 'data/events_s3t.js', 'data/events_s3s.js', 'data/events_s3d.js', 'data/debug_s3.js',
-    'data/events_s4.js', 'data/events_s4c.js', 'data/events_s4m.js', 'data/events_s4b.js', 'data/events_s4x.js', 'data/events_s4t.js', 'data/events_s4e.js', 'data/debug_s4.js', 'data/debug_s1b.js', 'data/debug_comic.js',
+    'data/events_s4.js', 'data/events_s4c.js', 'data/events_s4m.js', 'data/events_s4b.js', 'data/events_s4x.js', 'data/events_s4t.js', 'data/events_s4e.js', 'data/debug_s4.js', 'data/debug_s1b.js', 'data/debug_comic.js', 'data/debug_people.js',
     'data/lang/ko.js', 'data/lang/en.js',
-    'src/ch1/cards.js', 'src/ch1/minigames.js', 'src/ch1/custom.js', 'src/ch1/hub.js', 'src/ch1/deduce.js', 'src/ch1/s3night.js', 'src/ch1/s3island.js', 'src/ch1/s4escape.js', 'src/ch1/s1stages.js', 'src/ch1/s4end.js', 'src/ch1/comic.js',
+    'src/ch1/cards.js', 'src/ch1/minigames.js', 'src/ch1/custom.js', 'src/ch1/hub.js', 'src/ch1/deduce.js', 'src/ch1/s3night.js', 'src/ch1/s3island.js', 'src/ch1/s4escape.js', 'src/ch1/s1stages.js', 'src/ch1/s4end.js', 'src/ch1/comic.js', 'src/ch1/people.js',
     'src/ch1/title.js', 'src/ch1/menu.js', 'src/ch1/main.js'
   ];
 
@@ -2124,7 +2124,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
      - src = 원문 해시 묶음(대사 op마다 hash(op·who·face·상자들), cue 덩이는 '|', 공백으로 이음). 원문이 바뀌면 stale(구조가 맞으면 교체는 계속 쓰인다 — fuzzy와 같은 방침),
        앵커를 못 찾거나 cue 수가 안 맞으면 교체를 쓰지 않고 줄 단위 번역(strings)으로 돌아간다(검사 오류). */
   const TALK = { say: 1, narr: 1 };
-  const LINE_KEYS = { say: ['who', 'face', 'pos', 'auto', 'voice', 'speed'], narr: ['ms', 'speed'] };
+  const LINE_KEYS = { say: ['who', 'face', 'pos', 'auto', 'voice', 'speed', 'intro'], narr: ['ms', 'speed'] };   // intro: [people] false = 이름을 알기 전 대사(소개 컷 없이)
   const SPK_SPECIAL = { narr: 1, think: 1, sys: 1 };
   const evList = ev => { const e = MC.data.events && MC.data.events[ev]; return isArr(e) ? e : (e && isArr(e.cmds) ? e.cmds : null); };
   const talkBoxes = c => (isArr(c.t) ? c.t : [c.t != null ? c.t : c.text]).filter(x => typeof x === 'string');
@@ -2322,10 +2322,13 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     [/^clueQs\.\*\.t$/, 'clueQ', 'mem.q'],
     [/^clueQs\.\*\.where$/, 'clueQ', 'mem.where'],
     [/^lessons\.\*\.name$/, 'lesson', 'hub.lesson'],
-    [/^lessons\.\*\.quote$/, 'lesson', 'hub.quote']
+    [/^lessons\.\*\.quote$/, 'lesson', 'hub.quote'],
+    [/^people\.\*\.intro$/, 'people', 'people.intro'],                   // [people] 인물 소개 컷·「인물」 쪽(data/people.js — 칸은 src/ch1/people.js가 등록)
+    [/^people\.\*\.bio\[\]\.t$/, 'people', 'people.bio'],
+    [/^people\.\*\.role(\[\]\.t)?$/, 'people', 'people.role']
   ];
   const DATA_SKIP = { sprites: 1, tilesets: 1, events: 1, bgm: 1, sfx: 1, lang: 1, clueOrder: 1, lessonOrder: 1 };
-  const ID_ROOTS = { speakers: 1, maps: 1, clues: 1, clueQs: 1, lessons: 1 };
+  const ID_ROOTS = { speakers: 1, maps: 1, clues: 1, clueQs: 1, lessons: 1, people: 1 };
   const MAP_SKIP = { tiles: 1, spawns: 1, solid: 1, layers: 1, deco: 1 };
   // 장면 이름표(번역자 문맥): 이벤트 id 접두사
   const SCENES = [['a0.', 'a0 프롤로그'], ['a1b.', 'a1b 1막 골목·집·되감기'], ['a1.', 'a1 1막 항구·카탈루냐·정자'], ['a2.', 'a2 2막 잔치·검사실·호송'], ['a3.', 'a3 3막 감방·B1'],
@@ -4321,6 +4324,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     // 빠진 필드는 새 상태 기본값으로 채움(마이그레이션)
     const base = MC.game ? MC.game.newState() : {};
     for (const k in base) if (!(k in s)) s[k] = base[k];
+    // [people] 이 기능 전 기록(vars.introSeen 없음): 이미 지나온 인물을 만난 것으로 채운다(roleSeen·이야기 깃발 — src/ch1/people.js migrate)
+    if (MC.people && typeof MC.people.migrate === 'function') { try { MC.people.migrate(s); } catch (e) { if (MC.core) MC.core.error(e, 'people.migrate'); } }
     return p;
   }
   function read(slot) {
@@ -7846,7 +7851,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         if (tr && o.keep && inStack() && st.mode === 'idle' && !st.choice) { st.keep = o.keep; st.idleAt = now(); if (st.keep === 'no') startClose(); }
         return;
       }
-      if (sp.role && sp.style === 'normal' && sp.name != null) {          // [l45-guide B8-2] 이 화자의 첫 대사 op 동안만 직업 한마디(세이브에 적어 다시 안 뜸)
+      // [people] 소개 컷이 있는 화자(data/people.js)는 카드가 직업까지 보여 주므로 이름표 한마디를 띄우지 않는다(카드가 roleSeen에 적는다)
+      if (sp.role && sp.style === 'normal' && sp.name != null && !(MC.people && MC.people.hasCard && MC.people.hasCard(sp.id))) {          // [l45-guide B8-2] 이 화자의 첫 대사 op 동안만 직업 한마디(세이브에 적어 다시 안 뜸)
         const v = MC.state && MC.state.vars, seen = v ? String(v.roleSeen || '').split(',') : [];
         if (v && seen.indexOf(sp.id) < 0) { sp.roleShow = true; seen.push(sp.id); v.roleSeen = seen.filter(Boolean).join(','); }
       }
@@ -8468,7 +8474,13 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     parallel: (c, env) => Promise.all((c.do || []).map(b => runList(Array.isArray(b) ? b : [b], env.frame, env.ctx, true))),
 
     /* 대화 */
-    say: (c, env) => { stopSkip(); return MC.dialogue.say({ who: c.who, t: c.t != null ? c.t : c.text, face: c.face, auto: c.auto, pos: c.pos, voice: c.voice, speed: c.speed, keep: keepAfter(env), key: !!c.key }); },   // [a43-ui P6] key: 정점 대사(빨리감기로 넘기지 않음)
+    say: (c, env) => {
+      const sk = skipping; stopSkip();
+      const go = () => MC.dialogue.say({ who: c.who, t: c.t != null ? c.t : c.text, face: c.face, auto: c.auto, pos: c.pos, voice: c.voice, speed: c.speed, keep: keepAfter(env), key: !!c.key });   // [a43-ui P6] key: 정점 대사(빨리감기로 넘기지 않음)
+      // [people] 카드가 있는 화자의 첫 대사 앞 소개 컷(src/ch1/people.js). intro:false = 이름을 알기 전 대사(카드는 {op:"intro"} 자리에서). 소개가 없으면 null — 예전처럼 곧바로
+      const pre = c.intro !== false && MC.people && MC.people.before ? MC.people.before(c.who, { skipping: sk }) : null;
+      return pre && typeof pre.then === 'function' ? pre.then(go, e => { MC.core.error(e, 'people'); return go(); }) : go();
+    },
     narr: async c => {
       const t = c.t != null ? c.t : c.text;
       if (MC.i18n && MC.i18n.active && Array.isArray(t) && !t.length) return;          // i18n: 번역이 모두 빈 값(앞에 합침)이면 서술 화면을 건너뜀
@@ -8827,6 +8839,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         switch (c.op) {
           case 'say':
             if (c.who && !(MC.data.speakers || {})[c.who]) add('경고', w, '없는 화자 ' + c.who);
+            if (c.intro !== undefined && c.intro !== false) add('경고', w, 'say intro는 false만 씀(이름을 알기 전 대사 — 소개 컷은 {op:"intro"} 자리에서)');
             text(c.t != null ? c.t : c.text, w, c.who);
             if (c.face && D.speaker(c.who).portrait && !D.portraitOf(c.who, c.face)) add('경고', w, '초상 없음 ' + c.who + '/' + c.face);
             else if (c.face && D.speaker(c.who).portrait) { const nm = D.portraitOf(c.who, c.face); if (nm && nm.indexOf('_' + c.face) < 0) add('정보', w, '표정 ' + c.face + ' 없음 → ' + nm); }
@@ -8857,6 +8870,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
             break;
           case 'bgm': if (c.id != null && MC.data.bgm && !MC.data.bgm[c.id]) add('경고', w, '없는 곡 ' + c.id); break;
           case 'closeup': if (!D.portraitOf(c.who, c.face)) add('경고', w, '클로즈업 초상 없음 ' + c.who + '/' + c.face); break;
+          case 'intro': if (!(MC.data.people || {})[c.id]) add('오류', w, '인물 소개 — data/people.js에 없는 id ' + c.id); break;   // [people]
         }
       });
     }
@@ -18458,6 +18472,74 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       if (MC.comic && typeof MC.comic.check === 'function') {
         try { const r = MC.comic.check(); r.errors.forEach(m => err('comic', m)); r.warnings.forEach(m => wrn('comic', m)); } catch (e) { err('comic', '검사 오류 ' + (e && e.message)); }
       } else err('comic', 'MC.comic 없음(src/ch1/comic.js 미로드)');
+    }
+
+    /* 4-d. [people] 인물 소개 컷·「인물」 쪽(data/people.js · src/ch1/people.js · 인계 docs/handoff/people.md)
+       화자·초상·소개 한 줄(폰 폭 두 줄)·직업·bio 줄과 cond(깃발이 이벤트에서 켜지는지)·past(옛 세이브 판정)·카드를 띄울 자리(say 또는 op intro) */
+    {
+      const PD = data.people || null, spk = data.speakers || {};
+      if (!PD) err('people', 'MC.data.people 없음(data/people.js 미로드)');
+      else {
+        if (!MC.people) err('people', 'MC.people 없음(src/ch1/people.js 미로드)');
+        if (!OPS.intro) err('people', "op 'intro' 없음(src/ch1/people.js)");
+        const sayWho = new Set(), introAt = {};
+        const flagsOf = (c, out) => { if (!c || typeof c !== 'object') return out; if (c.flag != null) out.push(c.flag); if (c.not) flagsOf(c.not, out); (c.all || []).forEach(x => flagsOf(x, out)); (c.any || []).forEach(x => flagsOf(x, out)); return out; };
+        const condOk = (cond, w) => { checkCond(cond, w); for (const f of flagsOf(cond, [])) if (!flagsSet.has(f) && !clueSet.has(f)) wrn(w, 'cond 깃발 ' + f + ' — 이벤트에서 켜는 곳 없음(오타?)'); };
+        // 목록마다(중첩 포함): op intro 앞, 같은 목록에 그 화자의 say(intro:false 아님)가 있으면 카드가 그 대사 앞에 먼저 떠 op가 헛돈다
+        const scanList = (list, where) => {
+          if (!isArr(list)) return;
+          list.forEach((c, i) => {
+            if (!c || typeof c !== 'object') return;
+            const w = where + '#' + i;
+            if (c.op === 'say' && c.who && c.intro !== false) sayWho.add(c.who);
+            if (c.op === 'intro') {
+              (introAt[c.id] = introAt[c.id] || []).push(w);
+              for (let j = i - 1; j >= 0; j--) { const p = list[j]; if (p && p.op === 'say' && p.who === c.id && p.intro !== false) { wrn(w, 'op intro ' + c.id + ' 앞 #' + j + ' 대사에 intro:false가 없음(카드가 그 대사 앞에 먼저 뜬다)'); break; } }
+            }
+            if (c.then) scanList(c.then, w + '/then');
+            if (c.else) scanList(c.else, w + '/else');
+            if (c.op === 'parallel') (c.do || []).forEach((b, k) => scanList(isArr(b) ? b : [b], w + '/p' + k));
+            if (c.op === 'choice') (c.opts || []).forEach((o, k) => scanList(o && o.do, w + '/opt' + k));
+            if (c.op === 'battle') { scanList(c.onWin, w + '/win'); scanList(c.onLose, w + '/lose'); scanList(c.onFlee, w + '/flee'); }
+          });
+        };
+        for (const id of evIds) scanList(evList(id), id);
+        let nCard = 0;
+        for (const id of Object.keys(PD)) {
+          const e = PD[id], w = 'people ' + id, sp = spk[id];
+          if (!e || typeof e !== 'object') { err(w, '항목이 객체가 아님'); continue; }
+          if (!sp) { err(w, '없는 화자(speakers.js)'); continue; }
+          if (!sp.portrait) err(w, '초상 없음(speakers.js portrait)'); else if (!has(sp.portrait)) err(w, '초상 스프라이트 없음 ' + sp.portrait);
+          if (typeof e.intro !== 'string' || !e.intro.trim()) err(w, 'intro(소개 한 줄) 없음');
+          else {
+            const n = MC.text.wrap(e.intro, 160, 'body').length;
+            if (n > 2) wrn(w, 'intro가 ' + n + '줄(폰 폭 두 줄까지) "' + e.intro + '"');
+            if (/[!！]/.test(e.intro)) wrn(w, 'intro에 느낌표');
+          }
+          const roles = isArr(e.role) ? e.role : (e.role != null ? [{ t: e.role }] : (sp.role ? [{ t: sp.role }] : []));
+          roles.forEach((r, k) => {
+            if (!r || typeof r.t !== 'string' || !r.t) { err(w, 'role ' + k + ' t 없음'); return; }
+            if (MC.text.width(r.t, 'small') > 84) wrn(w, 'role이 칸(84px)보다 김 ' + r.t);
+            if (r.cond != null) condOk(r.cond, w + ' role ' + k);
+          });
+          if (e.bio != null && !isArr(e.bio)) { err(w, 'bio는 [{t, cond}]'); continue; }
+          if ((e.bio || []).length > 8) wrn(w, 'bio 8줄 넘음(읽음 표시 비트)');
+          (e.bio || []).forEach((b, k) => {
+            const wb = w + ' bio ' + k;
+            if (!b || typeof b.t !== 'string' || !b.t.trim()) { err(wb, 't 없음'); return; }
+            if (/[!！]/.test(b.t)) wrn(wb, '느낌표');
+            const n = MC.text.wrap(b.t, 152, 'body').length;
+            if (n > 2) wrn(wb, n + '줄(두 줄까지) "' + b.t + '"');
+            if (b.cond == null) inf(wb, 'cond 없음(처음부터 보임)'); else condOk(b.cond, wb);
+          });
+          if (e.card === false) continue;
+          nCard++;
+          if (e.past == null) wrn(w, 'past 없음 — 옛 세이브에서 오래전에 만난 사람의 카드가 뜰 수 있다'); else condOk(e.past, w + ' past');
+          if (!sayWho.has(id) && !introAt[id]) wrn(w, '카드를 띄울 자리 없음(say who:' + id + ' 또는 op intro)');
+        }
+        for (const id in introAt) if (!PD[id]) err('people', 'op intro 없는 id ' + id + ' — ' + introAt[id][0]);
+        inf('people', '인물 ' + Object.keys(PD).length + '명 · 소개 컷 ' + nCard + ' · op intro ' + Object.keys(introAt).length + '곳(' + Object.keys(introAt).join(', ') + ')');
+      }
     }
 
     /* 5. 전투 데이터 */
@@ -38342,6 +38424,256 @@ SPR.cu_mouth_knife_c3 = { pal: 'cu_mouth_c', dens: 3, base0: 'cu_mouth_knife', r
 "ggggg33gggg999999fm36gggggggggm63f59ggggggg8hhhh8gg99959f3m366333n55333mm333nnnn3m36gggggg9gggggg9g8h8h8gghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh3hhhhhhhhhhhhhh8h388hhhh8",
 "ggggg93ggg9g99f99g636ggg9ggggg663395gg9g9gg8hhhh8g99999f933636663333m6333353333n333gggggggfggggggg98hhhhgghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh83hhhhhhhhhhhhh3h838hhhhh"
 ] };
+// [hands-c 10-28] 1막 끝 '탁자 위 세 손' — 사용자 「가운데와 맨 아래가 무엇을 하는지 모르겠다」: 제미나이 원본 hand_ink_g3·hand_wine_g1·hand_paper_g2에서 바로 96×80칸(tools/hands_c.ps1). 술잔 유리는 비친 초록만 회청으로.
+PALS.cu_hand_ink_c = { '0': '#070604', '1': '#050b04', '2': '#15130f', '3': '#1f1e19', '4': '#26281f', '5': '#372e2b', '6': '#2e3127', '7': '#5a4b43', '8': '#373b2e', '9': '#434938', 'a': '#555c42', 'b': '#666f4b', 'c': '#996f5d', 'd': '#98886f', 'e': '#a8997f', 'f': '#baab90', 'g': '#c39376', 'h': '#e0af8e', 'i': '#ccb88c', 'j': '#d6c297', 'k': '#d8c5a1', 'l': '#cbbca1', 'm': '#decba2', 'n': '#dfcdad', 'o': '#e2d0ab', 'p': '#e5d5b4', 'q': '#e6d7ba', 'r': '#eadcc0' };
+SPR.cu_hand_ink_c = { pal: 'cu_hand_ink_c', dens: 2, base0: 'cu_hand_ink', rows: [
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+".........................057555533550.70........................................................",
+"..........................1.33335255515c0.......................................................",
+"...........................1057555235257c0......................................................",
+"...........................155555552352c7d1.....................................................",
+"............................27735555255d75c1....................................................",
+".............................2535cd5525d75d74...................................................",
+"..............................255555552755a7c1.................f1...............................",
+"...............................375200550750552................fijd0.............................",
+"................................275525550327221.............1fjikjk01...........................",
+".................................257dd7752370231...........0kjkjijkmd1..........................",
+"....................................110353055532.........10qnokkkkmmome0........................",
+"...................................44320772275522.......0lqrnnkkkkkmmjjj00......................",
+"...................................255777750355551....00rrqponkkkkkkiiiiike.....................",
+"....................................05532355d25553...0fjkqqnl5knknkkiiijjone....................",
+".....................................15523573d355301lnnkknrq555lnkkjjjjknpqqf1..................",
+"......................................0572007303530qnnnnknqefef55ekkkkkkknqqpp1.................",
+".......................................055325500720l0pnknnnqnn55555fjknkkkqqqppl................",
+".........................................455530c35223pnnlnqqrqf5f555klkknknnppnppe..............",
+"..........................................135222c2a33lqq53lrrrqnnk5kk5fknnnnnqqqqnp11...........",
+"..........................................fl03552d03erre5555lqqpnkkedfe5eknnqqqqqqrrrl..........",
+"........................................1prqf02232232rrl5l355fnpppnkk5l55enqqqqqqrrrrrqf........",
+"......................................1jopl000222030rrrrqf55eeflppnnnon5e5qeqqqqrrrrrrqpf.......",
+"....................................1looo0000d0000000lrrrrrqee5p5lpponnlp555e5nqrrrrrqqpnol1....",
+"..................................1nnppk0g0chhhgghhgc00derqqqfne5elppppqqqel5lfrqrrrqnnpnqpof0..",
+".................................0lnnl02kcchghhghhhhhhegc0rrqqn5feqeflpqqrqql5r55frrqnnnnprpnk00",
+"...............................10nnf00hhghgcc00ggghhhhggg0erqppnfpe55ffpqrqrlr5f5f5rrnkkqnkoppmj",
+".............................10nnl00ehghgghhhhhh7ccggggchg0fpppnnnnef555lqqqqrf5ee5ekknnpnkkmnnm",
+"..........................1.1npn000hhhhhghhhhhhhc0cccccccgh0fqqpnnnkne5f55qrqpqrq5lf5eenpnkkknoo",
+"....................00.01020qpf00hhhgghhhhhg0gcckd00000cgggh0fqqppnpplf55epfpppqrqfl5f55dnkkkonk",
+"..............11...00b00bbb2000ghhhhhhhhhhc0hkhgchhg0000ccghg0qqppppqqn55pef5qpoqrqplef55dknnkkk",
+"a00210001001ababba03aa6bbbb900ghhhhhghhhgghggghgghhhhhh00cggg0qqqqqrrqpqpl55f55lppnnok5k5kknpkkj",
+"bba99bbb18bbbbbbbbbbbb68bbb980ghhhghhhhhggc20000chhhhhhgg00chclrrrrrrqpqqpnef55plrppppnekkkknnkj",
+"aba9abbbaab9abba4aaba994abbbb340ghhhihkhegggcghhdggghhhgd00cgg0rrrrrrqqqqppplfen55lqqqpnikknqpki",
+"bbbabbbbbbbaaba4ab99aa984abbaa2hhhhhhhggggggghhh00cccghg0c0cgg0rrrrrqqqqqqqqqnnf33f5nkkkkkkknnki",
+"abaabaabbbabba889a999a98499b68b32hhgggghgggcchghhc000cgc2c00gcdlrrrrqqqqqqqqpnjmle555flkkjkjnnkk",
+"99884aa6bbba9b99a99999aa64ba668a3hgggghhhgcghhhchhhhg00cccc00c2dqqqqqqqqqqqqpojkiif55557ijjjknl0",
+"99999baa488a9bba999894aa82aa864b2ghggghhgghchgcchgghhhc0gc22200qqqqqqqqqqqqqpomjjijfee5fijjjkf0.",
+"9aba9bbba66832999898848a83bb688220hhhhggccccc0cccccgghc02c2040fqqqqqqrqqqqqqpoomjjjjjeiiiiije0..",
+"9abaabab89b4009a9988846a83abb89200dghgcgggcgcc700cgcgc20cc20220rrrqqrrrqppqqqppoommjjijkijji1...",
+"99989aab46b822aa9999842b94b884930cgggggggggcgc7c7000cc000c20l0dlrrrqqqrppppqqqqpooomjiikj11.....",
+"99888aaa36ba9a668999844b96a113660cgggghghghhhcdcgcgc000eb000qf50frrqqqrpppppqqqqpppojiijm1......",
+"998688aa464aaa869886646b962219960ccgg72gcc2cc7ccccc30eeedddfrq30drnfqrqpppppppooppqppmjji.......",
+"9886688846399a86998986488636334627dcccccgcc00cdcgcd00eeeededeed07lk332nppooppomoopppojj1........",
+"9988998834a49a9aa99944b64666303840c7cccccc7cc0000000deeef222dedd72rr3f33ooooppommppppe0.........",
+"99999a964483699996a84328486632662ccc7cgc700007deededdeqrrl3ff22dferrqfofeooopooooppp00..........",
+"99999ba66499999888866306686462660000c70000deededdedddnrrrqrlfqr4frrrnfjoopooomoppol0............",
+"999999a64499886449664a304326846600000000dedededdedeelrrrfqnrfrrqf3e32koooooomjmope0.............",
+"998996962499980266664882202886640eeeddeeddedeededfqrrrrrleqrf3efffqqpomoopompooo00..............",
+"988944663369940066648640000486460eeededdeddeeeflqrrrrrrrrrnlpqrrpenpoommmmmoppn00...............",
+"9886344446aa933866448320000268342eeeeeedeelkpoprrrrppqpqqrrrrrrppppoooommmjopn0.................",
+"986333469999998868464400000366434edlooomooppqppqrrqpppppppppooopoooppooomjjmk1..................",
+"88646446a9963996888436000248886240eoopoooommoonrrqppppppppommmmjmmopppmjjiid1...................",
+"9864466898202888666334430483886040epopoommmmopnprrrqpppppppppoomjmoppqmiji1.....................",
+"99846648400003636632638668806841ed0opomonkoonkqreqrqpqppppqppppmjmmpqpmii0......................",
+"89846666200003233323988836866600depooomppnfppnllqqqnqnnpprqrqommmmmmppme1.......................",
+"684664420000233333269888246683dadkoommmpppofpkelfnnllppnpprqommmmmmjmp0.........................",
+"444664620000333332488444333680eeeomoooooppolle42e3lnqknpopopommmmmmji0..........................",
+"468864840023233323633333463880edfomopploopokfl3202dnlkopppppommmmmmi0...........................",
+"68686a64343023202686464666488322kompppppppkfe43433efnkoompppommmmmd0............................",
+"46646444442033008344666886868430jjmoomoklpnlflfkdefmkommimpoommmod1.............................",
+"464434664433300344348686666680edjjjjjimmonppnkkfjklomkjjjimjoomm0...............................",
+"434466664324000638868843464360ejjjjjjjjfjomjiimjfmkfmjiijjiimood................................",
+"344466623442003996431000001643emjjjjdejjjjjjjfjmjijjjjjjjijjmmf.................................",
+"44404600443000622000..00eea63mejjmjjjjjjjjjjjjijjjijijjjiiimk1..................................",
+"6664432442000000111....10kk0fjjjjjmjmmjjjjjjjjjjjjjjjjijjj011...................................",
+"6664666420000............14jjjjjjjjjjjjjjjjjjmmjmmmjjjjjijf.....................................",
+"64446660001...............1ejjjjjmmmmjijjjjjjmkmmmmmjjijjd......................................",
+"646664101...................eijjmommiijiiiijmklmmmmmmmjj1.......................................",
+"4432001.......................1emomjiimjjijfeekookmmmmj0........................................",
+"31..............................0jmjjiiiijiiifjoommmmd0.........................................",
+".................................0emjjijjjjjfijmommm01..........................................",
+"...................................0ijjjjjmmjjjjook0............................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................"
+] };
+PALS.cu_hand_thimble_c = { '0': '#070504', '1': '#040704', '2': '#070c07', '3': '#150e0c', '4': '#230f11', '5': '#341319', '6': '#211c19', '7': '#451720', '8': '#5d1e2b', '9': '#2d2522', 'a': '#352c29', 'b': '#3a302b', 'c': '#782838', 'd': '#443832', 'e': '#54443d', 'f': '#5f4c45', 'g': '#7e5b4f', 'h': '#936d5f', 'i': '#a57969', 'j': '#b38976', 'k': '#c6947f', 'l': '#c79b87', 'm': '#d6b29f', 'n': '#959c9c', 'o': '#d5a58f', 'p': '#e2b099', 'q': '#c1cdd4', 'r': '#ecbea7' };
+SPR.cu_hand_thimble_c = { pal: 'cu_hand_thimble_c', dens: 2, base0: 'cu_hand_thimble', rows: [
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+".......................................................................11.......................",
+"...................................................................210qqqn2.....................",
+"................................................................110qqqqqnqn2....................",
+"b99666......222...............................2211............11nqnqqqqqnqnn....................",
+"fffffeb61129dffa2.......12..................10lrrri000200000474nqqqqqqqqnqqqn...................",
+"fffd930339dfffeb601.23609f229.........1110imrliirrrkprrmpro48750qqqqqqqqnnqqn2..................",
+"fffdgg333feddd6aedd66ffffd966...1110jormmoppljopppjoppoprrj780jr0nqqqqqqq0qqqq2.................",
+"fff60666ffbdb66effedbbda6000310jrrpolloppo000j0ipp3opppppplc8jlpr01qqqnqqnnqqqn.................",
+"fdbb99dfffeb6aabbbbdda6a000hrrrrpooojjjjijlpprrjipi0kllkoklcklpppr00qqqqqq0qqqq2................",
+"dba99fffff999effffffeda363hpprrrplkloopkhiiilpppjol0ihiiii78kppppppm0nqqnq0qnqqq................",
+"bb9afffffb66defffedba96hihorrrojloijllpppl0ihgjppopl40hhii88ikopppijo0nqqqq1qqqq2...............",
+"b9bffffff96b9bbdbeebb0gijjrprpplkjoprprrrpp0000jppppk730ii57iiioppij0p0qqqn0qqnqn...............",
+"bdffffffa6aefffeeffea3iijpppppppoolpklopprrpppppopppol8701073iiioojihr0nqqqq1qqqq2..............",
+"dffffffb66deeffffffd63iioppollljm3kppppppprrpppppplollkcc4q750hiiilokor0nqqq0qqqn1..............",
+"ffffefe93bdbabdfedda96lipppollorrroljkijlolppppippppjop888535q103ijokkl30qqqq1qqqq1.............",
+"fffeefb96eedddddbda6hlilppllooi00hlljkoprrlhppo0ioppppo7oh474nnq1igklilm0nnqnnqqqq1.............",
+"fffdfd96dffffffffd69hojoppppppjjppoojijlprphlpoh0hjlppp7iii780f400hik0lrr0nqqq1qqq1.............",
+"ffedf9b3beffffeddb633okoprroloopppprpohiiopohpp30hhikpp77jj4808884hikhijr30gigg3733.............",
+"ffdee9b6bbbddddeed3ihlkkkkorrklppppppppighopoppp00giiio57ol3ck35783gij0j3l5888c748c7............",
+"fbeebbb6baadbaabba0iikkkkjlljpllloppppkpplipplhij030iiihgkjl7i07c7750ihgh0577555548c............",
+"badeabb6bbbabaabab0iikkkkjhiijlpkjjlppopppppo55i74440giiioppicr38888743347777787743c5...........",
+"bade6bb6bbbbba9dbb0ihkkkkkkkkihjpoppplpppppo8ipo3003743gijppp8k05c8888877777787741385...........",
+"baafd6b6adbaaaaaaa3hhihkkkkkkijhjioprplppjlo7kj0nqnn5770ihopp8kp07888c877777c7742.358...........",
+"bbafbab6aabdaaaa9a3hhghjkkkkkklijgiprplpphig5i0nnnnn0774gihpp7jop3888877777c8740..37c3..........",
+"bbbffbb9abaaaaaa9a9fgghhkkkkkkkjjgilppikoj3556dihnqqn4770iilp5hjji57777778c7751...37c4..........",
+"bbbffbb699aa9aaaaa0ghhi3ijkkkikkki3hkpolpo045adhnnnqqn5750iioj8jmo4777778c7751....47c5..........",
+"bbbfea96aaaaa9999a6330iiggikkjikkoiggjppppl053bbjnnqqn08740iik8ijr37777887751.....58c5..........",
+"ffbada96999aaaa99a6g300igfgiiiiijkiikoloppp021ddgnqmqne37740ih8kip0777777731......78c3..........",
+"ffa9bb96aaaaaa999966h30gig4hihhhhjkikolkoppp013aennjjnn05770ig7ool058777751.......788...........",
+"ffa9eba6aaaaaaaaaa90hh000ihhhhi0ihkgiokkkoppl00b9dgh0n005773hh7ki303757732........588...........",
+"bfaaeab699999999aaa0000000iiiigf0hh0hijklpppp012963g04i01454gi73hlr05870..........587...........",
+"beaadbba6aaaaaaaa996000000000gih300g0iijoloolo12660077op11010i73imm077.............c............",
+"bbb9abaa6a9a666aaa9960000630001012.11giiook0ll0.10gk7ipp0...1055hmli75.............c............",
+"bba9aaaa96a93ff369aa60000601nq1.....11hikojji0h..0io7jplo....1070h008..............8............",
+"abaa6aa9a6a9960g39a960000921qnq2..21nn00ijjh3gi1.2gj8ijji1.....450054..............8............",
+"bbaa6aaa9939999369a993003921qqn100nqqn1.0ihhgii0..0i8jiih1......577................8............",
+"baaa969a699699aa9aaaaa33a6..nqqnnqnn2...1hiiiihh1.1i8ihhi1.......8................37............",
+"aaaa969969a639a9000369996...1qqqen11.....0iiihhgf..h8hihh1.......8................37............",
+"baa9996a9aaaa6002....363....2qqqnn1.......1iggghh1.07gh3l1.......8................47............",
+"aaa999639aaaaa3......26......2nqqn1........0hhh001.17g0ir2......38................47............",
+"aaaa99f66aaaa61..............1qqqn2........1gh3hj1..750jm2......47................48............",
+"aaaaa96g39aa91................1qnn5.........103g02..54fg3.........................48............",
+"aaaaaaa6e3663.................2qqq82.........453.......1..........................48............",
+"aaa961116212...................1nq81..........8...................................38............",
+"9601....2.......................0q83..........5.................57.................8............",
+"................................12581...........................45.................7............",
+".................................1154..............................................7............",
+"..................................1383.............................................5............",
+"...................................083..........................................................",
+"....................................74..........................................................",
+"....................................53..........................................................",
+"....................................53..........................................................",
+"....................................4...........................................................",
+"................................................................................................",
+"...................................................................................7............",
+"...................................................................................8............",
+"..................................................................................48............",
+"..................................................................................4c............",
+"..................................................................................4c............",
+"..................................................................................4c............",
+"..................................................................................4c............",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................"
+] };
+PALS.cu_hand_sash_c = { '0': '#040302', '1': '#050803', '2': '#0b1106', '3': '#0d0806', '4': '#160d09', '5': '#231511', '6': '#351917', '7': '#482120', '8': '#5b2927', '9': '#713231', 'a': '#6f4535', 'b': '#84513e', 'c': '#92443a', 'd': '#955f43', 'e': '#ab704e', 'f': '#a95040', 'g': '#917351', 'h': '#7b7064', 'i': '#96897a', 'j': '#b79a72', 'k': '#c4855a', 'l': '#ab9f91', 'm': '#d99a6c', 'n': '#c4baaf', 'o': '#e5b284', 'p': '#e4d0aa', 'q': '#dad2c9', 'r': '#f0e9e1' };
+SPR.cu_hand_sash_c = { pal: 'cu_hand_sash_c', dens: 2, base0: 'cu_hand_sash', rows: [
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"cf6c70503f3570iiihlnqqqqqrrrqrqrqrq0............................................................",
+"9788536604f330iiihnnnnnqqqrrrrrrrrr0............................................................",
+"66773657406f00iiiilnlninrrqqnli3nnqr1...........................................................",
+"86444676665cf0hiiinlllhnqqnlnnnqnllqn1..........................................................",
+"3400056c7667c40iiilliiilqnnnnrrrrrrnqq0.........................................................",
+"000000776786850hihillhiqqnnlrqrrrrrrrr1.........................................................",
+"i00000378c7776c0iiiilhlqqlhnqqqqqqqrqr0.........................................................",
+"i00ii0068c8879c0hiiii3lqninqnnnnnlqqrrr0........................................................",
+"ii0hih0088f8779f0iiiihhnniqnllqqnqqqqqrq1.......................................................",
+"ii0hli0038f8879f00iih4ininnnnqnnqqqqnqnlq012....................................................",
+"lli0nl00078cc989b0iihhhnilqnqnqnl0000334012.....................................................",
+"lni0lqi00089c9c8600iiihnhinnnl3nn0abadb4001.....................................................",
+"inl0lqq0h069cc98960hii0lhilnni3niadkdkmkm01.....................................................",
+"llnh0qqihh089fc988c0ii3lhinnni004hkkkmmkmd1.....................................................",
+"lnqi3qrnhi049fc8c990iiiihlqnq00abdkkkkkmmk3.....................................................",
+"llql4nrqiii0796f99970iihhilnq00beekkkkmmkkm0....................................................",
+"ilqqaiqqiii009fcff9830ihiiinn3bbemekkkmmkkmm0...................................................",
+"llrqhhqrqnii069cf9ccc3i3hii003bbbkkmkkkkkmemk0.....................2g12.........................",
+"llrrl4rrrqni009cf9fcc30hhii000adkakmmmkkmdkkkm0.......100001......jommdpi11.....................",
+"llqrn4qrrqni005fffccfc0iii000abbdkdememmkkkkdd3000303jomkeop0.....popojjpj......................",
+"ilnrrhlrqqnni008cffcfc31i3000babadkddmekmkkebb3kmmmoomkmokekj1...1qpopjgd.......................",
+"llnrrhnqrrqqi015ffcc9cf0i0000bbbdd3ebkkbdkebd3mmeekmkoekkmmmkg1..1pjpppjj2......................",
+"llqrrqhqqrrqn0107fccfc6000000aabeda3e4keadkkdkkmmmkokmbdkmomkmm11pqjjprpo2......................",
+"llnqrrhlqrrqq00.4cffc97f000003bbbeeb0e3mddddkkkmokeokeb4ekkomke33jpgpppppg......................",
+"ilnqrrniqrqnqn0.39fff9990000000badebb0e5mkmaekeekmekm3b4ddekmekg30jjoprpg.......................",
+"llnqrrqhnnlnnq0.186cc9c8c0130003bbdad0dkbemaekeaemkdka3aabddkdeke33gppp1........................",
+"lllnrrqlhnrrrqn..5ccf998c0..1..00adbed3mddkabedddekeabb03ab6mebb430joj31..jj....................",
+"llnnqrrniqrrnnn0.0ffc99f90......03badd4ekekabededdbb3044000akebakg3jjggi13jpj...................",
+"nlnqqqrnlni011i1.08f99fc861......13bbbddeme4bbdbdba3i3ljd00bkebdej3gjghiliooj2ojo...............",
+"lllqqnnn2h1..120..7f9cc8cc0.......0a4babddbb3abba6a00nplgd0bdkddem0333jpphomgopo................",
+"llini0001.1..0....587988f93........043adkkda854433303pijg33abm5434043g4jp3oompo2................",
+"lh11001...2.......48899f96c3.......133bdekkd3j0300364oij3ga0bmdej50g3jpojj5ggjg.................",
+"i01.1......2......17899c9990........00addke3oprp33450jgg4343dkbmmo0333ojekdg21..................",
+"1...1......2.......579c9cf63........0abbddb0pqppp0gj4oglpog34e4emp33mm333331....................",
+"...........1.......6f9fcc96c........13dbab3pppqpoj4g4ji534343aeddg0odmmojj3o1...................",
+"...........1.......598cfc96f0........0ba9ajppppppjjgggg4go44403bd3addkmmmmmoe...................",
+"...................4989f99f30........0b79a3jjpnpqjhgd5356mm4b33034b4dddgkkmkm1..................",
+"...................0c7cc98860.........075lgjgopljlji0443bekeme03304ababbdmkek1..................",
+"...................0969999870.........155pijjgjilj3e43433abdmmm05330bbbadkmbd0..................",
+"...................085c98998c..........0gjjjjggg434ko30304dkdkme005300bbbbd65...................",
+"....................7ff88878c..........1gjpjeg033456ojd003bd5e4mkk3555300bda3...................",
+"....................7c788c79c0........2oggj34dj0333aggmk30adek5emmm055i..110....................",
+"....................6989977963........1jjg3jjp34g43bbekok00abbkemmom301.........................",
+"....................5979888880........343jjlpp4bj40akmkkm403bbekeekkkk..........................",
+"....................4988988783........03opqpqj45ggd3dkedbkb003dekbbddm0.........................",
+"....................0998999793........1ppnppj40a33m03dddbkkb033bdbadkj1.........................",
+"....................099ccccc85.......1opqpqjj40be7me0bbbaekka30adbbd331.........................",
+"....................0c8979c986......1jppppjjggg3bakm30aedddme300aaaa30..........................",
+"....................08f9f989971.......12qpjgjjg0bekkd03bebbbeb4.00000...........................",
+"....................08f99c98870.........1mjggjg0adbdkb00bbaek50.................................",
+".....................7f87cfc971..........0ejgj333baeke303bb6kb0.................................",
+".....................6989678883...........1dkj554adddeaa0baa43..................................",
+".....................4989989983..............11410da5da1.1301...................................",
+".....................3f7988cc84...................05b30.........................................",
+".....................494988c98f1...................10...........................................",
+".....................07689c86863................................................................",
+".....................1899889f7760...............................................................",
+"......................599c9ccc9c0...............................................................",
+"......................09699c89c85...............................................................",
+"......................16879c8ccc70..............................................................",
+".......................46699f99c66..............................................................",
+".......................1787999c8771.............................................................",
+"........................6977769c9fc.............................................................",
+"........................3998888897c0............................................................",
+"........................08967533133.............................................................",
+".........................011....................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................",
+"................................................................................................"
+] };
 MC.addSprites({ pals: PALS, spr: SPR });
 })(window.MC);
 
@@ -40270,6 +40602,123 @@ const pt = n => (SPR[n] ? n : null);
   "sys":        { "name": null, "portrait": null, "style": "sys",   "voice": "sys",   "text": "#9a98a8", "align": "center" }
 
 });
+})(window.MC);
+
+</script>
+<script>/* ==== data/people.js ==== */
+/* data/people.js — [people] 인물 소개 컷(첫 등장)과 메뉴 「인물」 쪽의 글. 엔진·그리기는 src/ch1/people.js(MC.people), 인계 docs/handoff/people.md.
+   키 = 화자 id(speakers.js — 이름·이름색·초상은 거기서 가져온다). 키 순서 = 「인물」 목록 순서(첫 등장 순).
+   항목: card(false = 소개 컷 없음 — 주인공은 오프닝 코믹 「에드몽 당테스, 열아홉.」이 소개한다)
+         role(직업 한마디 — 없으면 speakers.js role. 문자열 또는 [{t, cond}] — 조건이 맞는 마지막 것)
+         intro(소개 한 줄 — 카드·목록·본문 첫 줄. 폭 160px(한글 13자 안팎) 두 줄 이하, '\n'은 권장 줄바꿈 — 문장 사이에서 끊는다)
+         bio([{t, cond}] — 이야기가 드러날 때 열리는 줄. 조건은 events와 같은 cond 형식, 순서대로 보인다. 폭 152px 두 줄 이하)
+         past(옛 세이브 판정: introSeen이 없는 기록에서 이 조건이 맞으면 이미 만난 사람으로 — 카드 뒤에 켜지는 깃발만 쓴다)
+   글 규칙: 그 시점 당테스가 아는 것만(추리의 밤 dd.n1~n4 전에는 배신을 말하지 않는다) · 섬 이름 금지 · '보물'은 s3t.paper 뒤에만 · S4 연도는 자코포 입(s4e.counted) 뒤에만 ·
+            아버지·모렐 씨는 높임(-시-), 나머지는 평서. 느낌표 없음. 인용은 작은따옴표(게임 대사와 같게). 폭·줄 수는 MC.dbg.validate가 잰다(people *). */
+(function (MC) { 'use strict';
+  const F = f => ({ "flag": f });
+  const ANY = (...fs) => ({ "any": fs.map(F) });
+
+  MC.data.people = {
+    "dantes": {
+      "card": false,
+      "role": [ { "t": "일등 항해사" }, { "t": "이프 성의 죄수", "cond": F("a2.done") }, { "t": "탈옥수", "cond": F("s4x.swam") } ],
+      "intro": "에드몽 당테스, 열아홉.\n파라옹호의 일등 항해사.",
+      "bio": [
+        { "t": "르클레르 선장님 유언으로\n엘바 섬에 들렀다.", "cond": F("a1.arrived") },
+        { "t": "약혼 잔치 날,\n법의 이름으로 끌려갔다.", "cond": F("a2.arrested") },
+        { "t": "이프 성.\n이름 대신 34번이 되었다.", "cond": F("a2.done") },
+        { "t": "신부님 앞에서,\n다시 에드몽이 되었다.", "cond": F("a4m.n1_touch") },
+        { "t": "벽에 네 이름을 새겼다.", "cond": F("a4d.deduced") },
+        { "t": "신부님 대신 자루에 들었다.", "cond": F("s4x.sewn") },
+        { "t": "손가락으로 세어 보았다.\n열네 해였다.", "cond": F("s4e.counted") }
+      ]
+    },
+    "morrel": {
+      "past": ANY("a1.arrived", "a1.done"),
+      "intro": "파라옹호의 선주.\n셈보다 사람을 먼저 보신다.",
+      "bio": [
+        { "t": "나를 다음 선장으로\n점찍어 두셨다.", "cond": F("a1.arrived") },
+        { "t": "끌려가는 나를 두고,\n끝까지 착오라고 외치셨다.", "cond": F("a2.arrested") }
+      ]
+    },
+    "danglars": {
+      "past": ANY("a1.arrived", "a1.done"),
+      "intro": "파라옹호의 회계사.\n셈이 빠르고, 늘 웃는다.",
+      "bio": [
+        { "t": "장부 글씨는 반듯한데,\n소매 끝은 잉크로 새까맣다.", "cond": { "any": [ { "var": "a1.t_danglars", "gte": 1 }, F("dd.n3") ] } },
+        { "t": "내가 선장이 되면,\n그 장부부터 들여다봤을 터.", "cond": F("dd.n1") },
+        { "t": "엘바의 편지를 든 나를,\n배 난간에서 보았다.", "cond": F("dd.n2") },
+        { "t": "정자의 탁자에서,\n왼손으로 투서를 썼다.", "cond": F("dd.n3") }
+      ]
+    },
+    "father": {
+      "past": ANY("a1b.father_talked", "a1b.father_done", "a1.done"),
+      "intro": "골목 맨 위 집, 홀로 사신다.\n저녁이면 집 앞에 앉으신다.",
+      "bio": [
+        { "t": "빚을 갚느라 찬장이 비었다.\n배는 안 고프다고만 하신다.", "cond": F("a1b.father_done") },
+        { "t": "갇힌 뒤로는\n소식을 들을 길이 없다.", "cond": F("a2.done") }
+      ]
+    },
+    "caderousse": {
+      "past": ANY("a1b.father_done", "a1.done"),
+      "intro": "아버지 이웃의 재단사.\n손가락엔 늘 골무를 낀다.",
+      "bio": [
+        { "t": "아버지께 빚을 받아 갔다.\n받을 생각은 없었다면서.", "cond": F("a1b.father_done") },
+        { "t": "내가 끌려갈 때,\n입을 열었다가 잔을 비웠다.", "cond": F("a2.arrested") },
+        { "t": "정자의 탁자에 그도 있었다.\n잔을 내려놓지 않았다.", "cond": F("dd.n3") }
+      ]
+    },
+    "fernand": {
+      "past": ANY("a1.catalan_done", "a1.done"),
+      "intro": "메르세데스의 사촌.\n카탈루냐 마을의 어부.",
+      "bio": [
+        { "t": "메르세데스가 거절했다.\n내게 한 말은 '……알아.'뿐.", "cond": F("a1.catalan_done") },
+        { "t": "내가 사라지면,\n메르세데스 곁에 남는 사람.", "cond": F("dd.n1") },
+        { "t": "편지는 쓰지 않았다.\n다만 검사에게 넘겼다.", "cond": F("dd.n3") }
+      ]
+    },
+    "mercedes": {
+      "past": ANY("a1.catalan_done", "a1.done"),
+      "intro": "카탈루냐의 처녀, 열일곱.\n늘 부두에서 나를 기다린다.",
+      "bio": [
+        { "t": "'난 기다리는 쪽을 골랐어.'\n페르낭에게 그렇게 말했다.", "cond": F("a1.catalan_done") },
+        { "t": "기다리겠다고 외쳤다.\n끌려가는 내 등 뒤에서.", "cond": F("a2.arrested") },
+        { "t": "열네 해가 지났다.\n그녀도 이제 서른하나다.", "cond": F("s4e.counted") }
+      ]
+    },
+    "villefort": {
+      "past": ANY("a2.villefort_done", "a2.done"),
+      "intro": "마르세유의 검사 대리.\n젊고, 앞날이 밝다.",
+      "bio": [
+        { "t": "나처럼, 제 약혼 잔치에서\n불려 나왔다.", "cond": F("a2.villefort_done") },
+        { "t": "내 눈앞에서 편지를 태웠다.\n나를 위해서라고 했다.", "cond": F("a2.villefort_done") },
+        { "t": "누아르티에는 그의 아버지.\n앞길을 지키려 나를 묻었다.", "cond": F("dd.n4") }
+      ]
+    },
+    "faria": {
+      "past": ANY("a4m.n1_wait", "a4m.n1_touch", "a4.joined"),
+      "intro": "27번 방의 신부.\n간수들은 미쳤다고 한다.",
+      "bio": [
+        { "t": "여섯 해 걸린 굴이,\n바다 대신 내 방에 닿았다.", "cond": F("a4m.n1_wait") },
+        { "t": "생선 뼈로 펜을 깎아,\n셔츠에 책을 쓴다.", "cond": F("a4m.n2") },
+        { "t": "나의 스승이 되었다.\n말과 역사와 별을 배운다.", "cond": F("a4.joined") },
+        { "t": "두 번째 발작이\n오른쪽 팔다리를 앗아 갔다.", "cond": F("s3f.done") },
+        { "t": "보물 이야기를 한다.\n미친 신부라 불린 까닭이다.", "cond": F("s3t.paper") },
+        { "t": "나를 아들이라 불렀다.", "cond": F("s3t.son") },
+        { "t": "세 번째 발작을\n넘기지 못했다.", "cond": F("s4c.dead") }
+      ]
+    },
+    "jacopo": {
+      "past": ANY("s4t.deck", "s4e.end"),
+      "intro": "제노바 타르탄선의 선원.\n바다에서 나를 건져 올렸다.",
+      "bio": [
+        { "t": "젖은 옷은 벗으라며\n셔츠를 건넸다.", "cond": F("s4t.helmed") },
+        { "t": "'저기서 나간 사람은\n다 바다에 있다지만요.'", "cond": F("s4t.smoke") },
+        { "t": "날짜를 물으니 알려 주었다.\n1829년 2월 28일.", "cond": F("s4e.counted") }
+      ]
+    }
+  };
 })(window.MC);
 
 </script>
@@ -43028,12 +43477,13 @@ MC.addEvents({
     { "op": "face", "id": "player", "dir": "up" },
     { "op": "emote", "id": "player", "kind": "dots", "ms": 1100 },
     { "op": "wait", "ms": 300 },
-    { "op": "say", "who": "morrel", "t": "어이, 파라옹호!{p:200} 깃발은 왜 반만 올렸나!", "pos": "top" },
+    { "op": "say", "who": "morrel", "t": "어이, 파라옹호!{p:200} 깃발은 왜 반만 올렸나!", "pos": "top", "intro": false },   // [people] 목소리가 먼저 — 소개 컷은 모렐이 내려와 마주 선 뒤
     { "op": "emote", "id": "player", "kind": "exclaim", "ms": 700, "async": true },
     { "op": "cam", "to": "morrel", "ms": 600 },
     { "op": "move", "id": "morrel", "path": "D6 R1", "speed": 190 },
     { "op": "face", "id": "morrel", "dir": "down" },
     { "op": "cam", "to": "player", "ms": 400 },
+    { "op": "intro", "id": "morrel" },                                    // [people] 모렐 소개 컷(당글라르는 첫 대사 앞에 저절로)
     { "op": "say", "who": "dantes", "face": "sad", "t": [ "모렐 씨!", "……르클레르 선장님이 바다에서 돌아가셨습니다." ] },
     { "op": "say", "who": "morrel", "face": "sad", "t": "……그 양반이?{p:300} 나폴리를 떠날 땐 정정했는데." },
     { "op": "say", "who": "dantes", "face": "sad", "t": "열병이었습니다.{p:200} 사흘 앓으시고, 그대로." },
@@ -43291,15 +43741,16 @@ MC.addEvents({
     { "op": "bgm", "id": "marseille", "fade": 400 },
     { "op": "music", "fn": "filterTo", "args": [ 1400, 0.6 ] },
     { "op": "cam", "to": [11, 7], "ms": 700 },
-    { "op": "say", "who": "fernand", "t": "메르세데스. 한 번만,{p:200} 한 번만 다시 생각해 봐." },
-    { "op": "say", "who": "mercedes", "t": "페르낭, 백 번을 물어도 대답은 같아." },
+    { "op": "say", "who": "fernand", "t": "메르세데스. 한 번만,{p:200} 한 번만 다시 생각해 봐." },   // [people] 페르낭 소개 컷은 이 대사 앞에 저절로
+    { "op": "say", "who": "mercedes", "t": "페르낭, 백 번을 물어도 대답은 같아.", "intro": false },   // [people] 엿듣는 말다툼 — 메르세데스 소개 컷은 그녀가 에드몽을 알아보는 순간에
     { "op": "say", "who": "fernand", "face": "glare", "t": "그놈은 바다에 나가면 석 달이야.{p:300} 난 매일 여기 있고." },
-    { "op": "say", "who": "mercedes", "t": "알아.{p:300} 그래도 난 기다리는 쪽을 골랐어." },
+    { "op": "say", "who": "mercedes", "t": "알아.{p:300} 그래도 난 기다리는 쪽을 골랐어.", "intro": false },
     { "op": "wait", "ms": 500 },
     { "op": "face", "id": "mercedes", "dir": "right" },
     { "op": "wait", "ms": 250 },
     { "op": "emote", "id": "mercedes", "kind": "exclaim", "ms": 700 },
     { "op": "music", "fn": "filterTo", "args": [ null, 0.4 ] },
+    { "op": "intro", "id": "mercedes" },                                  // [people]
     { "op": "say", "who": "mercedes", "face": "smile", "t": "……에드몽!" },
     { "op": "cam", "to": "player", "ms": 500, "async": true },
     { "op": "move", "id": "mercedes", "path": "R1 D5", "speed": 130 },
@@ -43928,6 +44379,7 @@ MC.addEvents({
   /* 1-4 아버지(명세 440~452 + F-3·F-8 447). 아버지는 창가에서 항구 쪽을 보고 서 있다 */
   "a1b.father": [
     { "op": "wait", "ms": 500 },
+    { "op": "intro", "id": "father" },                                    // [people] 창가에 선 아버지 — 돌아보기 전에 소개 컷(돌아보며 부르는 「에드몽!」을 끊지 않게)
     { "op": "emote", "id": "father", "kind": "dots", "ms": 1000 },
     { "op": "face", "id": "father", "dir": "down" },
     { "op": "emote", "id": "father", "kind": "exclaim", "ms": 600 },
@@ -46160,7 +46612,8 @@ MC.addEvents({
       { "op": "say", "who": "unknown", "t": "여기선 27번이라더군." },
       { "op": "emote", "id": "player", "kind": "exclaim", "ms": 600 },
       { "op": "say", "who": "think", "t": "27번.{p:300} ……간수가 말하던 옆 동 그 노인." },
-      { "op": "say", "who": "faria", "t": [ "원래는 파리아.{p:200} 신부였네.", "간수들 말로는 '미친' 신부고." ] },
+      { "op": "say", "who": "faria", "t": [ "원래는 파리아.{p:200} 신부였네.", "간수들 말로는 '미친' 신부고." ], "intro": false },   // [people] 이름을 스스로 밝히는 줄 — 소개 컷은 바로 뒤
+      { "op": "intro", "id": "faria" },                                   // [people] 파리아 소개 컷(벽 너머 목소리·27번까지는 unknown/think라 뜨지 않음)
       { "op": "spawn", "id": "faria_m", "type": "npc", "sprite": "ch_faria", "x": 7, "y": 5, "dir": "up", "solid": true, "event": "a4m.n1_fall", "noTurn": true },
       { "op": "light", "at": "faria_m", "ms": 0 },
       { "op": "set", "var": "m4phase", "v": "n1" },
@@ -55695,7 +56148,8 @@ MC.addEvents({
       { "op": "vignette", "a": 0.25, "ms": 3000, "async": true },
       { "op": "fade", "to": 0, "ms": 1400 },
       W(700),
-      SAY("jacopo", "살았다!\n머리채 잡은 게 저예요.\n미안해요, 급해서."),   // 1막 뒤 처음 듣는 평범한 사람의 다정한 말투
+      Object.assign(SAY("jacopo", "살았다!\n머리채 잡은 게 저예요.\n미안해요, 급해서."), { "intro": false }),   // 1막 뒤 처음 듣는 평범한 사람의 다정한 말투 · [people] 그 말이 먼저 — 소개 컷은 바로 뒤
+      { "op": "intro", "id": "jacopo" },                                 // [people] 자코포 소개 컷
       { "op": "jump", "id": "player", "h": 1, "ms": 140 },
       STAND,
       W(500),
@@ -56338,6 +56792,178 @@ MC.addEvents({
 })(window.MC);
 
 </script>
+<script>/* ==== data/debug_people.js ==== */
+/* data/debug_people.js — [people] 인물 소개 컷·메뉴 「인물」 디버그 프리셋(?debug=1에서만 동작, 일반 실행에서는 아무것도 하지 않음). debug_s1b.js와 같은 틀. 인계 docs/handoff/people.md
+   쓰는 법: ?debug=1&ev=__intro.<id>  — 그 인물이 처음 나오는 실제 장면을 '처음 보는' 상태로(카드가 뜨는 자리·앞뒤 흐름 확인)
+              morrel·danglars(a1.arrive) · father(a1b.father) · caderousse(a1b.caderousse) · fernand·mercedes(a1.catalan_scene) · villefort(a2.villefort)
+              faria(= __s2.meet → a4.meet) · jacopo(= __s4.deck → s4t.deck)
+            ?debug=1&ev=__card.<id>   — 카드만(그 인물의 무대 맵 위) → 그 인물의 첫 대사 한 줄 · __card.all = 아홉 명 차례로
+            ?debug=1&ev=__people      — 엔딩 직전 상태(모든 줄 열림)로 메뉴 「인물」 · __people.a1(1막 첫날 뒤) · __people.d3(추리 셋째 밤 뒤 1820) · __people.s4(배 위 1829)
+                                        &sel=<id> 이면 그 사람 본문을 바로 연다(예 &sel=faria)
+            ?debug=1&ev=__people.old  — 옛 세이브(introSeen 없음) 판정 시험 다섯 가지 → 화면·콘솔에 결과(맞으면 「통과」)
+   콘솔: MC.dbg.people('<이름>') · MC.dbg.peoplelist() · MC.people.forget() — 모두 다시 처음 보는 것으로 · MC.people.forget('faria') */
+(function (MC) { 'use strict';
+  if (!MC.cfg || !MC.cfg.debug) return;
+
+  const log = m => console.info('[people preset] ' + m);
+  const q = MC.cfg.q || {};
+  function flags(st, list) { for (const f of list) st.flags[f] = true; }
+  const CARDS = ['morrel', 'danglars', 'father', 'caderousse', 'fernand', 'mercedes', 'villefort', 'faria', 'jacopo'];
+  const FIRST = {           // 카드 뒤에 보일 첫 대사(실제 장면 그대로 — 미리보기용)
+    morrel: '그리고 선장 자리 말일세.{p:400} 내 마음은 이미 정했네.',
+    danglars: '하루가 아니라 하루 반입니다, 선주님.',
+    father: '에드몽!{p:250} ……에드몽이냐!',
+    caderousse: '어이, 우리 선장님 오셨네!\n{p:200}소식 빠르지?\n동네가 다 알아.',
+    fernand: '메르세데스. 한 번만,{p:200} 한 번만 다시 생각해 봐.',
+    mercedes: '……에드몽!',
+    villefort: '기다리게 했소.{p:300} 나도 약혼 파티에서 불려 나왔소.',
+    faria: '원래는 파리아.{p:200} 신부였네.',
+    jacopo: '살았다!\n머리채 잡은 게 저예요.\n미안해요, 급해서.'
+  };
+
+  /* ---------- 상태 ---------- */
+  const F_A1 = ['a0.done', 'a1.arrive_started', 'a1.arrived', 's2.alley_open', 'a1b.father_talked', 'a1b.father_done', 'a1b.sardine', 'a1.catalan_done', 'a1.reserve_greeted', 'a1.done'];
+  const F_A2 = ['a1e.on', 'a1e.done', 'a2.feast', 'a2.arrested', 'a2.villefort_done', 'a2.done', 'a3.started', 'a3.after_card', 'a3.scratch_done'];
+  const F_MEET = ['a4.met', 'a4m.n1_wait', 'a4m.n1_touch', 'a4m.n1', 'a4m.day', 'a4m.n2_told', 'a4m.n2', 'a4m.n3', 'a4m.montage', 'a4.joined', 'a4.y1820'];
+  const F_DD = ['dd.n1', 'dd.n2', 'dd.n3'];
+  const F_LATE = ['dd.n4', 'a4.y1822', 'a4d.deduced', 's3f.done', 's3t.paper', 's3t.reveal', 's3t.son', 's4.on', 's4c.dead', 's4x.sewn', 's4x.swam', 's4t.boat', 's4t.deck', 's4t.helmed', 's4t.smoke'];
+  function base(act, year, list, seenIds) {
+    const st = MC.game.newState();
+    st.act = act; st.year = year;
+    flags(st, list);
+    st.vars['a1.t_danglars'] = 1; st.vars.father = 'A'; st.vars.sardine = 'Y';
+    st.vars.introSeen = seenIds.join(',');
+    return st;
+  }
+  const A1_SEEN = ['morrel', 'danglars', 'father', 'caderousse', 'fernand', 'mercedes'];
+  const day1 = () => base(1, 1815, F_A1, A1_SEEN);
+  function d3() {
+    const st = base(4, 1820, F_A1.concat(F_A2, F_MEET, F_DD), A1_SEEN.concat(['villefort', 'faria']));
+    st.dispName = '에드몽'; Object.assign(st.vars, { growth: 3, dantesLook: 'd3' });
+    return st;
+  }
+  function s4(end) {
+    const st = base(4, 1829, F_A1.concat(F_A2, F_MEET, F_DD, F_LATE, end ? ['s4e.counted'] : []), A1_SEEN.concat(['villefort', 'faria', 'jacopo']));
+    st.dispName = end ? '에드몽' : '몰타 뱃사람'; Object.assign(st.vars, { growth: 6, dantesLook: 'd5', toast: 'C' });
+    return st;
+  }
+
+  /* ---------- 맵에 들어가기(debug_s1b와 같은 순서) ---------- */
+  async function enter(st, mapId, at, nested) {
+    if (!nested && MC.events && MC.events.reset) MC.events.reset();
+    MC.state = st;
+    try { if (MC.ch1 && MC.ch1.applyLook) MC.ch1.applyLook(st); } catch (e) { console.warn(e); }
+    if (st.act >= 4 && MC.gfx.uiPals && MC.gfx.uiPals.act4) MC.gfx.setUIPal('act4');
+    if (MC.input && MC.input.guardBack) MC.input.guardBack(true);
+    if (MC.field && MC.field.hud) MC.field.hud(true);
+    const maps = MC.data.maps || {};
+    if (typeof at === 'string' && at !== 'default' && !((maps[mapId] || {}).spawns || {})[at]) at = 'default';
+    await MC.field.enter(mapId, at, 'cut');
+    if (MC.fx && MC.fx.fadeLevel && MC.fx.fadeLevel() > 0.5) MC.fx.fade(0, 300);
+  }
+  // 소개 컷 무대(onEnter가 장면을 돌리지 않는 상태)
+  const STAGE = {
+    morrel: ['port', 'default', day1], danglars: ['port', 'default', day1],
+    father: ['house', 'door', day1], caderousse: ['house', 'door', day1],
+    fernand: ['catalan', 'default', day1], mercedes: ['catalan', 'default', day1],
+    villefort: ['villefort', 'enter', () => { const st = day1(); st.act = 2; flags(st, ['a2.feast', 'a2.arrested']); return st; }],
+    faria: ['__s2', 'hub'], jacopo: ['boat', 'default', () => s4(false)]
+  };
+  async function stage(id, nested) {
+    const S = STAGE[id] || STAGE.morrel;
+    if (S[0] === '__s2' && MC.dbg && MC.dbg.s2) { await MC.dbg.s2(S[1], { nested }); return; }
+    await enter(S[2](), S[0], S[1], nested);
+  }
+  async function cardOnly(id, nested, withLine) {
+    await stage(id, nested);
+    await MC.core.waitReal(400);
+    MC.people.forget(id);
+    log('카드 ' + id);
+    await MC.people.present(id);
+    if (withLine && FIRST[id]) { await MC.dialogue.say({ who: id, t: FIRST[id], keep: 'no' }); }
+  }
+
+  /* ---------- 실제 첫 등장 장면 ---------- */
+  const REAL = {
+    morrel:     { desc: '1-1 입항(a1.arrive): 모렐 외침 → 카메라 → 모렐 카드 → … → 당글라르 첫 대사 앞 카드', go: async n => { await enter(((st) => (st.vars.introSeen = '', st))(MC.game.newState()), 'port', 'arrive', n); } },
+    father:     { desc: '1-4 아버지의 집(a1b.father): 창가의 아버지 → 카드 → 돌아보며 「에드몽!」', go: async n => { const st = base(1, 1815, ['a0.done', 'a1.arrive_started', 'a1.arrived', 's2.alley_open'], ['morrel', 'danglars']); delete st.vars.father; await enter(st, 'house', 'door', n); } },
+    caderousse: { desc: '1-5 문간의 카드루스(a1b.caderousse): 첫 대사 앞 카드', go: async n => { const st = base(1, 1815, ['a0.done', 'a1.arrive_started', 'a1.arrived', 's2.alley_open', 'a1b.father_talked'], ['morrel', 'danglars', 'father']); await enter(st, 'house', 'door', n); await MC.events.run('a1b.caderousse'); } },
+    fernand:    { desc: '1-6 카탈루냐(a1.catalan_scene): 페르낭 카드 → 말다툼 → 메르세데스가 에드몽을 알아보는 순간 카드', go: async n => { const st = base(1, 1815, ['a0.done', 'a1.arrive_started', 'a1.arrived', 's2.alley_open', 'a1b.father_talked', 'a1b.father_done'], ['morrel', 'danglars', 'father', 'caderousse']); await enter(st, 'catalan', 'default', n); await MC.events.run('a1.catalan_scene'); } },
+    villefort:  { desc: '2-3 검사 대리의 집무실(a2.villefort): 첫 대사 앞 카드', go: async n => { const st = base(2, 1815, F_A1.concat(['a1e.on', 'a1e.done', 'a2.feast', 'a2.arrested']), A1_SEEN); await enter(st, 'reserve', 'default', n); await MC.events.run('a2.villefort'); } },
+    faria:      { desc: '4-1 첫째 밤(= __s2.meet → a4.meet): 「원래는 파리아. 신부였네.」 바로 뒤 카드', go: async n => { if (MC.dbg && MC.dbg.s2) await MC.dbg.s2('meet', { nested: n }); else console.warn('[people preset] debug_s2 없음'); } },
+    jacopo:     { desc: '장면 13 배(= __s4.deck → s4t.deck): 「살았다!」 바로 뒤 카드', go: async n => { if (MC.dbg && MC.dbg.s4) await MC.dbg.s4('deck', { nested: n }); else console.warn('[people preset] debug_s4 없음'); } }
+  };
+  REAL.danglars = REAL.morrel; REAL.mercedes = REAL.fernand;
+
+  /* ---------- 메뉴 「인물」 ---------- */
+  const PEOPLE = {
+    all: { desc: '엔딩 직전(모든 줄 열림 · 1829 · 이름 에드몽)', map: 'boat', make: () => s4(true) },
+    a1:  { desc: '1막 첫날 뒤(여섯 명 · 1815)', map: 'port', make: day1 },
+    d3:  { desc: '추리 셋째 밤 뒤(1820 · 빌포르·파리아까지)', map: 'boat', make: d3 },
+    s4:  { desc: '장면 13 배 위(1829 · 몰타 뱃사람 · 자코포까지)', map: 'boat', make: () => s4(false) }
+  };
+  async function peoplePage(name, nested) {
+    const P = PEOPLE[name] || PEOPLE.all;
+    log('인물 쪽 ' + (name || 'all') + ' — ' + P.desc);
+    await enter(P.make(), P.map, 'default', nested);
+    await MC.core.waitReal(300);
+    if (MC.ch1 && MC.ch1.openMenu) await MC.ch1.openMenu({ page: 'people', sel: q.sel || null });
+  }
+
+  /* ---------- 옛 세이브 판정 시험 ---------- */
+  async function oldSaves(nested) {
+    const P = MC.people, mk = (fl, vars) => { const st = MC.game.newState(); flags(st, fl); Object.assign(st.vars, vars || {}); delete st.vars.introSeen; return st; };
+    const cases = [
+      ['새 게임(깃발 없음)', mk([]), ''],
+      ['1-1 입항 직후 세이브(a1.arrived)', mk(['a0.done', 'a1.arrive_started', 'a1.arrived']), 'morrel,danglars'],
+      ['S1 끝 세이브(1817 감방, 1·2막 깃발)', mk(F_A1.concat(F_A2)), 'morrel,danglars,father,caderousse,fernand,mercedes,villefort'],
+      ['만남 직후(a4.met만 — 이름을 들은 뒤인지 모름) + roleSeen faria', mk(F_A1.concat(F_A2, ['a4.met']), { roleSeen: 'morrel,faria' }), 'morrel,danglars,father,caderousse,fernand,mercedes,villefort,faria'],
+      ['장면 13 배 위(s4t.deck)', mk(F_A1.concat(F_A2, F_MEET, F_DD, F_LATE)), 'morrel,danglars,father,caderousse,fernand,mercedes,villefort,faria,jacopo']
+    ];
+    const out = []; let ok = 0;
+    for (const [nm, st, want] of cases) {
+      P.migrate(st);
+      const got = st.vars.introSeen, pass = got === want;
+      if (pass) ok++;
+      out.push((pass ? '○ ' : '✕ ') + nm + ' → ' + (got || '(없음)') + (pass ? '' : ' / 기대 ' + want));
+    }
+    const head = '옛 세이브 판정 ' + ok + '/' + cases.length + (ok === cases.length ? ' 통과' : ' — 실패 있음');
+    console.info('[people preset] ' + head + '\n' + out.join('\n'));
+    await enter(day1(), 'port', 'default', nested);
+    await MC.dialogue.say({ who: 'sys', t: head, keep: 'no' });
+    return { ok, n: cases.length, lines: out };
+  }
+
+  async function people(name, opt) {
+    opt = opt || {};
+    const nested = !!opt.nested, [kind, id] = String(name || '').split('.');
+    if (!MC.people) { console.warn('[people preset] MC.people 없음(src/ch1/people.js)'); return false; }
+    if (kind === 'intro') { const R = REAL[id]; if (!R) { console.warn('[people preset] 없는 인물 ' + id + ' — ' + Object.keys(REAL).join(', ')); return false; } log('실제 장면 ' + id + ' — ' + R.desc); await R.go(nested); return true; }
+    if (kind === 'card') {
+      if (id === 'all') { for (const c of CARDS) await cardOnly(c, true, false); return true; }
+      if (CARDS.indexOf(id) < 0) { console.warn('[people preset] 없는 인물 ' + id); return false; }
+      await cardOnly(id, nested, true); return true;
+    }
+    if (kind === 'people') { if (id === 'old') return oldSaves(nested); await peoplePage(id || 'all', nested); return true; }
+    console.warn('[people preset] 모르는 이름 ' + name);
+    return false;
+  }
+  MC.dbg = MC.dbg || {};
+  MC.dbg.people = people;
+  MC.dbg.peoplelist = () => Object.keys(REAL).map(k => '__intro.' + k + ': ' + REAL[k].desc)
+    .concat(['__card.<id> · __card.all'], Object.keys(PEOPLE).map(k => '__people' + (k === 'all' ? '' : '.' + k) + ': ' + PEOPLE[k].desc), ['__people.old: 옛 세이브 판정 시험']);
+
+  // ?debug=1&ev=__intro.<id> · __card.<id> · __people(.이름) 로 바로 진입
+  if (MC.events && MC.events.ops) MC.events.ops.__people = c => people(c.preset, { nested: true });
+  const ev = {};
+  for (const k of Object.keys(REAL)) ev['__intro.' + k] = [{ op: '__people', preset: 'intro.' + k }];
+  for (const k of CARDS.concat(['all'])) ev['__card.' + k] = [{ op: '__people', preset: 'card.' + k }];
+  for (const k of Object.keys(PEOPLE)) ev[k === 'all' ? '__people' : '__people.' + k] = [{ op: '__people', preset: 'people.' + k }];
+  ev['__people.old'] = [{ op: '__people', preset: 'people.old' }];
+  if (typeof MC.addEvents === 'function') MC.addEvents(ev);
+})(window.MC);
+
+</script>
 <script>/* ==== data/lang/ko.js ==== */
 /* data/lang/ko.js — 한국어(원문) 언어 팩: 코드 속 UI 문구의 키 표(ui)와 번역자용 메모(uiInfo). 콘텐츠(이벤트·전투·기억…)는 원문이라 여기 없다.
    형식·키 이름 규칙: docs/I18N.md §B·§H. 담당: i18n-strings. 엔진 키(dlg.* ev.* fmt.year sys.noStorage)는 architect가 미리 넣었다 — 값은 옛 하드코딩 문자열과 글자 하나까지 같아야 한다(회귀 0).
@@ -56443,6 +57069,10 @@ MC.addLang('ko', {
     "menu.nKinds": "{n}가지",
     "menu.memNew": "새 기억 {n}",
     "menu.memCount": "{n}장",
+    "menu.hPeople": "인물",
+    "menu.people": "인물",
+    "menu.peopleCount": "{n}명",
+    "menu.peopleNew": "새 소식 {n}",
     "menu.twoPeople": "두 사람",
     "menu.saveOnlyCell": "감방에서 · 자동 기록은 늘",
     "menu.saveOnlyCellToast": "기록은 감방(짚 침대 곁)에서만 할 수 있다.",
@@ -56949,6 +57579,10 @@ MC.addLang('ko', {
     "menu.nKinds": { "w": 70, "font": "body", "lines": 1, "note": "도구 오른쪽 '가진 종류 수'. {n}" },
     "menu.memNew": { "w": 70, "font": "body", "lines": 1, "note": "기억 오른쪽 '새로 얻은 기억 수'(금색). {n}" },
     "menu.memCount": { "w": 70, "font": "body", "lines": 1, "note": "기억 오른쪽 '가진 기억 장 수'. {n}" },
+    "menu.hPeople": { "w": 120, "font": "body", "lines": 1, "note": "[people] 메뉴 쪽 제목(인물 = 만난 사람들의 기록)" },
+    "menu.people": { "w": 90, "font": "body", "lines": 1, "note": "[people] 메뉴 목록 항목(인물) — 기억 아래" },
+    "menu.peopleCount": { "w": 70, "font": "body", "lines": 1, "note": "[people] 인물 오른쪽 '만난 사람 수'. {n}" },
+    "menu.peopleNew": { "w": 70, "font": "body", "lines": 1, "note": "[people] 인물 오른쪽 '새 줄이 열린 사람 수'(금색). {n}" },
     "menu.twoPeople": { "w": 70, "font": "body", "lines": 1, "note": "상태 오른쪽(에드몽·파리아 둘)" },
     "menu.saveOnlyCell": { "w": 120, "font": "small", "lines": 2, "note": "기록 오른쪽(손 기록은 감방에서만, 자동 기록은 맵을 옮길 때마다 늘 된다 — 흐린 글). 칸을 넘으면 작은 글꼴 두 줄(ui List)" },
     "menu.saveOnlyCellToast": { "w": 156, "font": "body", "lines": 2, "note": "감방 밖에서 기록을 누르면 토스트" },
@@ -58120,6 +58754,18 @@ MC.addLang('en', {
     const d2 = S[name + '_c'];
     if (d2 && d2.dens > 1 && sOld >= d2.dens) { const img = U.spr(name + '_c'); if (img) return { name: name + '_c', img, s: Math.floor(sOld / d2.dens), dens: d2.dens }; }
     return plain;
+  };
+  // [hands-c] C판(dens 2)을 지금 칸 수 크기로(가장 가까운 이웃 1/2) — 1배로 그리는 작은 자리(세 손 가장자리·추리 카드)도 새 그림과 같은 모양. C가 없으면 지금 그림
+  const cuHalf = {};
+  U.cuSmall = function (name) {
+    const c = U.cuC(name, 2);
+    if (!c.img || c.dens < 2) return U.spr(name);
+    const k = cuHalf[c.name];
+    if (k && k.src === c.img) return k.img;
+    const w = c.img.width >> 1, h = c.img.height >> 1, cv = G().makeCanvas(w, h), x = cv.getContext('2d');
+    x.imageSmoothingEnabled = false; x.drawImage(c.img, 0, 0, w, h);
+    cuHalf[c.name] = { src: c.img, img: cv };
+    return cv;
   };
   // 글자를 한 자씩(앞 n자) — 왼쪽 x부터. colorFn(ch,i)로 글자별 색
   U.typeChars = function (chars, n, x, y, font, colorFn, jit) {
@@ -59543,7 +60189,11 @@ MC.addLang('en', {
     args = args || {};
     const g = G(), whisper = args.whisper !== false;
     const HANDS_T = HANDS.map(h => Object.assign({ t: U.tf(h.key) }, h));
-    const imgs = HANDS.map(h => U.spr(h.spr) || fallbackHand(h.kind));
+    // [hands-c] C판(96×80칸)이 있으면 1배(화면 크기는 지금 48칸 ×2와 같음) · 가장자리 작은 손은 같은 그림의 1/2
+    const cus = HANDS.map(h => U.cuC(h.spr, 2));
+    const imgs = cus.map((c, i) => c.img || fallbackHand(HANDS[i].kind));
+    const scl = cus.map(c => (c.img ? c.s : 2));
+    const thumbs = HANDS.map((h, i) => (cus[i].img ? U.cuSmall(h.spr) : imgs[i]));
     const BEAT = 2050, IN = 300, CH = 55 * U.typeMul();
     const tFinal = BEAT * 3 + 150, FINAL_IN = 450, FINAL_HOLD = 900;
     return new Promise(resolve => {
@@ -59590,10 +60240,10 @@ MC.addLang('en', {
           if (k > BEAT - 240) lv = MC.clamp((BEAT - k) / 240, 0, 1) * 16;
           const x = cx - 48 + Math.round(h.from[0] * 26 * (1 - e)), y = cy - 52 + Math.round(h.from[1] * 20 * (1 - e));
           // 받침 그림자 → 손(2배)
-          g.ditherRect(x + 4, y + 82, 92, 3, '#140a06', lv * 0.6);
-          U.drawDither(img, x, y, lv, 2);
+          if (scl[b] > 1) g.ditherRect(x + 4, y + 82, 92, 3, '#140a06', lv * 0.6);   // 받침 그림자는 탁자 띠가 있는 지금 그림만(C판은 손만 떠 있어 줄이 붕 뜸)
+          U.drawDither(img, x, y, lv, scl[b]);
           // 앞서 나온 손들: 가장자리에 작게, 어둡게
-          for (let i = 0; i < b; i++) U.drawDither(imgs[i], i === 0 ? g.X0 + 4 : W - g.X0 - 52, H - 72 - g.safe.bottom, 5);
+          for (let i = 0; i < b; i++) U.drawDither(thumbs[i], i === 0 ? g.X0 + 4 : W - g.X0 - 52, H - 72 - g.safe.bottom, 5);
           if (whisper && k > IN) {
             const chars = Array.from(h.t), n = Math.min(chars.length, Math.floor((k - IN) / CH) + 1);
             const tw = MC.text.width(h.t, 'body'), tx = cx - (tw >> 1), ty = y + 92;
@@ -59607,8 +60257,8 @@ MC.addLang('en', {
           for (let i = 0; i < 3; i++) {
             const p = MC.clamp((k - i * 160) / FINAL_IN, 0, 1), lv = p * 16, d = Math.round((1 - MC.ease.outCubic(p)) * 6);
             const x = cx - 48 + [-14, 0, 14][i], y = y0 + i * (hh + gapY) + d;
-            g.ditherRect(x + 4, y + hh - 1, 92, 3, '#140a06', lv * 0.6);
-            U.drawDither(imgs[i], x, y, lv, 2);
+            if (scl[i] > 1) g.ditherRect(x + 4, y + hh - 1, 92, 3, '#140a06', lv * 0.6);
+            U.drawDither(imgs[i], x, y, lv, scl[i]);
           }
         }
         if (t < 250) g.ditherFill('#000', 16 - t / 250 * 16);
@@ -60812,7 +61462,7 @@ MC.addLang('en', {
     // 방해 초상(기본 빌포르): 그 탁자에 없던 얼굴 하나를 섞어 마지막 한 수가 저절로 정해지지 않게(QA fixer-s2). args.decoy === false면 없음
     const decoy = args.decoy === false ? null : Object.assign({ who: 'villefort', t: U.tf('deduce.decoyVillefort') }, args.decoy || {});
     if (decoy && order.indexOf(decoy.who) < 0) order.splice(Math.min(3, (U.vr() * 4) | 0), 0, decoy.who);
-    const hands = HANDS.map(h => ({ h, img: U.spr(h.spr), shakeT: -1e9, match: -1, r: [0, 0, 0, 0] }));
+    const hands = HANDS.map(h => ({ h, img: U.cuSmall ? U.cuSmall(h.spr) : U.spr(h.spr), shakeT: -1e9, match: -1, r: [0, 0, 0, 0] }));   // [hands-c] 1막 세 손 C판과 같은 그림(1/2)
     const faces = order.map(id => ({ id, decoy: !!decoy && id === decoy.who, shakeT: -1e9, match: -1, r: [0, 0, 0, 0] }));
     const nF = faces.length, fSp = nF > 3 ? 44 : 58, fSlack = nF > 3 ? 2 : 3;
     let miss = 0, sel = null, drag = null, hint = null, doneAt = -1, lastKey = MC.input.keyDir ? MC.input.keyDir() : null, focus = -1;
@@ -70417,6 +71067,204 @@ MC.addLang('en', {
 })(window.MC);
 
 </script>
+<script>/* ==== src/ch1/people.js ==== */
+/* people.js — [people] 인물: 첫 등장 소개 컷(MC.people.card) · 만난 사람 기록(vars.introSeen) · 읽음 표시(vars.peopleRead) · 이벤트 op intro · say 훅.
+   글은 data/people.js(MC.data.people), 메뉴 「인물」 쪽은 menu.js. 인계 docs/handoff/people.md
+   흐름: events.js say op → MC.people.before(who) — 카드가 있는 화자(data에 있고 card !== false)를 처음 만나면 대화창을 닫고 카드 → 끝나면 그 대사.
+         이름을 알기 전 대사(벽 너머·27번 등)는 say에 "intro": false를 달고, 이름을 아는 자리에 {op:"intro", id}를 둔다.
+         넘기는 중(MC.events.skipping)이면 카드 없이 본 것으로만 적는다.
+   옛 세이브: introSeen이 없는 기록은 불러올 때(save.js validate → migrate) roleSeen과 data의 past 조건으로 채운다 — 오래전에 만난 사람의 카드가 갑자기 뜨지 않게.
+   카드를 본 화자는 roleSeen에도 적는다(이름표 「모렐 · 선주」와 같은 정보 — dialogue.js는 카드가 있는 화자에게 이름표 직업 한마디를 띄우지 않는다). */
+(function (MC) { 'use strict';
+  const ch1 = MC.ch1 || (MC.ch1 = {}), U = ch1.u, G = () => MC.gfx;
+  const DATA = () => (MC.data && MC.data.people) || {};
+  const csv = s => String(s == null ? '' : s).split(',').map(x => x.trim()).filter(Boolean);
+  const vars = () => (MC.state && MC.state.vars) || null;
+  const entry = id => { const e = id != null && DATA()[id]; return e && typeof e === 'object' ? e : null; };
+  const hasCard = id => { const e = entry(id); return !!e && e.card !== false; };
+  const tr = (s, kind) => U.tr(s, kind);
+  const warned = {};
+  function warn(k, m) { if (warned[k]) return; warned[k] = 1; console.warn('[people] ' + m); }
+
+  /* ---------- 만난 사람 ---------- */
+  // st(저장 상태)에 대해 조건 검사 — MC.game.check는 MC.state를 보므로 잠깐 바꿔 끼운다(동기)
+  function condOn(st, c) {
+    if (c == null) return true;
+    if (!st || st === MC.state) return MC.game.check(c);
+    const prev = MC.state; MC.state = st;
+    try { return MC.game.check(c); } catch (_) { return false; } finally { MC.state = prev; }
+  }
+  // 옛 기록: vars.introSeen이 없으면 roleSeen(이름표 직업 한마디를 본 화자)·past 조건으로 채운다. 한 번 채우면('' 포함) 다시 하지 않는다
+  function migrate(st) {
+    const v = st && st.vars;
+    if (!v || typeof v !== 'object' || v.introSeen !== undefined) return false;
+    const role = csv(v.roleSeen), out = [];
+    for (const id of Object.keys(DATA())) {
+      const e = entry(id);
+      if (!e || e.card === false) continue;
+      if (role.indexOf(id) >= 0 || (e.past && condOn(st, e.past))) out.push(id);
+    }
+    v.introSeen = out.join(',');
+    return true;
+  }
+  function seenIds() { const v = vars(); if (!v) return []; if (v.introSeen === undefined) migrate(MC.state); return csv(v.introSeen); }
+  const seen = id => seenIds().indexOf(id) >= 0;
+  const known = id => { const e = entry(id); return !!e && (e.card === false || seen(id)); };
+  function mark(id) {
+    const v = vars(); if (!v || !entry(id)) return;
+    const s = seenIds(); if (s.indexOf(id) < 0) { s.push(id); v.introSeen = s.join(','); }
+    const r = csv(v.roleSeen); if (r.indexOf(id) < 0) { r.push(id); v.roleSeen = r.join(','); }
+  }
+  function forget(id) {                                     // (디버그) 다시 카드를 보게
+    const v = vars(); if (!v) return;
+    if (id == null) { v.introSeen = ''; delete v.peopleRead; return; }
+    v.introSeen = seenIds().filter(x => x !== id).join(',');
+  }
+
+  /* ---------- 글 ---------- */
+  function roleOf(id) {
+    const e = entry(id) || {}, sp = (MC.data.speakers || {})[id] || {};
+    let r = null, kind = 'people';
+    if (Array.isArray(e.role)) { for (const x of e.role) if (x && x.t && MC.game.check(x.cond)) r = x.t; }
+    else if (typeof e.role === 'string') r = e.role;
+    if (r == null && sp.role) { r = sp.role; kind = 'speaker'; }
+    return r ? tr(r, kind) : '';
+  }
+  const nameOf = id => U.speaker(id).name || id;
+  const colorOf = id => U.speaker(id).color || '#f0ece0';
+  const introOf = id => { const e = entry(id); return e && e.intro ? tr(e.intro, 'people') : ''; };
+  // 지금 보이는 줄 [{t, k}] — k 0 = 소개 한 줄, 1~ = bio 번호+1(열린 것만, 순서대로)
+  function lines(id) {
+    const e = entry(id); if (!e) return [];
+    const out = [];
+    if (e.intro) out.push({ t: tr(e.intro, 'people'), k: 0 });
+    (e.bio || []).forEach((b, i) => { if (b && b.t && MC.game.check(b.cond)) out.push({ t: tr(b.t, 'people'), k: i + 1 }); });
+    return out;
+  }
+  const locked = id => { const e = entry(id); return !!e && (e.bio || []).some(b => b && b.t && !MC.game.check(b.cond)); };
+  const list = () => Object.keys(DATA()).filter(known);
+
+  /* ---------- 읽음(메뉴의 '새' 표시): vars.peopleRead "id:비트,…" — 비트 k = 그 줄을 본문에서 봄 ---------- */
+  function readMap() {
+    const m = {};
+    for (const kv of csv((vars() || {}).peopleRead)) { const i = kv.lastIndexOf(':'); if (i > 0) m[kv.slice(0, i)] = (+kv.slice(i + 1)) >>> 0; }
+    return m;
+  }
+  function readBits(id, bits) {
+    const v = vars(); if (!v || !bits) return;
+    const m = readMap(), o = m[id] >>> 0, n = (o | bits) >>> 0;
+    if (n === o) return;
+    m[id] = n; v.peopleRead = Object.keys(m).map(k => k + ':' + m[k]).join(',');
+  }
+  const isNew = (id, k) => !(((readMap()[id] >>> 0) >>> k) & 1);
+  const newCount = id => lines(id).filter(l => isNew(id, l.k)).length;
+  const newTotal = () => list().filter(id => newCount(id) > 0).length;
+  function read(id) { let b = 0; for (const l of lines(id)) b |= 1 << l.k; readBits(id, b >>> 0); }
+
+  /* ---------- 소개 컷 ----------
+     필드는 디더로 어둡게 남기고, 가운데보다 조금 위에 검은 띠. 초상(2배)이 왼쪽에서 미끄러져 들어오고 직업·이름(이름색)·소개 한 줄이 디더로 떠오른다.
+     2.4초 + 읽는 시간(글자당 55ms) 뒤 저절로 닫힘 · 250ms 뒤부터 탭하면 닫힘 · 길게 누르던 손가락이면 0.7초 뒤 닫힘. 소리는 page 한 번 */
+  const OPEN = 170, SLIDE = 300, ROLE = 300, NAME = 360, TEXT = 560, LINE2 = 150, OUT = 230, IGNORE = 250;
+  function card(id, opt) {
+    opt = opt || {};
+    const g = G(), sp = U.speaker(id), name = sp.name || id, color = sp.color || '#f0ece0';
+    const pt = U.portrait(id), role = roleOf(id), intro = introOf(id);
+    const ls = intro ? MC.text.wrap(intro, 160, 'body').slice(0, 2) : [];
+    const nameFont = MC.text.width(name, 'big') <= 86 ? 'big' : 'bold';
+    const chars = Array.from(intro.replace(/\s/g, '')).length;
+    const HOLD = opt.ms != null ? Math.max(600, +opt.ms) : 2400 + chars * 55;
+    const BH = 84 + ls.length * 16 + (ls.length ? 8 : 0);
+    return new Promise(resolve => {
+      const sc = { name: 'intro_card', opaque: false, blocking: false, t: 0, out: -1, done: false, dark: false, sfxd: false };
+      const close = () => { if (sc.out < 0) sc.out = 0; };
+      sc.enter = () => { if ((MC.fx.fadeLevel ? MC.fx.fadeLevel() : 0) >= 0.5) { sc.dark = true; sc.opaque = true; U.coverBegin(); } };
+      sc.update = dt => {
+        sc.t += dt;
+        if (!sc.sfxd && sc.t >= OPEN * 0.5) { sc.sfxd = true; U.sfx('page', { gain: 0.7, pitch: 0.9 }); }
+        if (sc.out < 0) {
+          if (sc.t >= TEXT + HOLD) close();
+          else if (sc.t >= 700 && MC.input.heldMs && MC.input.heldMs() >= 350) close();
+          return;
+        }
+        sc.out += dt;
+        if (sc.out >= OUT && !sc.done) { sc.done = true; MC.scene.remove(sc); if (sc.dark) U.coverEnd(); resolve(); }
+      };
+      sc.onInput = ev => { if ((ev.type === 'tap' || ev.type === 'long') && sc.t >= IGNORE) close(); return true; };
+      sc.onBack = () => { if (sc.t >= IGNORE) close(); };
+      sc.render = () => {
+        const t = sc.t, W = g.W, H = g.H, P = g.uiPal, outP = sc.out >= 0 ? MC.clamp(sc.out / OUT, 0, 1) : 0;
+        if (sc.dark) g.clear('#000');
+        else g.ditherFill('#05060c', Math.min(9, t / OPEN * 9) * (1 - outP));
+        let e = MC.ease.outCubic(MC.clamp(t / OPEN, 0, 1));
+        if (sc.out >= 0) e *= 1 - MC.ease.inQuad(MC.clamp((sc.out - OUT * 0.35) / (OUT * 0.65), 0, 1));
+        const bh = Math.round(BH * e) & ~1, cy = Math.round(H * 0.42), top = cy - (bh >> 1);
+        if (bh < 4) return;
+        g.rect(0, top, W, bh, '#05060c');
+        g.hline(0, top, W, '#2c2a36'); g.hline(0, top + bh - 1, W, '#2c2a36');
+        g.ditherRect(0, top + 1, W, 1, color, 5); g.ditherRect(0, top + bh - 2, W, 1, '#2c2a36', 6);
+        if (bh < BH) return;
+        g.pushClip(0, top + 2, W, bh - 4);
+        const X = g.X0, py = top + 10, tx = X + 12, ts = t - OPEN * 0.4;
+        let px = tx;
+        if (sc.out >= 0) px = Math.round(tx + (W + 8 - tx) * MC.ease.inQuad(outP));
+        else if (ts < SLIDE) px = Math.round(-72 + (tx + 72) * MC.ease.outCubic(MC.clamp(ts / SLIDE, 0, 1)));
+        g.frame(px - 2, py - 2, 68, 68, { small: true });
+        g.gradV(px, py, 64, 64, [g.mix(P.f, P.D, 0.6), g.mix(P.f, P.D, 0.3), P.f]);
+        if (pt) g.sprite(pt, px, py, { scale: 2 }); else U.silhouette(px, py, 2, color);
+        const fade = sc.out >= 0 ? 16 * (1 - outP) : 16, nx = X + 88;
+        if (role) U.drawDither(MC.text.bake(role, 'small', P.dim), nx, py + 6, Math.min(fade, U.lvl(t, ROLE, 200)));
+        if (t >= NAME) {
+          const k = t - NAME, dy = k < 200 ? Math.round((1 - MC.ease.outCubic(k / 200)) * 4) : 0;
+          const img = MC.text.bake(name, nameFont, color, { shadow: '#000' });
+          U.drawDither(img, nx, py + (nameFont === 'big' ? 20 : 26) + dy, Math.min(fade, U.lvl(t, NAME, 160)));
+          const lw = Math.min(W - nx - 8, MC.text.width(name, nameFont) + 10), lp = MC.ease.outCubic(MC.clamp((k - 80) / 260, 0, 1));
+          if (lp > 0) g.ditherRect(nx, py + 56, Math.round(lw * lp), 1, color, Math.min(fade, 10));
+        }
+        ls.forEach((l, i) => U.drawDither(MC.text.bake(l, 'body', '#e8e4d8'), X + 10, py + 72 + i * 16, Math.min(fade, U.lvl(t, TEXT + i * LINE2, 240))));
+        g.popClip();
+      };
+      MC.scene.push(sc);
+    });
+  }
+
+  // 소개 순서: 본 것으로 적고(중간에 끊겨도 다시 뜨지 않게) → 대화창이 열려 있으면 닫고 → 카드
+  async function present(id, opt) {
+    mark(id); readBits(id, 1);
+    if (MC.dialogue && MC.dialogue.close) await MC.dialogue.close();
+    await card(id, opt);
+  }
+  // events.js say op 훅: 소개가 필요하면 Promise(카드가 끝난 뒤 풀림), 아니면 null(대사를 곧바로 — 한 박도 늦추지 않는다)
+  function before(who, o) {
+    if (!who || !hasCard(who) || !vars() || seen(who)) return null;
+    if (o && o.skipping) { mark(who); return null; }
+    return present(who);
+  }
+
+  /* ---------- 이벤트 op: {op:"intro", id, ms?, force?} — 이름을 아는 자리에서 소개(이미 봤으면 아무것도 안 함, force면 다시) ---------- */
+  if (MC.events && MC.events.ops) {
+    MC.events.ops.intro = c => {
+      const id = c && c.id;
+      if (!entry(id)) { warn('id:' + id, 'intro: data/people.js에 없는 id ' + id); return; }
+      if (!c.force && (entry(id).card === false || seen(id))) return;
+      if (MC.events.skipping && !c.force) { mark(id); return; }
+      return present(id, { ms: c.ms });
+    };
+  }
+
+  /* ---------- i18n 글자 칸(docs/I18N.md §5-5): 카드·메뉴의 폭 ---------- */
+  if (MC.i18n && MC.i18n.slot) {
+    MC.i18n.slot('people.intro', { font: 'body', w: 160, lines: 2, note: '[people] 인물 소개 한 줄 — 소개 컷(폭 160, 두 줄)·「인물」 본문 첫 줄. 목록에서는 small 한 줄로 잘려 보인다' });
+    MC.i18n.slot('people.bio', { font: 'body', w: 152, lines: 2, note: '[people] 「인물」 본문에서 이야기가 드러나며 열리는 줄(당테스가 아는 것만)' });
+    MC.i18n.slot('people.role', { font: 'small', w: 84, lines: 1, nowrap: true, note: '[people] 직업 한마디(소개 컷 이름 위·목록 이름 옆)' });
+  }
+
+  MC.people = {
+    card, present, before, migrate, mark, forget, seen, known, hasCard, entry, list,
+    lines, locked, roleOf, nameOf, colorOf, introOf, isNew, newCount, newTotal, read, readBits
+  };
+})(window.MC);
+
+</script>
 <script>/* ==== src/ch1/title.js ==== */
 /* title.js — 타이틀 씬 MC.ch1.titleScene(): 밤바다(물결 3층·달 그림자)·샤토 디프 실루엣·달·회전하는 플라니에 등대 빛, 코드로 그린 로고('N°34' 커스텀 글자).
    1단계 '화면을 눌러 시작하세요'(탭=소리 켬, 파도·갈매기·타이틀 곡 페이드인) → 2단계 [이어하기][처음부터(확인 1초 누르기)][설정] + 소리 켬/끔. 담당: scenes
@@ -71290,6 +72138,7 @@ MC.addLang('en', {
    S2: 2인 파티(에드몽·파리아 탭, 파리아 쿨다운·맡기기), 장비(무기·옷), 새 기술 설명, 도구 분류(쓸 것·장비·재료·소중한 것), 필드 도구는 MC.battle.useItem(촛불 포함).
    설정은 MC.save.settings에 즉시 반영·저장(음량은 MC.audio.setVolume + ui_cursor 미리듣기). 뒤로가기=한 단계 닫기. 담당: scenes(-s2)
    S2N(story-clues): '도구' 아래 '기억'(가진 기억이 있을 때만, 새 것 수) — 신부님의 물음 칸 + 기억 목록 + 본문(MC.mem·MC.data.clues, data/clues_s2.js)
+   [people] '기억' 아래 '인물'(만난 사람 수 · 새 줄이 열린 사람 수는 금색) — 목록(초상·이름·직업·소개) → 본문(소개 + 열린 줄, 넘치면 쪽 넘김). MC.people(src/ch1/people.js)·data/people.js. openMenu({page, sel})로 바로 열 수 있다
    [i18n-strings] 코드 글자는 키(data/lang/ko.js menu.* set.* stat.* mem.* lang.*), 데이터 글자(도구·기술·기억·맵 이름)는 그리는 곳에서 MC.i18n.t(원문, 종류).
    언어: 설정 '진행' 탭 맨 아래 '언어' 행(고를 언어가 2개 이상일 때만) → MC.ch1.langPicker() 모달(여기 정의, 타이틀도 쓴다). 지구본 MC.ch1.drawGlobe() */
 (function (MC) { 'use strict';
@@ -71700,7 +72549,8 @@ MC.addLang('en', {
 
   /* ================================================================ 필드 메뉴 */
   const DESC_H = 88;
-  function menuScene() {
+  function menuScene(opt) {
+    opt = opt || {};
     const g = G();
     const sc = { name: 'menu', opaque: false, blocking: true, t: 0, page: 'main', pageT: 0, closing: -1, sel: null, busy: false, who: 'dantes', skPage: 0, skPages: 1, lastKey: null };
     const bClose = iconButton('close', () => close());
@@ -71713,7 +72563,7 @@ MC.addLang('en', {
     const bAuto = new MC.ui.Button({ style: 'ghost', sfx: null, onTap: () => toggleAuto() });
     const bPrev = new MC.ui.Button({ style: 'ghost', sfx: 'page', onTap: () => flip(-1) });
     const bNext = new MC.ui.Button({ style: 'ghost', sfx: 'page', onTap: () => flip(1) });
-    const TITLES = { main: 'menu.hMain', items: 'menu.hItems', skills: 'menu.hSkills', status: 'menu.hStatus', settings: 'menu.hSettings', mem: 'menu.hMem' };   // 쪽 제목 키
+    const TITLES = { main: 'menu.hMain', items: 'menu.hItems', skills: 'menu.hSkills', status: 'menu.hStatus', settings: 'menu.hSettings', mem: 'menu.hMem', people: 'menu.hPeople' };   // 쪽 제목 키
     // [story-clues] '기억'(단서) 목록 — 신부님의 물음 칸 + 기억 목록 + 본문(S2N §5-1)
     const memList = new MC.ui.List({ rowH: 26, rows: 5, items: [] });
     const MEMO = () => MC.mem || null;
@@ -71741,6 +72591,30 @@ MC.addLang('en', {
     function setMemTab(i) { if ((sc.memTab | 0) !== i) { sc.memTab = i; sc.memSel = null; sc.pageT = 60; } }
     function memTabH() { return namesOn() && !sc.memSel ? tabH() + 4 : 0; }
 
+    // [people] 「인물」: 만난 사람(MC.people — src/ch1/people.js, 글 data/people.js) 목록(초상·이름·직업·소개) → 누르면 본문(소개 + 이야기가 드러나며 열리는 줄).
+    //   본문을 열 때 '새' 줄을 기억해 두고(금색 점) 읽음으로 적는다. 줄이 넘치면 쪽 넘김(▲▼ 대신 ◀ ▶ — 기술 쪽과 같은 모양)
+    const PPL = () => MC.people || null;
+    const pplList = new MC.ui.List({ rowH: 40, rows: 6, items: [] });
+    const pPrev = new MC.ui.Button({ style: 'ghost', sfx: 'page', onTap: () => pFlip(-1) });
+    const pNext = new MC.ui.Button({ style: 'ghost', sfx: 'page', onTap: () => pFlip(1) });
+    function buildPeople() {
+      const PP = PPL(); if (!PP) return;
+      pplList.setItems(PP.list().map(id => ({ id, label: '', right: '', onTap: () => openPerson(id) })));
+    }
+    function openPerson(id) {
+      const PP = PPL(); if (!PP) return;
+      sc.pplSel = id; sc.pplPage = 0; sc.pageT = 60;
+      sc.pplNew = PP.lines(id).filter(l => PP.isNew(id, l.k)).map(l => l.k);   // 이번에 처음 보는 줄(금색) — 보는 즉시 읽음으로
+      PP.read(id);
+    }
+    function pFlip(d) { const n = MC.clamp((sc.pplPage | 0) + d, 0, Math.max(1, sc.pplPages | 0) - 1); if (n !== (sc.pplPage | 0)) sc.pplPage = n; else U.sfx('ui_ng'); }
+    function fitText(s, maxW, font) {                 // 한 줄에 넘치면 '…'로 자름
+      s = String(s || ''); if (MC.text.width(s, font) <= maxW) return s;
+      const cs = Array.from(s); let lo = 0, hi = cs.length;
+      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (MC.text.width(cs.slice(0, m).join('') + '…', font) <= maxW) lo = m; else hi = m - 1; }
+      return cs.slice(0, lo).join('').replace(/[\s,.·]+$/, '') + '…';
+    }
+
     function canSave() { return !!(MC.state && MC.state.map === 'cell'); }
     function hasFaria() { return !!faria(); }
     // [scenes-s4] 계약 ARCHITECTURE_S4 §C-6: S4 열둘 뒤(s4c.dead) 파리아 칸은 지우지 않고 회색 빈 칸으로 남긴다(S3까지의 '파리아 없음'과 구분 — 이름·수치 없음)
@@ -71748,10 +72622,12 @@ MC.addLang('en', {
     function buildCmd() {
       const n = Object.keys((MC.state && MC.state.items) || {}).length;
       const mem = memOwned(), mnew = MEMO() ? MEMO().newCount() : 0;
+      const PP = PPL(), pn = PP ? PP.list().length : 0, pnew = PP ? PP.newTotal() : 0;   // [people]
       sc.cmdRev = MC.i18n.rev;
       cmd.setItems([
         { label: tf('menu.items'), right: n ? tf('menu.nKinds', { n }) : '', onTap: () => go('items') },
         ...(mem.length ? [{ label: tf('menu.mem'), right: mnew ? tf('menu.memNew', { n: mnew }) : tf('menu.memCount', { n: mem.length }), color: mnew ? g.uiPal.gold : null, onTap: () => go('mem') }] : []),
+        ...(pn ? [{ label: tf('menu.people'), right: pnew ? tf('menu.peopleNew', { n: pnew }) : tf('menu.peopleCount', { n: pn }), color: pnew ? g.uiPal.gold : null, onTap: () => go('people') }] : []),
         { label: tf('menu.skills'), onTap: () => go('skills') },
         { label: tf('menu.status'), right: hasFaria() ? tf('menu.twoPeople') : '', onTap: () => go('status') },
         { label: tf('menu.settings'), onTap: () => go('settings') },
@@ -71771,6 +72647,7 @@ MC.addLang('en', {
       sc.page = p; sc.pageT = 0; sc.skPage = 0;
       if (p === 'items') { sc.sel = null; buildItems(); }
       if (p === 'mem') { sc.memSel = null; sc.memTab = 0; memList.page = 0; buildMem(); }
+      if (p === 'people') { sc.pplSel = null; pplList.page = 0; buildPeople(); }   // [people]
       if (p === 'main') buildCmd();
       if (p === 'settings') settings.build();
       if ((p === 'status' || p === 'skills') && !hasFaria()) sc.who = 'dantes';
@@ -71778,7 +72655,11 @@ MC.addLang('en', {
     function setWho(w) { if (sc.who !== w) { sc.who = w; sc.skPage = 0; sc.pageT = 60; } }
     function flip(d) { const n = MC.clamp(sc.skPage + d, 0, sc.skPages - 1); if (n !== sc.skPage) sc.skPage = n; else U.sfx('ui_ng'); }
     function toggleAuto() { const fa = faria(); if (!fa) return; fa.auto = !fa.auto; U.sfx(fa.auto ? 'ui_ok' : 'ui_cancel'); }
-    function back() { if (sc.page === 'mem' && sc.memSel) { sc.memSel = null; sc.pageT = 60; buildMem(); } else if (sc.page !== 'main') { go('main'); } else close(); }
+    function back() {
+      if (sc.page === 'mem' && sc.memSel) { sc.memSel = null; sc.pageT = 60; buildMem(); }
+      else if (sc.page === 'people' && sc.pplSel) { sc.pplSel = null; sc.pageT = 60; buildPeople(); }   // [people] 본문 → 목록
+      else if (sc.page !== 'main') { go('main'); } else close();
+    }
     function close() { if (sc.closing < 0) { sc.closing = 0; } }
     function useSel() {
       if (!sc.sel) return;
@@ -71832,6 +72713,11 @@ MC.addLang('en', {
         memList.rows = Math.max(2, Math.floor((y + h - top - 8) / memList.rowH));
         if (memList.items.length > memList.rows) memList.rows = Math.max(2, Math.floor((y + h - top - 8 - 16) / memList.rowH));
       }
+      { // [people] 인물 목록: 줄 높이 40(초상 32 + 테) — 넘치면 아래 쪽 넘김 칸 16
+        pplList.x = x; pplList.y = y; pplList.w = w; pplList.rowH = Math.max(40, mt + 6);
+        pplList.rows = Math.max(2, Math.floor((h - 8) / pplList.rowH));
+        if (pplList.items.length > pplList.rows) pplList.rows = Math.max(2, Math.floor((h - 8 - 16) / pplList.rowH));
+      }
       const listH = h - DESC_H - 6;
       items.x = x; items.y = y; items.w = w; items.rowH = Math.max(26, mt + 2); items.rows = Math.max(2, Math.floor((listH - 8) / items.rowH) - (items.items.length > Math.floor((listH - 8) / items.rowH) ? 1 : 0));
       bUse.w = 76; bUse.h = Math.max(24, mt); bUse.x = x + w - bUse.w - 6; bUse.y = y + h - bUse.h - 6;
@@ -71849,13 +72735,17 @@ MC.addLang('en', {
       if (sc.page === 'main') out.push(cmd);
       else if (sc.page === 'items') { out.push(items); if (sc.sel && usableInField(sc.sel)) out.push(bUse); }
       else if (sc.page === 'mem') { if (!sc.memSel) { if (namesOn()) out.push(memTabs[0], memTabs[1]); if (!(sc.memTab | 0)) out.push(memList); } }   // [l45-guide B8-8]
+      else if (sc.page === 'people') { if (!sc.pplSel) out.push(pplList); else if ((sc.pplPages | 0) > 1) out.push(pPrev, pNext); }   // [people]
       else if (sc.page === 'settings') out.push(settings);
       else if (sc.page === 'status' && sc.who === 'faria') out.push(bAuto);
       else if (sc.page === 'skills' && sc.skPages > 1) out.push(bPrev, bNext);
       return out;
     }
 
-    sc.enter = () => { buildCmd(); U.sfx('ui_ok'); sc.lastKey = MC.input.keyDir ? MC.input.keyDir() : null; };
+    sc.enter = () => {
+      buildCmd(); U.sfx('ui_ok'); sc.lastKey = MC.input.keyDir ? MC.input.keyDir() : null;
+      if (opt.page && TITLES[opt.page]) { go(opt.page); if (opt.page === 'people' && opt.sel && PPL() && PPL().known(opt.sel)) openPerson(opt.sel); }   // (디버그·바로 열기) ch1.openMenu({page, sel})
+    };
     sc.update = dt => {
       sc.t += dt; sc.pageT += dt;
       if (sc.cmdRev != null && sc.cmdRev !== MC.i18n.rev) { buildCmd(); if (sc.page === 'items') buildItems(); }   // 설정에서 언어를 바꾸면 목록 글을 새 언어로
@@ -72036,6 +72926,83 @@ MC.addLang('en', {
         if (isNew) { g.rect(cx + cw - 8, cy + (ch >> 1) - 2, 4, 4, P.gold); g.px(cx + cw - 8, cy + (ch >> 1) - 2, g.mix(P.gold, '#ffffff', 0.5)); }
       }
     }
+    // [people] 인물 목록: 줄마다 초상(32) + 이름(이름색)·직업(흐린 작은 글) + 소개 한 줄(작은 글, 넘치면 …) + 새 줄이 있으면 금색 점
+    function renderPeople(x, y, w, h) {
+      const P = g.uiPal, PP = PPL();
+      if (!PP) return;
+      if (sc.pplSel) { renderPerson(x, y, w, h, sc.pplSel); return; }
+      pplList.render();
+      for (let s = 0; s < pplList.per; s++) {
+        const i = pplList.page * pplList.per + s, it = pplList.items[i];
+        if (!it) break;
+        const [cx, cy, cw, ch] = pplList.cellRect(s), id = it.id;
+        const down = pplList._pid !== null && pplList._inside && pplList._cell === s, nw = PP.newCount(id) > 0;
+        const bx = cx + 2, by = cy + ((ch - 36) >> 1);
+        g.frame(bx, by, 36, 36, { small: true });
+        g.gradV(bx + 2, by + 2, 32, 32, [g.mix(P.f, P.D, 0.6), g.mix(P.f, P.D, 0.3), P.f]);
+        const pt = U.portrait(id);
+        if (pt) g.sprite(pt, bx + 2, by + 2); else U.silhouette(bx + 2, by + 2, 1, PP.colorOf(id));
+        const tx = bx + 42, room = cx + cw - 6 - (nw ? 8 : 0) - tx, nm = PP.nameOf(id), ty = cy + ((ch - 30) >> 1);
+        MC.text.draw(nm, tx, ty, { color: down ? P.f : PP.colorOf(id) });
+        const rl = PP.roleOf(id), nwid = MC.text.width(nm, 'body');
+        if (rl && nwid + 6 + MC.text.width(rl, 'small') <= room) MC.text.draw(rl, tx + nwid + 6, ty + 3, { font: 'small', color: down ? P.f : P.dim });
+        MC.text.draw(fitText(PP.introOf(id).replace(/\s*\n\s*/g, ' '), room, 'small'), tx, ty + 17, { font: 'small', color: down ? P.f : g.mix(P.text, P.dim, 0.45) });
+        if (nw) { g.rect(cx + cw - 9, cy + (ch >> 1) - 2, 4, 4, P.gold); g.px(cx + cw - 9, cy + (ch >> 1) - 2, g.mix(P.gold, '#ffffff', 0.5)); }
+      }
+    }
+    // [people] 본문: 위 칸(초상 2배 · 직업 · 이름) + 아래 칸(소개 한 줄 → 가는 줄 → 열린 줄들 · 새 줄은 금색 점). 아직 닫힌 줄이 있으면 끝에 흐린 「……」
+    function renderPerson(x, y, w, h, id) {
+      const P = g.uiPal, PP = PPL(), col = PP.colorOf(id);
+      const TH = 82;
+      g.frame(x, y, w, TH);
+      g.frame(x + 6, y + 7, 68, 68, { small: true });
+      g.gradV(x + 8, y + 9, 64, 64, [g.mix(P.f, P.D, 0.6), g.mix(P.f, P.D, 0.3), P.f]);
+      const pt = U.portrait(id);
+      if (pt) g.sprite(pt, x + 8, y + 9, { scale: 2 }); else U.silhouette(x + 8, y + 9, 2, col);
+      const tx = x + 82, nm = PP.nameOf(id), nf = MC.text.width(nm, 'big') <= w - 90 ? 'big' : 'bold', rl = PP.roleOf(id);
+      if (rl) MC.text.draw(rl, tx, y + 12, { font: 'small', color: P.dim });
+      MC.text.draw(nm, tx, y + (nf === 'big' ? 26 : 32), { font: nf, color: col, shadow: '#000' });
+      g.ditherRect(tx, y + 60, Math.min(w - 90, MC.text.width(nm, nf) + 10), 1, col, 8);
+      // 아래 칸: 줄을 감싸 쪽으로 나눈다(넘칠 때만 아래 쪽 넘김 20)
+      const by = y + TH + 4, bh = h - TH - 4, LW = w - 24, LH = 16, GAP = 6;
+      g.frame(x, by, w, bh);
+      const fresh = new Set(sc.pplNew || []);
+      const items = PP.lines(id).map(l => ({ l, ls: MC.text.wrap(l.t, l.k ? LW : w - 16, 'body') }));   // 소개 160(카드와 같은 폭) · 줄 152
+      if (PP.locked(id)) items.push({ more: true, ls: ['……'] });
+      const hOf = it => it.ls.length * LH + (it.l && it.l.k === 0 ? GAP + 6 : GAP);
+      const pager = 20, paginate = avail => { const pages = [[]]; let used = 0; for (const it of items) { const ih = hOf(it); if (used + ih > avail && pages[pages.length - 1].length) { pages.push([]); used = 0; } pages[pages.length - 1].push(it); used += ih; } return pages; };
+      let pages = paginate(bh - 14);
+      if (pages.length > 1) pages = paginate(bh - 14 - pager);
+      sc.pplPages = pages.length;
+      sc.pplPage = MC.clamp(sc.pplPage | 0, 0, pages.length - 1);
+      let yy = by + 8;
+      for (const it of pages[sc.pplPage]) {
+        if (it.more) { MC.text.draw('……', x + 18, yy, { color: g.mix(P.dim, P.f, 0.35) }); yy += hOf(it); continue; }
+        const k = it.l.k, isFresh = fresh.has(k);
+        if (k === 0) {
+          it.ls.forEach((l, j) => MC.text.draw(l, x + 8, yy + j * LH, { color: P.text }));
+          yy += it.ls.length * LH + 3;
+          g.hline(x + 8, yy, w - 16, g.mix(P.f, P.D, 0.6));
+          yy += GAP + 3;
+          continue;
+        }
+        if (isFresh) { g.rect(x + 9, yy + 6, 4, 4, P.gold); g.px(x + 9, yy + 6, g.mix(P.gold, '#ffffff', 0.5)); }
+        else g.rect(x + 10, yy + 7, 2, 2, g.mix(P.W, P.f, 0.55));
+        it.ls.forEach((l, j) => MC.text.draw(l, x + 18, yy + j * LH, { color: isFresh ? g.mix(P.text, P.gold, 0.35) : P.text }));
+        yy += hOf(it);
+      }
+      if (sc.pplPages > 1) {
+        const py = by + bh - pager - 2;
+        g.hline(x + 4, py, w - 8, g.mix(P.f, P.D, 0.8));
+        const bh2 = Math.max(16, Math.min(pager - 2, MC.ui.minTouch()));
+        pPrev.x = x + 4; pPrev.y = py + 1; pPrev.w = 50; pPrev.h = bh2;
+        pNext.x = x + w - 54; pNext.y = py + 1; pNext.w = 50; pNext.h = bh2;
+        pPrev.render(); pNext.render();
+        tri(x + 14, py + 6 + (pPrev.pressed ? 1 : 0), -1, sc.pplPage > 0 ? P.gold : P.dim);
+        tri(x + w - 19, py + 6 + (pNext.pressed ? 1 : 0), 1, sc.pplPage < sc.pplPages - 1 ? P.gold : P.dim);
+        MC.text.draw((sc.pplPage + 1) + ' / ' + sc.pplPages, x + (w >> 1), py + 4, { font: 'small', color: P.dim, align: 'center' });
+      }
+    }
     // 위 칸: 초상 2배 + 이름·Lv + (EXP 또는 설명) + HP·MP
     function topBlock(x, y, w, m, who, name, color) {
       const mx = maxOf(m), P = g.uiPal;
@@ -72189,6 +73156,7 @@ MC.addLang('en', {
       if (sc.page === 'main') renderMain(x, y, w, h);
       else if (sc.page === 'items') renderItems(x, y, w, h);
       else if (sc.page === 'mem') renderMem(x, y, w, h);
+      else if (sc.page === 'people') renderPeople(x, y, w, h);
       else if (sc.page === 'status') renderStatus(x, y, w, h);
       else if (sc.page === 'skills') renderSkills(x, y, w, h);
       else if (sc.page === 'settings') { g.frame(x, y, w, sc.setH); settings.render(); }
@@ -72200,9 +73168,9 @@ MC.addLang('en', {
   }
 
   // 필드 메뉴 열기(이미 열려 있으면 무시) -> Promise(닫힐 때)
-  ch1.openMenu = function () {
+  ch1.openMenu = function (opt) {
     if (MC.scene.find('menu') || MC.scene.find('settings')) return Promise.resolve();
-    return MC.scene.push(menuScene());
+    return MC.scene.push(menuScene(opt));
   };
 })(window.MC);
 
