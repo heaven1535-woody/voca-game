@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.16-ios2';
+  var VERSION = '0.7.17-tapfb';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -54136,7 +54136,7 @@ MC.addEvents({
    → (꿈 B4 바닥 문, content-s3c) → 깸 s3s.omen(외우기 시험 → 업고 건넘 → 약병·마른 조각) → 제 방 침대 → s3s.end(오르골 페이드·무음·「……에드몽.」) → (S4) call s4c.ledger27(content-s4a — 예전의 custom tbc 「세 번째」 자리: 27번 장부만 → s4c.rewind → s4c.open).
    구간 Y28 = s3.y1828(디스패처 events_s3.js). s3phase 'y28'.
    flags: s3.y1828 s3s.arrive s3s.dictate a4.lesson_med s3s.fear s3.knife s3s.plan s3k.t3_intro s3k.t3 s3k.t3_flake s3k.t3_reset1 s3s.count s3s.flake_given s3s.cloth s3s.knife_done s3s.omen s3s.phial s3.tbc s3s.hw_b4 s3s.hw_kn
-   vars: t3_resets(땅굴 3 리셋 수 — onReset에서 +1) s3_knife(vow|silent) recite_miss · 보조 s3cnt(조각 건네기 대기 1) s3cloth(사다리 푼 횟수) s3_armed(공방 뒤 칼을 쥐었나 — op s3knife)
+   vars: t3_resets(땅굴 3 리셋 수 — onReset에서 +1) t3tap(바다 쪽 벽 짧은 탭 수 — 셋째면 길게 누른 것처럼 넘어감) s3_knife(vow|silent) recite_miss · 보조 s3cnt(조각 건네기 대기 1) s3cloth(사다리 푼 횟수) s3_armed(공방 뒤 칼을 쥐었나 — op s3knife)
    op s3knife {var}: 지금 당테스가 칼을 쥐었거나 가졌으면 var=1(공방에서 칼이 '새로 생겼나'를 이벤트가 알 방법이 없어 이 파일에서 등록 — §0.4 '새 op는 각 담당이 자기 파일에서').
    계약: docs/ARCHITECTURE_S3.md §A-1·§A-4(content-s3b)·§A-6 ⑦·§C-8. 이야기: docs/S3_NARRATIVE.md §5-5(S1~S6)·§5-6. */
 (function (MC) { 'use strict';
@@ -54422,9 +54422,13 @@ MC.addEvents({
       { "op": "glow", "id": "flake3" },
       { "op": "watch", "id": "t3back", "ms": 6000, "ev": "s3k.t3_back" }
     ],
-    // 짧은 탭(길게 누르기 전에 뗌)
+    // 짧은 탭(길게 누르기 전에 뗌). [hold-fb] 길게 누르기를 몰라도 멈추지 않게(s3t.knock_come과 같은 결) — 둘째 탭에 속말로 귀띔, 셋째 탭이면 그대로 넘어간다
     "s3k.t3_wall_tap": [
-      { "op": "say", "who": "think", "t": "젖은 돌벽.{p:300}\n손바닥에 무언가 울린다." }
+      when(F("s3k.t3"), [ { "op": "say", "who": "think", "t": "젖은 돌벽.{p:300}\n손바닥에 무언가 울린다." }, END ]),
+      { "op": "add", "var": "t3tap", "n": 1 },
+      when({ "var": "t3tap", "gte": 3 }, [ call("s3k.t3_goal"), END ]),
+      { "op": "say", "who": "think", "t": "젖은 돌벽.{p:300}\n손바닥에 무언가 울린다." },
+      when({ "var": "t3tap", "gte": 2 }, [ { "op": "say", "who": "think", "t": "……손을 떼지 말고.{p:300}\n가만히 대고 있어 보자." } ])
     ],
     // 조각을 주움(pickup 뒤) → 되돌아감
     "s3k.t3_flake": [
