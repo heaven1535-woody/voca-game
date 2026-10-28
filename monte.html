@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.11-places';
+  var VERSION = '0.7.12-pagebg';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -1108,7 +1108,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   /* ---------- [people-il] 인물 기록 선 그림 — 같은 촘촘한 패스(present 뒤 기기 해상도에 얹기 · 빠른 길 검사 · 밝기 곡선)를 큰 자리에 쓴다 ----------
      데이터 data/spr_il_c.js: MC.data.ilC.<키> = { w:360, h:480, side, pal(≤64), C(360×480칸 — 논리 180×240의 2배 촘촘), s(180×240칸 — 같은 크롭·같은 팔레트의 대체 그림) }.
      ?ptc와 상관없이 늘 켜져 있다(새 쪽이라 바꿀 옛 그림이 없다). 디코드는 처음 부를 때, 최근 IL_MAX장만 붙든다.
-     g.ilSlot({ x, y, w, h, bg, figs:[{name, x, y}], over, overY, holes:[[x,y,w,h]…] }, 씬)
+     g.ilSlot({ x, y, w, h, bg, figs:[{name, x, y} | {img:{ok, C, fb}, x, y}], over, overY, holes:[[x,y,w,h]…] }, 씬) — img = 부르는 쪽이 만든 판(C 2배 칸 · fb 1배, 투명 있음)
        논리 버퍼에: 자리(x,y,w,h) 안에 바탕(bg 캔버스, 논리 칸) → 그림마다 대체 그림(s, 자리 기준 좌표) → over(캔버스, 투명 있음 — 자리 위에서 overY 아래)를 잘라 그리고 이 프레임 줄에 적는다.
        holes = 위에 그린 UI 자리(화면 논리 좌표) — 얹을 때 빼고 논리 그대로 둔다(자리 안으로 잘라 겹치면 하나로 묶음).
      present 뒤: S가 짝수(k = S/2 — 1칸 = 기기 k px)이고 빠른 길(자리를 그린 씬이 맨 위 · fx.screenQuiet)이면 자리(구멍 빼고)에 '바탕 ×S + C ×k + over ×S'.
@@ -1138,8 +1138,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
     if (o.bg) ctx.drawImage(o.bg, x, y);
     for (const f of o.figs || []) {
-      const r = f && f.name && g.ilHas(f.name) ? ptcDecode(f.name, true) : null;
-      if (!r || !r.ok) continue;
+      const r = !f ? null : f.img ? f.img : (f.name && g.ilHas(f.name) ? ptcDecode(f.name, true) : null);   // img = 미리 만든 판 { ok, C(2배 칸), fb(1배) } — 인물 쪽 장소 그림 바탕(people.js §12)
+      if (!r || !r.ok || !r.fb) continue;
       const fx = Math.round(f.x || 0), fy = Math.round(f.y || 0);
       ctx.drawImage(r.fb, x + fx, y + fy);
       figs.push({ r, x: fx, y: fy });
@@ -18869,7 +18869,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
           });
         };
         for (const id of evIds) scanList(evList(id), id);
-        let nCard = 0, nIl = 0;
+        let nCard = 0, nIl = 0; const vsUsed = new Set();
         for (const id of Object.keys(PD)) {
           const e = PD[id], w = 'people ' + id, sp = spk[id];
           if (!e || typeof e !== 'object') { err(w, '항목이 객체가 아님'); continue; }
@@ -18906,6 +18906,13 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
             if (!pl.length) wrn(w, 'place 없음(인물 기록 바탕 톤)');
             const tones = (MC.people && MC.people.tones) || {};
             pl.forEach(p => { if (typeof p !== 'string' || !tones[p]) wrn(w, '모르는 place ' + p + '(src/ch1/people.js TONE)'); });
+            if (MC.people && MC.people.vsOf) pl.forEach(p => {   // [people-il §12] 장소 → 장소 그림(data/vistas.js) — 본 뒤 바탕에 깐다
+              const vk = MC.people.vsOf(p), ve = vk && data.comicImgs ? data.comicImgs[vk] : null;
+              if (!vk) wrn(w, 'place ' + p + '에 잇는 장소 그림 키 없음(src/ch1/people.js VS_OF)');
+              else if (!ve) wrn(w, '장소 그림 없음 ' + vk + '(data/vistas.js — 톤 바탕으로만 보인다)');
+              else if (ve.w !== 360 || ve.h !== 480 || !ve.C) err(w, '장소 그림 ' + vk + '이 360×480 C가 아님');
+              else vsUsed.add(vk);
+            });
             if (id === 'dantes' && pl.length !== 3) wrn(w, 'place는 시기 셋 [열아홉, 감옥, 탈옥 뒤]');
             if (data.ilC) nIl += ilKeys.filter(k => data.ilC[k]).length;
           }
@@ -18915,7 +18922,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
           if (!sayWho.has(id) && !introAt[id]) wrn(w, '카드를 띄울 자리 없음(say who:' + id + ' 또는 op intro)');
         }
         for (const id in introAt) if (!PD[id]) err('people', 'op intro 없는 id ' + id + ' — ' + introAt[id][0]);
-        inf('people', '인물 ' + Object.keys(PD).length + '명 · 소개 컷 ' + nCard + ' · op intro ' + Object.keys(introAt).length + '곳(' + Object.keys(introAt).join(', ') + ') · 기록 선 그림 ' + nIl + '장');
+        inf('people', '인물 ' + Object.keys(PD).length + '명 · 소개 컷 ' + nCard + ' · op intro ' + Object.keys(introAt).length + '곳(' + Object.keys(introAt).join(', ') + ') · 기록 선 그림 ' + nIl + '장 · 장소 그림 바탕 ' + vsUsed.size + '곳');
       }
     }
 
@@ -42021,7 +42028,7 @@ const pt = n => (SPR[n] ? n : null);
          intro(소개 한 줄 — 카드·목록·본문 첫 줄. 폭 160px(한글 13자 안팎) 두 줄 이하, '\n'은 권장 줄바꿈 — 문장 사이에서 끊는다)
          bio([{t, cond}] — 이야기가 드러날 때 열리는 줄. 조건은 events와 같은 cond 형식, 순서대로 보인다. 폭 152px 두 줄 이하)
          past(옛 세이브 판정: introSeen이 없는 기록에서 이 조건이 맞으면 이미 만난 사람으로 — 카드 뒤에 켜지는 깃발만 쓴다)
-         [people-il] place(인물 기록 쪽 바탕의 장소 — 나중에 장소 그림 vs_<place>로 바뀐다. 에드몽은 시기마다 [열아홉, 감옥, 탈옥 뒤])
+         [people-il] place(인물 기록 쪽 바탕의 장소 — 톤 + 그 장소 그림 vs_<place>를 본 뒤에는 그 그림(house → vs_port · src/ch1/people.js VS_OF). 에드몽은 시기마다 [열아홉, 감옥, 탈옥 뒤])
                      bio[].betray(true = 배신을 알게 되는 줄 — 이 줄의 cond가 맞으면 쪽 바탕이 붉은 잉크빛. 그림 il_<id>는 data/spr_il_c.js)
    글 규칙: 그 시점 당테스가 아는 것만(추리의 밤 dd.n1~n4 전에는 배신을 말하지 않는다) · 섬 이름 금지 · '보물'은 s3t.paper 뒤에만 · S4 연도는 자코포 입(s4e.counted) 뒤에만 ·
             아버지·모렐 씨는 높임(-시-), 나머지는 평서. 느낌표 없음. 인용은 작은따옴표(게임 대사와 같게). 폭·줄 수는 MC.dbg.validate가 잰다(people *). */
@@ -42055,7 +42062,7 @@ const pt = n => (SPR[n] ? n : null);
       ]
     },
     "danglars": {
-      "place": "port",
+      "place": "reserve",
       "past": ANY("a1.arrived", "a1.done"),
       "intro": "파라옹호의 회계사.\n셈이 빠르고, 늘 웃는다.",
       "bio": [
@@ -58241,6 +58248,7 @@ MC.addEvents({
             ?debug=1&ev=__people.old  — 옛 세이브(introSeen 없음) 판정 시험 다섯 가지 → 화면·콘솔에 결과(맞으면 「통과」)
             [people-il] ?debug=1&ev=__people.il — 인물 기록 쪽(선 그림)을 차례로: 에드몽 → 파리아 → 당글라르 → 메르세데스
                         __people.il_red(배신 뒤 붉은 바탕) · __people.il_pre(배신 전) · __people.il_e3(에드몽 세 시기) · il_e1 · il_ep(수감 초기 — 열아홉만) · il_e0 —&sel=<id> &era=0|1|2 &ms=
+                        장소 그림 flag(vs.*)를 모두 켠 상태로 연다(바탕에 장소 그림) · &vs=0 이면 하나도 안 본 상태(톤 바탕)
    콘솔: MC.dbg.people('<이름>') · MC.dbg.peoplelist() · MC.people.forget() — 모두 다시 처음 보는 것으로 · MC.people.forget('faria') */
 (function (MC) { 'use strict';
   if (!MC.cfg || !MC.cfg.debug) return;
@@ -58365,7 +58373,9 @@ MC.addEvents({
   async function ilPages(name, nested) {
     const P = IL[name];
     log('인물 기록 ' + name + ' — ' + P.desc);
-    await enter(P.make(), P.map, 'default', nested);
+    const st = P.make();
+    if (q.vs !== '0') flags(st, Object.keys(MC.data.comicImgs || {}).filter(k => /^vs_/.test(k)).map(k => 'vs.' + k));   // [§12] 장소 그림을 다 본 상태(바탕에 깔림) · &vs=0 = 하나도 안 본 상태(톤 바탕)
+    await enter(st, P.map, 'default', nested);
     await MC.core.waitReal(300);
     if (!(MC.ch1 && MC.ch1.openMenu)) return false;
     MC.ch1.openMenu({ page: 'people' });
@@ -73448,7 +73458,7 @@ MC.addLang('en', {
      그 아래: 명패(게임 속 도트 인물 + 이름 + 직업) → 소개 두 줄 → 가는 줄 → 열린 기록 줄(새 줄 금색 점) → 「─ 아직 모른다 ─ (n)」. 길면 위아래로 끌어 넘긴다(쪽 전체).
      에드몽: 세 시기(열아홉 il_dantes_e15 · 이프 성 e20 · 탈옥 뒤 e33)를 옆으로 넘긴다. 지나지 않은 시기는 없다. 기본은 지금 시기(main.js growth: 0~2 → 0 · 3~5 → 1 · 6 → 2).
        e20은 1820 무렵 얼굴(긴 머리·턱수염)이라 growth 3(d3, 1820)부터 연다 — 수감 초기 1~2(1815~1817)에는 열아홉 한 장만(직업은 지금 직업).
-     장소 그림(ART08_PLAN §2 vs_<place>)이 MC.data.ilC에 생기면 바탕 대신 그 그림을 그림 밑에 깐다(bgLayer). */
+     장소 그림(data/vistas.js vs_*)을 플레이어가 본 뒤에는 톤 바탕 위·선 그림 밑에 그 그림을 어둡고 흐릿하게 깐다(아래 §12 vsLayer · 인계 §12). */
   const ERA_IL = ['il_dantes_e15', 'il_dantes_e20', 'il_dantes_e33'];
   const ERA_KEY = ['people.era0', 'people.era1', 'people.era2'];
   const tf = (k, p) => MC.i18n.tf(k, p);
@@ -73479,7 +73489,7 @@ MC.addLang('en', {
     return null;
   }
 
-  // 바탕 톤(장소마다 4색 세로 그라데이션 + 빛 무리 + 바다 결) — 지금은 코드 그림, 장소 그림이 오면 bgLayer가 그것을 쓴다
+  // 바탕 톤(장소마다 4색 세로 그라데이션 + 빛 무리 + 바다 결) — 장소 그림을 보기 전 · 장소 그림 가장자리 밖(넓은 화면)에 보인다
   const TONE = {
     port:      { c: ['#1d2f48', '#35577a', '#6f8fa6', '#141a24'], glow: '#e8d2a0', sea: 1 },
     catalan:   { c: ['#2a1e3a', '#6e4458', '#c08060', '#1c1218'], glow: '#ffd08a', sea: 1 },
@@ -73492,19 +73502,16 @@ MC.addLang('en', {
   };
   const RED = { c: ['#140406', '#3e0a10', '#6a141a', '#120406'], glow: '#c03030', ink: 1 };   // 배신을 안 뒤: 붉은 잉크빛
   const bgCache = new Map();
-  function bgCanvas(tone, red, w, h, top, ph, side) {
-    const key = [tone, red ? 1 : 0, w, h, top, ph, side].join('|');
+  function bgCanvas(tone, red, w, h, top, ph, side, dim) {   // dim = 장소 그림을 깐 쪽 — 가장자리에 보이는 톤도 장소 그림과 같은 바꿈으로 어둡게(붉은 바탕은 그대로)
+    const key = [tone, red ? 1 : 0, w, h, top, ph, side, dim && !red ? 1 : 0].join('|');
     let c = bgCache.get(key);
     if (c) return c;
     const g = G(), T = red ? RED : (TONE[tone] || TONE.port), B = g.BAYER, rgb = g.rgb;
     c = g.makeCanvas(w, h);
     const cx = c.getContext('2d'), id = cx.createImageData(w, h), d = id.data;
-    const C = T.c.map(rgb), GL = rgb(T.glow), n = C.length - 1;
+    const C = T.c.map(rgb), GL = rgb(T.glow), n = C.length - 1, FOG = rgb(T.c[1]), D = dim && !red ? VS_DIM : null;
     const gx = side === 'R' ? w * 0.64 : w * 0.36, gy = top + ph * 0.3, gr = Math.max(64, ph * 0.52), hz = Math.round(top + ph * 0.62);
-    let seed = 34 + tone.length * 7;
-    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
-    const blots = [], drips = [];
-    if (T.ink) { for (let i = 0; i < 14; i++) blots.push([rnd() * w, top + rnd() * ph, 3 + rnd() * 10]); for (let i = 0; i < 6; i++) drips.push([Math.round(rnd() * (w - 2)), 10 + rnd() * ph * 0.5]); }
+    const M = T.ink ? inkMarks(tone, w, top, ph) : null;
     for (let y = 0; y < h; y++) {
       const t = MC.clamp((y - top) / Math.max(1, ph - 1), 0, 1) * n, i0 = Math.min(n - 1, Math.floor(t)), f = t - i0;
       for (let x = 0; x < w; x++) {
@@ -73513,12 +73520,8 @@ MC.addLang('en', {
         const dx = (x - gx) / gr, dy = (y - gy) / (gr * 1.2), dd = Math.sqrt(dx * dx + dy * dy);
         if (dd < 1 && (1 - dd) * 10 > b) { r += (GL[0] - r) * 0.26; gg += (GL[1] - gg) * 0.26; bb += (GL[2] - bb) * 0.26; }      // 빛 무리(디더)
         if (T.sea && y > hz && y < top + ph - 8 && (y - hz) % 5 === 0 && ((x + y * 3) & 7) < 3) { r += (255 - r) * 0.1; gg += (255 - gg) * 0.1; bb += (255 - bb) * 0.12; }   // 바다 결
-        if (T.ink) {
-          let k = 0;
-          for (const o of blots) { const ex = (x - o[0]) / o[2], ey = (y - o[1]) / o[2], e = ex * ex + ey * ey; if (e < 1 && (1 - e) * 22 > b) { k = 1; break; } }
-          for (const o of drips) if ((x === o[0] || x === o[0] + 1) && y >= top && y < top + o[1] && ((y - top) < o[1] - 6 || b < 8)) k = 1;
-          if (k) { r *= 0.55; gg *= 0.5; bb *= 0.5; }
-        }
+        if (M && inkAt(M, x, y, b, top)) { r *= 0.55; gg *= 0.5; bb *= 0.5; }
+        if (D) { const L = r * 0.299 + gg * 0.587 + bb * 0.114; r = (L + (r - L) * D.sat) * (1 - D.fog) + FOG[0] * D.fog; gg = (L + (gg - L) * D.sat) * (1 - D.fog) + FOG[1] * D.fog; bb = (L + (bb - L) * D.sat) * (1 - D.fog) + FOG[2] * D.fog; r *= D.m; gg *= D.m; bb *= D.m; }
         const o = (y * w + x) * 4; d[o] = r; d[o + 1] = gg; d[o + 2] = bb; d[o + 3] = 255;
       }
     }
@@ -73535,8 +73538,126 @@ MC.addLang('en', {
     x.putImageData(id, 0, 0);
     return (fadeC = c);
   }
-  // 장소 그림 자리: vs_<place>가 MC.data.ilC에 있으면(360×480, 같은 패스) 바탕 대신 그림 밑에 깐다. 붉은 잉크빛일 때는 톤 바탕을 쓴다
-  const bgLayer = (place, red) => (!red && place && G().ilHas && G().ilHas('vs_' + place)) ? 'vs_' + place : null;
+  function inkMarks(tone, w, top, ph) {                     // 붉은 잉크빛의 얼룩 14 · 흘러내림 6(자리 좌표) — 톤 바탕과 장소 그림 바탕이 같은 자리에 찍는다
+    let seed = 34 + tone.length * 7;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const blots = [], drips = [];
+    for (let i = 0; i < 14; i++) blots.push([rnd() * w, top + rnd() * ph, 3 + rnd() * 10]);
+    for (let i = 0; i < 6; i++) drips.push([Math.round(rnd() * (w - 2)), 10 + rnd() * ph * 0.5]);
+    return { blots, drips };
+  }
+  function inkAt(M, x, y, b, top) {                         // (x, y) = 자리 좌표(장소 그림 C는 0.5 단위) · b = Bayer 문턱
+    for (const o of M.blots) { const ex = (x - o[0]) / o[2], ey = (y - o[1]) / o[2], e = ex * ex + ey * ey; if (e < 1 && (1 - e) * 22 > b) return true; }
+    const fx = Math.floor(x);
+    for (const o of M.drips) if ((fx === o[0] || fx === o[0] + 1) && y >= top && y < top + o[1] && ((y - top) < o[1] - 6 || b < 8)) return true;
+    return false;
+  }
+
+  /* ---------- [people-il §12] 장소 그림 바탕 — data/vistas.js의 vs_*(MC.data.comicImgs · 360×480칸 · 64색)를 선 그림 뒤에 어둡고 흐릿하게 ----------
+     그 장소 그림을 플레이어가 본 뒤(저장 flag vs.<키> — 독방 vs_cell은 이야기에서 판만 떠도 flag가 선다)에만. 보기 전·그림이 없으면 톤 그라데이션 그대로.
+     어둡게·흐리게 = 칸마다 색만 바꾼다(채도 ↓ · 장소 톤 가운데 색 쪽으로 안개 · 밝기 ×) — 칸 자리는 그대로라 C 결(기기 k px)이 산다. 빛 무리·가장자리는 Bayer 디더(C는 2배 칸에서).
+     홀수 배율 대체(180×240)는 원본의 짝수 칸을 집어 같은 색 바꿈 + 1배 칸 디더(같은 자리·같은 바꿈, 결만 거침).
+     화면이 그림보다 넓거나 높으면 그 가장자리 8px을 디더로 비워 톤 바탕이 스민다. 자리가 240보다 낮으면 그림 가운데, 높으면 아래를 맞춘다.
+     배신을 안 뒤: 같은 그림을 붉은 잉크빛으로(밝기 → RED 세 색 줄 · 빛 무리 26% · 톤 바탕과 같은 자리의 얼룩 14·흘러내림 6). */
+  const VS_OF = { port: 'vs_port', catalan: 'vs_catalan', reserve: 'vs_reserve', villefort: 'vs_villefort', cell: 'vs_cell', faria: 'vs_faria', tartane: 'vs_tartane', house: 'vs_port' };   // house(아버지 집) — 그림이 없어 항구
+  const VS_DIM = { sat: 0.55, fog: 0.42, m: 0.5, mg: 0.66, gl: 0.16 };   // 채도 · 안개(톤 c[1] 쪽) · 밝기(빛 무리 밖 / 안) · 빛 무리 색
+  const vsOf = place => VS_OF[place] || null;
+  const vsImg = k => { const m = MC.data && MC.data.comicImgs, e = m && k ? m[k] : null; return e && e.C && e.w === 360 && e.h === 480 ? e : null; };
+  const vsSeen = k => !!(MC.game.flag && MC.game.flag('vs.' + k));
+  const bgLayer = place => { const k = vsOf(place); return k && vsImg(k) && vsSeen(k) ? k : null; };   // 깔 장소 그림 키 | null(톤 바탕)
+  const vsSrc = new Map(), vsLay = new Map(), VSB = { n: 0, ms: 0 };
+  function vsPix(k) {                                       // 원본 칸 읽기(처음 한 번 비동기 · 최근 4장)
+    let r = vsSrc.get(k);
+    if (r) { vsSrc.delete(k); vsSrc.set(k, r); return r; }
+    r = { ok: false, fail: false, idx: null, pal: null };
+    vsSrc.set(k, r);
+    if (vsSrc.size > 4) vsSrc.delete(vsSrc.keys().next().value);
+    const im = new Image();
+    im.onload = () => {                                     // RGBA → 색 번호(idx 360×480) + 색 표(pal 24비트) — 아래 바꿈은 색 표에서만 셈
+      try {
+        const c = G().makeCanvas(360, 480), x = c.getContext('2d', { willReadFrequently: true });
+        x.drawImage(im, 0, 0);
+        const s32 = new Uint32Array(x.getImageData(0, 0, 360, 480).data.buffer), n = s32.length, idx = new Uint8Array(n), pal = [], HV = new Int16Array(4096).fill(-1), HK = new Uint32Array(4096);
+        c.width = c.height = 0;
+        for (let i = 0; i < n; i++) {
+          const v = s32[i] & 0xffffff;
+          let h = Math.imul(v, 0x9e3779b1) >>> 20;
+          while (HV[h] >= 0 && HK[h] !== v) h = (h + 1) & 4095;
+          if (HV[h] < 0) { if (pal.length >= 256) throw new Error('색 256 넘음'); HV[h] = pal.length; HK[h] = v; pal.push(v); }
+          idx[i] = HV[h];
+        }
+        r.idx = idx; r.pal = pal; r.ok = true;
+      } catch (_) { r.fail = true; }
+    };
+    im.onerror = () => { r.fail = true; };
+    im.src = vsImg(k).C;
+    return r;
+  }
+  // 판 하나: null = 깔 그림 없음(톤 바탕) · false = 아직(디코드 중이거나 build 아님) · { ok, C(360×480), fb(180×240), x, y } — ilSlot figs의 img
+  function vsLayer(k, tone, red, W, top, ph, side, build) {
+    const key = [k, tone, red ? 1 : 0, W, top, ph, side].join('|');
+    let L = vsLay.get(key);
+    if (L) { vsLay.delete(key); vsLay.set(key, L); return L; }
+    const src = vsPix(k);
+    if (!src || src.fail) return null;
+    if (!src.ok || !build) return false;
+    const t0 = performance.now(), g = G(), B = g.BAYER, rgb = g.rgb, T = TONE[tone] || TONE.port, idx = src.idx;
+    const slotH = top + ph, vx = (W - IL_W) >> 1, vy = slotH >= IL_H ? slotH - IL_H : (slotH - IL_H) >> 1;
+    const gx = side === 'R' ? W * 0.64 : W * 0.36, gy = top + ph * 0.3, gr = Math.max(64, ph * 0.52);   // 빛 무리 = 톤 바탕과 같은 자리
+    const FOG = rgb(T.c[1]), GL = rgb(red ? RED.glow : T.glow), R = RED.c.slice(0, 3).map(rgb), M = red ? inkMarks(tone, W, top, ph) : null, D = VS_DIM;
+    const fL = vx > 0, fR = vx + IL_W < W, fT = vy > 0;
+    const GT = new Float32Array(16); for (let i = 0; i < 16; i++) { const t = 1 - (i + 0.5) / 10; GT[i] = t > 0 ? t * t : -1; }   // 빛 무리 디더: dd < 1 && (1 − dd)·10 > b  ⇔  dd² < (1 − b/10)²
+    function col(c, glow, ink) {                            // 원본 칸 색 → 바탕 칸 색(팔레트에서만 바꾼다)
+      const r0 = c & 255, g0 = (c >> 8) & 255, b0 = (c >> 16) & 255, Lm = r0 * 0.299 + g0 * 0.587 + b0 * 0.114;
+      let r, gg, bb;
+      if (!red) {                                           // 채도 ↓ → 장소 톤(c[1]) 안개 → 어둡게(빛 무리 안은 덜) → 빛 무리 색 조금
+        const m = glow ? D.mg : D.m;
+        r = Lm + (r0 - Lm) * D.sat; gg = Lm + (g0 - Lm) * D.sat; bb = Lm + (b0 - Lm) * D.sat;
+        r = (r + (FOG[0] - r) * D.fog) * m; gg = (gg + (FOG[1] - gg) * D.fog) * m; bb = (bb + (FOG[2] - bb) * D.fog) * m;
+        if (glow) { r += (GL[0] - r) * D.gl; gg += (GL[1] - gg) * D.gl; bb += (GL[2] - bb) * D.gl; }
+      } else {                                              // 밝기 → 붉은 바탕 세 색 줄(RED.c 0·1·2) · 빛 무리 26%(톤 바탕과 같음) · 얼룩 ×0.55/0.5
+        const v = MC.clamp(0.12 + Lm / 255 * 0.76, 0, 1) * 2, i0 = v < 1 ? 0 : 1, f = v - i0, A = R[i0], Z = R[i0 + 1];
+        r = A[0] + (Z[0] - A[0]) * f; gg = A[1] + (Z[1] - A[1]) * f; bb = A[2] + (Z[2] - A[2]) * f;
+        if (glow) { r += (GL[0] - r) * 0.26; gg += (GL[1] - gg) * 0.26; bb += (GL[2] - bb) * 0.26; }
+        if (ink) { r *= 0.55; gg *= 0.5; bb *= 0.5; }
+      }
+      const q = v8 => MC.clamp(Math.round(v8), 0, 255);
+      return ((255 << 24) | (q(bb) << 16) | (q(gg) << 8) | q(r)) >>> 0;
+    }
+    const LUT = new Uint32Array(src.pal.length * 4);        // 색 번호 × (빛 무리 1 · 얼룩 2) → 바탕 색(ABGR) — 팔레트에서만 바꾼다
+    src.pal.forEach((c, i) => { for (let v = 0; v < 4; v++) LUT[i * 4 + v] = col(c, v & 1, v & 2); });
+    const mk = (w, h, n) => {                               // n = 논리 1px의 칸 수(2 = C · 1 = 대체 — 원본 짝수 칸)
+      const c = g.makeCanvas(w, h), x = c.getContext('2d'), id = x.createImageData(w, h), d32 = new Uint32Array(id.data.buffer), ink = new Uint8Array(w * h);
+      if (M) {                                              // 얼룩·흘러내림 칸을 먼저(그 자리 둘레만 훑음 — 값 2 = LUT의 얼룩 쪽 · 톤 바탕 inkAt과 같은 식)
+        const Y = v => Math.max(0, Math.min(h, Math.round((v - vy) * n))), X = v => Math.max(0, Math.min(w, Math.round((v - vx) * n)));
+        for (const o of M.blots) {
+          const ir = 1 / o[2], ya = Y(Math.floor(o[1] - o[2])), yb = Y(Math.ceil(o[1] + o[2])), xa = X(Math.floor(o[0] - o[2])), xb = X(Math.ceil(o[0] + o[2]));
+          for (let y = ya; y < yb; y++) { const ey = (vy + y / n - o[1]) * ir, ey2 = ey * ey, br = (y & 3) * 4; for (let xx = xa; xx < xb; xx++) { const ex = (vx + xx / n - o[0]) * ir, e = ex * ex + ey2; if (e < 1 && (1 - e) * 22 > B[br + (xx & 3)] + 0.5) ink[y * w + xx] = 2; } }
+        }
+        for (const o of M.drips) {
+          const ya = Y(top), yb = Y(Math.ceil(top + o[1])), xa = X(o[0]), xb = X(o[0] + 2);
+          for (let y = ya; y < yb; y++) { const dy = vy + y / n - top; if (dy >= o[1]) break; for (let xx = xa; xx < xb; xx++) if (dy < o[1] - 6 || B[(y & 3) * 4 + (xx & 3)] < 7.5) ink[y * w + xx] = 2; }
+        }
+      }
+      const igr = 1 / gr, igy = 1 / (gr * 1.2), EX = new Float32Array(w), FX = new Float32Array(w);   // 열마다: 빛 무리 x² · 가장자리 거리
+      for (let xx = 0; xx < w; xx++) { const lx = xx / n, ex = (vx + lx - gx) * igr; EX[xx] = ex * ex; FX[xx] = Math.min(fL ? lx : 99, fR ? IL_W - lx : 99); }
+      for (let y = 0; y < h; y++) {
+        const ly = y / n, ey = (vy + ly - gy) * igy, ey2 = ey * ey, fy = fT ? ly : 99, srow = n === 2 ? y * 360 : y * 720, br = (y & 3) * 4, prow = y * w;
+        for (let xx = 0; xx < w; xx++) {
+          const p = prow + xx, bi = B[br + (xx & 3)], fd = FX[xx] < fy ? FX[xx] : fy;
+          if (fd < 8 && (1 - fd / 8) * 16 > bi + 0.5) { d32[p] = 0; continue; }   // 톤 바탕이 보이는 가장자리 8px로 스밈(디더로 비움)
+          d32[p] = LUT[idx[srow + (n === 2 ? xx : xx << 1)] * 4 + (EX[xx] + ey2 < GT[bi] ? 1 : 0) + ink[p]];
+        }
+      }
+      x.putImageData(id, 0, 0);
+      return c;
+    };
+    L = { ok: true, C: mk(360, 480, 2), fb: mk(IL_W, IL_H, 1), x: vx, y: vy, k };
+    vsLay.set(key, L);
+    if (vsLay.size > 6) { const k0 = vsLay.keys().next().value, old = vsLay.get(k0); vsLay.delete(k0); old.ok = false; old.C.width = old.C.height = old.fb.width = old.fb.height = 0; }
+    VSB.n++; VSB.ms = Math.round((performance.now() - t0) * 10) / 10;
+    return L;
+  }
 
   function arrow(x, y, dir, col) { const g = G(); for (let i = 0; i < 4; i++) { const h = 7 - i * 2, xx = dir < 0 ? x + 3 - i : x + i; g.rect(xx, y + i, 1, h, col); } }
 
@@ -73582,10 +73703,18 @@ MC.addLang('en', {
       return items;
     }
     const itemH = it => it.kind === 'intro' ? it.ls.length * 16 + 10 : it.kind === 'lock' ? 22 : it.ls.length * 16 + 6;
+    function vsFor(era, build) {                            // [§12] 그 시기 장소 그림 바탕 판(null = 톤 바탕만 · false = 아직)
+      const place = placeOf(id, era), k = bgLayer(place);
+      if (!k) return null;
+      const L0 = lay(), e = (MC.data.ilC || {})[ilKey(id, era)] || {};
+      return vsLayer(k, place || 'port', betrayed(id), L0.W, L0.top, L0.ph, e.side, build);
+    }
 
     sc.update = dt => {
       if (!sc.pre) { sc.pre = true; for (const v of list()) g.ilReady(ilKey(id, v)); }   // 넘길 시기도 미리 디코드
-      if (sc.wait < 300 && !g.ilReady(ilKey(id, sc.era))) { sc.wait += dt; return; }   // 그림 디코드(보통 1~3프레임) 뒤에 미끄러져 들어온다
+      vsFor(sc.era, true);                                  // [§12] 장소 그림 바탕: 지금 시기 판(원본 디코드 뒤 한 번 — 아래 대기 동안)
+      if (sc.t > 400 && !sc.drag && sc.eraT > 300) { const n0 = VSB.n; for (const v of list()) if (VSB.n === n0) vsFor(v, true); else break; }   // 넘길 시기 판은 들어온 뒤 가만할 때 한 프레임에 하나
+      if (sc.wait < 300 && (!g.ilReady(ilKey(id, sc.era)) || vsFor(sc.era, false) === false)) { sc.wait += dt; return; }   // 그림 디코드(보통 1~3프레임) 뒤에 미끄러져 들어온다
       sc.t += dt; sc.eraT += dt;
       for (const b of buttons()) if (b.update) b.update();
       const kd = MC.input.keyDir ? MC.input.keyDir() : null;
@@ -73655,8 +73784,8 @@ MC.addLang('en', {
       const breath = (sc.t % 3600) >= 2000 && sc.eraT >= 260 && !sc.drag ? -1 : 0;
       const figs = [];
       const red = betrayed(id), place = placeOf(id, sc.era);
-      const vs = bgLayer(place, red);
-      if (vs) figs.push({ name: vs, x: (W - IL_W) >> 1, y: top });
+      const vs = vsFor(sc.era, true);                       // [§12] 장소 그림 바탕(본 장소만 · 어둡고 흐릿하게 · 배신 뒤 붉은 잉크빛) — 선 그림 밑
+      if (vs) figs.push({ img: vs, x: vs.x, y: vs.y });
       const slide = Math.round(sideSgn * 40 * enter + sideSgn * W * 0.35 * out);
       if (sc.eraT < 260 && sc.eraFrom >= 0) {               // 시기 넘김: 옛 그림은 나가고 새 그림이 들어온다
         const p = MC.ease.outCubic(sc.eraT / 260), dir = sc.eraDir, off = sc.eraOff;
@@ -73687,7 +73816,7 @@ MC.addLang('en', {
         pill = { x: pxR - pw, y: plY - 17, w: pw, h: 13, lab, tw };
         holes.push([pill.x, pill.y, pill.w, pill.h + 1]);
       }
-      if (slotY + slotH > 0) g.ilSlot({ x: 0, y: slotY, w: W, h: slotH, bg: bgCanvas(place || 'port', red, W, slotH, top, ph, e0.side), figs, over: fadeCanvas(W), overY: slotH - 12, holes }, sc);
+      if (slotY + slotH > 0) g.ilSlot({ x: 0, y: slotY, w: W, h: slotH, bg: bgCanvas(place || 'port', red, W, slotH, top, ph, e0.side, !!vs), figs, over: fadeCanvas(W), overY: slotH - 12, holes }, sc);
       // 명패
       g.frame(plX, plY, plW, plH, { small: true });
       if (spr) g.sprite(spr, plX + 6, sprY);
@@ -73744,7 +73873,7 @@ MC.addLang('en', {
       g.frame(bBack.x, by, bBack.w, bBack.h, { small: true });
       arrow(bBack.x + 9, by + 9, -1, Pl.text);
     };
-    sc.info = () => ({ id, era: sc.era, eras: list(), red: betrayed(id), place: placeOf(id, sc.era), scroll: Math.round(sc.scroll), maxScroll: sc.maxScroll, lastSwipe: sc.lastSwipe || null, t: Math.round(sc.t),
+    sc.info = () => ({ id, era: sc.era, eras: list(), red: betrayed(id), place: placeOf(id, sc.era), vs: bgLayer(placeOf(id, sc.era)), vsReady: !!vsFor(sc.era, false), vsBuildMs: VSB.ms, scroll: Math.round(sc.scroll), maxScroll: sc.maxScroll, lastSwipe: sc.lastSwipe || null, t: Math.round(sc.t),
       btn: { back: [bBack.x, bBack.y, bBack.w, bBack.h], prev: [bPrev.x, bPrev.y, bPrev.w, bPrev.h], next: [bNext.x, bNext.y, bNext.w, bNext.h] } });
     sc.step = step; sc.close = close;
     return MC.scene.push(sc);
@@ -73760,7 +73889,8 @@ MC.addLang('en', {
   MC.people = {
     card, present, before, migrate, mark, forget, seen, known, hasCard, entry, list,
     lines, locked, roleOf, nameOf, colorOf, introOf, isNew, newCount, newTotal, read, readBits,
-    page, hasIl, eras, eraNow, betrayed, placeOf, ilKey, tones: TONE         // [people-il]
+    page, hasIl, eras, eraNow, betrayed, placeOf, ilKey, tones: TONE,        // [people-il]
+    vsOf, vsKey: bgLayer                                                       // [people-il §12] 장소 → 장소 그림 키 · 지금 깔 키(본 것만)
   };
 })(window.MC);
 
