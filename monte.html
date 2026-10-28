@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.6-fix';
+  var VERSION = '0.7.7-music';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -5781,9 +5781,10 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
    */
   /**
    * (snd75b) 곡의 16비트 편곡: sfcv {v1:{…}, v2:{…}} + sfcUse "v1"(판 고르기 — 이 한 줄만 바꾸면 된다) 또는 옛 형식 sfc {…}.
+   * sfcUse "classic" = 16비트 설정에서도 옛(클래식) 소리 그대로.
    * sfcPat = 판들이 함께 쓰는 새 패턴(판의 pat보다 먼저 병합, 판에 없는 채널 줄은 빠진다)
    */
-  function sfcOf(raw) { if (!raw) return null; if (raw.sfcv) return raw.sfcv[raw.sfcUse || 'v1'] || null; return raw.sfc || null; }
+  function sfcOf(raw) { if (!raw || raw.sfcUse === 'classic') return null; if (raw.sfcv) return raw.sfcv[raw.sfcUse || 'v1'] || null; return raw.sfc || null; }
   M._sfcOf = sfcOf;
   function mergeSfc(raw) {
     const o0 = sfcOf(raw), o = Object.assign({}, o0, { pat: Object.assign({}, raw.sfcPat || {}) });
@@ -20562,8 +20563,9 @@ MC.data.bgm = {
     "order": ["A1","B","A2"], "loopTo": 0,
     /* (snd75b) 16비트 — 사용자 청취 뒤 다시 짬: 덜 얹고 합성 관악기는 뺐다. 판 둘(sfcUse 한 줄로 고름):
        v1 = 항구 결(아코디언 선율·기타 뒷박·만돌린·콘트라베이스 피치카토·셰이커·탬버린) · v2 = 차분한 결(현 선율·하프 뒷박·피치카토 베이스).
-       늘림(31.6 → 69.5초, 두 판 같음): C = 같은 주제를 옥타브 위에서 되뜯음(아코디언·현은 A2 대선율을 옥타브 아래로) · D = B 선율 두 번 · A3 = A2(+탬버린). 옛 A1·B·A2 줄은 그대로 */
-    "sfcUse": "v1",
+       늘림(31.6 → 69.5초, 두 판 같음): C = 같은 주제를 옥타브 위에서 되뜯음(아코디언·현은 A2 대선율을 옥타브 아래로) · D = B 선율 두 번 · A3 = A2(+탬버린). 옛 A1·B·A2 줄은 그대로
+       (10-28 사용자 청취 뒤 「원본」을 고름 → classic. v1·v2는 남겨 둔다) */
+    "sfcUse": "classic",
     "sfcPat": {
       "C": {
         "P1": "F#4 - - - - - | G4 - - F#4 - - | E4 - - C#4 - - | E4 - - G4 - - | F#4 - - - - - | F#4 - - E4 - - | D4 - - C#4 - - | D4 - - D5 - E5",
@@ -21120,8 +21122,9 @@ MC.data.bgm = {
     "order": ["I","Ib","B","A","B","A2"], "loopTo": 2,
     /* (snd75b) 16비트 — 다시 짬(사용자: 「오르골의 관악기 부분이 안 맞는다」): 관악기처럼 들리던 지속 대선율(현)·첼로·하프시코드를 모두 뺐다. 오르골 O1·O2·B가 주인공.
        판 셋(sfcUse 한 줄로 고름) — v1 = 오르골 + 여린 하프(대선율 층·메아리 층·waltz 층 하프 베이스) · v2 = 오르골 + 여린 현 패드(waltz 층) · v3 = 클래식(8비트) 그대로 + 아주 여린 현 패드.
-       받침은 모두 waltz·counter·echo 층에 묶여 1822 「빈 방의 오르골」(waltz·counter 끔)과 S4 임종(같음)·pulse_fade의 느려짐·멎음은 오르골 한 줄 그대로다 */
-    "sfcUse": "v1",
+       받침은 모두 waltz·counter·echo 층에 묶여 1822 「빈 방의 오르골」(waltz·counter 끔)과 S4 임종(같음)·pulse_fade의 느려짐·멎음은 오르골 한 줄 그대로다
+       (10-28 사용자 청취 뒤 v3을 고름) */
+    "sfcUse": "v3",
     "sfcPat": {
       "Ib": {
         "HB": "C3 . . . . . | F2 . . . . . | Bb2 . . C3 . . | F2 . . . . .",
