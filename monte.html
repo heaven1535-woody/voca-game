@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.15-diag';
+  var VERSION = '0.7.16-ios2';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -1042,13 +1042,26 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const d = ptData();
     if (d) for (const k in d) ptcDecode(k);
   }
+  // [ios-c] 불러온 그림 → 캔버스(한 번 그려 둠). 아이폰 사파리에서 C 그림을 그린 칸이 통째로 비는 일이 있었다(10-29 ?diag=1: 장소 그림 11장 중 8장이 luma 0·전부 팔레트 밖).
+  //   그린 뒤 칸을 한 번 읽어 모두 투명이면 40ms 뒤 다시 그리고, 6번 넘게 비면 Image 그대로 쓴다(그릴 때마다 Image에서)
+  function imgCanvas(im, done, n) {
+    n = n || 0;
+    let c = null;
+    try {
+      const w = im.naturalWidth || im.width, h = im.naturalHeight || im.height;
+      c = mk(w, h); const x = c.getContext('2d'); x.drawImage(im, 0, 0);
+      const d = x.getImageData(0, 0, w, h).data;
+      let any = false;
+      for (let i = 3; i < d.length; i += 28) if (d[i]) { any = true; break; }
+      if (!any) { c.width = c.height = 0; c = null; if (n < 6) { setTimeout(() => imgCanvas(im, done, n + 1), 40); return; } }
+    } catch (_) { c = null; }
+    done(c || im);
+  }
+  g.imgCanvas = imgCanvas;
   function ptcImg(uri) {                                  // data URI → 캔버스(한 번 그려 둠) | Image | null
     return new Promise(res => {
       const im = new Image();
-      im.onload = () => {
-        // [ios-c] ImageBitmap(premultiplyAlpha none)은 아이폰 사파리에서 검게(아무것도 안) 그려졌다 — comic.js decodeImg와 같이 캔버스로
-        try { const c = mk(im.naturalWidth || im.width, im.naturalHeight || im.height); c.getContext('2d').drawImage(im, 0, 0); res(c); } catch (_) { res(im); }
-      };
+      im.onload = () => imgCanvas(im, res);               // [ios-c] ImageBitmap(premultiplyAlpha none)은 아이폰 사파리에서 검게 그려졌다 — onload 뒤 캔버스로
       im.onerror = () => res(null);
       im.src = uri;
     });
@@ -72628,13 +72641,11 @@ MC.addLang('en', {
       const fail = () => { if (done) return; warn('dec:' + id, '그림 ' + id + ' 디코드 실패'); decoded.delete(id); fin(null); };
       // onload·decode() 가운데 먼저 오는 쪽 → ImageBitmap(디코드를 끝낸 비트맵). 비트맵이 1.5초 안에 안 오면 Image 그대로(첫 그리기에서 디코드)
       //   C는 색을 바꾸지 않게(colorSpaceConversion none — PNG에 색 관리 청크도 없다). 옵션을 모르는 브라우저는 옵션 없이
-      //   [ios-c] C는 캔버스에 한 번 그려 그 캔버스를 쓴다 — 아이폰 사파리에서 C 비트맵이 검게(아무것도 안) 그려졌다(10-29 사용자 폰). 360칸 그림이라 한 번 그리는 값은 작다
+      //   [ios-c] C는 onload만 기다려 캔버스에 한 번 그려 쓴다(gfx.imgCanvas — 빈 칸이면 다시). 아이폰 사파리에서 decode()가 먼저 풀린 때 그린 비트맵·캔버스가
+      //   통째로 비었다(10-29 ?diag=1: 같은 그림이 열 때마다 되기도 안 되기도 — onload만 쓴 시험 그림은 늘 나옴). 360칸 그림이라 한 번 그리는 값은 작다
       const ok = () => {
         if (started || done) return; started = true;
-        if (st === 'C') {
-          try { const c = G().makeCanvas(e.w, e.h); c.getContext('2d').drawImage(im, 0, 0); r.src = c; fin(c); } catch (_) { r.src = im; fin(im); }
-          return;
-        }
+        if (st === 'C') { G().imgCanvas(im, v => { r.src = v; fin(v); }); return; }
         if (!window.createImageBitmap) { r.src = im; fin(im); return; }
         const tm = setTimeout(() => { if (!done) { r.src = im; fin(im); } }, 1500);
         let pr;
@@ -72644,7 +72655,7 @@ MC.addLang('en', {
       };
       im.onload = ok; im.onerror = fail;
       im.src = st === 'C' ? e.C : e.A;
-      if (im.decode) im.decode().then(ok, () => {});
+      if (im.decode && st !== 'C') im.decode().then(ok, () => {});
       setTimeout(() => { if (!done) { warn('slow:' + id, '그림 ' + id + ' 디코드 8초 초과'); decoded.delete(id); fin(null); } }, 8000);
     });
     return r.p;
