@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.18-intropage';
+  var VERSION = '0.7.19-mood';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -21278,6 +21278,142 @@ MC.data.bgm = {
     }
   },
 
+  /* (10-29 시안) 오프닝 만화 「돌아온 배」: 마르세유 주제를 느린 6/8 현으로(하프 아르페지오·첼로 베이스·여린 현 패드). I 두 마디 → A → B(반기 — 단조로 기움) → A2(옥타브 위 + 첼로 대선율) → A부터 반복.
+     a1.arrive의 marseille(fade 1800)로 같은 D장조에서 이어진다. 관악기 없음 */
+  "opening": {
+    "bpm": 56, "spb": 3, "bar": 6, "vol": 1,
+    "ch": {
+      "P1": {"w":"triangle","v":0.26,"a":40,"d":500,"s":0.75,"r":300,"gate":0.95,"vib":[4.8,9,260],"send":{"rev":0.25}},
+      "C":  {"w":"triangle","v":0.12,"a":60,"d":600,"s":0.7,"r":300,"gate":0.95,"send":{"rev":0.2}},
+      "H":  {"chord":true,"w":"p12","v":0.12,"a":3,"d":900,"s":0.2,"r":300,"gate":0.9,"arp":"012421","win":55,"send":{"rev":0.3}},
+      "T":  {"w":"triangle","v":0.2,"a":30,"d":800,"s":0.8,"r":200,"gate":0.95,"lp":1200},
+      "ST": {"chord":true,"pad":true,"w":"pad","v":0.03,"a":1200,"d":800,"s":0.9,"r":1200,"gate":1,"win":57,"lp":1600,"send":{"rev":0.35}}
+    },
+    "pat": {
+      "I": {
+        "H":  "D - - - - - | D - - - - -",
+        "T":  "D3 - - - - - | A2 - - - - -",
+        "ST": "D - - - - - | Asus4 - - A - -"
+      },
+      "A": {
+        "P1": "D4 - E4 F#4 - A4 | B4 - - A4 - F#4 | G4 - F#4 E4 - D4 | E4 - - - - A3 | D4 - E4 F#4 - A4 | D5 - - C#5 - B4 | A4 - F#4 G4 - E4 | D4 - - - - -",
+        "H":  "D - - - - - | Em7 - - D - - | G - - A7 - - | Asus4 - - A7 - - | D - - D/C - - | Bm - - F#m - - | G - - A7 - - | D - - - - -",
+        "T":  "D3 - - - - - | E2 - - D3 - - | G2 - - A2 - - | A2 - - - - - | D3 - - C3 - - | B2 - - F#2 - - | G2 - - A2 - - | D3 - - - - -",
+        "ST": "D - - - - - | Em7 - - D - - | G - - A7 - - | Asus4 - - A7 - - | D - - D/C - - | Bm - - F#m - - | G - - A7 - - | D - - - - -"
+      },
+      "B": {
+        "P1": "F#5 - E5 D5 - B4 | C#5 - - A4 - - | B4 - A4 G4 - F#4 | E4 - - - - A3",
+        "H":  "Bm - - Bm/A - - | A - - F#m - - | G - - Em - - | Asus4 - - A7 - -",
+        "T":  "B2 - - A2 - - | A2 - - F#2 - - | G2 - - E2 - - | A2 - - - - -",
+        "ST": "Bm - - Bm/A - - | A - - F#m - - | G - - Em - - | Asus4 - - A7 - -"
+      },
+      "A2": {
+        "P1": "D5 - E5 F#5 - A5 | B5 - - A5 - F#5 | G5 - F#5 E5 - D5 | E5 - - - - A4 | D5 - E5 F#5 - A5 | D6 - - C#6 - B5 | A5 - F#5 G5 - E5 | D5 - - - - -",
+        "C":  "F#4 - - - - - | G4 - - F#4 - - | E4 - - C#4 - - | E4 - - G4 - - | F#4 - - - - - | F#4 - - E4 - - | D4 - - C#4 - - | D4 - - - - -",
+        "H":  "D - - - - - | Em7 - - D - - | G - - A7 - - | Asus4 - - A7 - - | D - - D/C - - | Bm - - F#m - - | G - - A7 - - | D - - - - -",
+        "T":  "D3 - - - - - | E2 - - D3 - - | G2 - - A2 - - | A2 - - - - - | D3 - - C3 - - | B2 - - F#2 - - | G2 - - A2 - - | D3 - - - - -",
+        "ST": "D - - - - - | Em7 - - D - - | G - - A7 - - | Asus4 - - A7 - - | D - - D/C - - | Bm - - F#m - - | G - - A7 - - | D - - - - -"
+      }
+    },
+    "order": ["I","A","B","A2"], "loopTo": 1,
+    "sfc": {
+      "echo": 0.536, "fb": 0.2, "vol": 0.8,
+      "ch": {
+        "P1": {"w":"str","v":0.2,"a":80,"vib":null,"cho":[0.45,2,0.35],"send":{"rev":0.25,"echo":0.04}},
+        "C":  {"w":"vc","v":0.12,"a":120},
+        "H":  {"w":"hp","v":0.11,"gate":1,"r":600,"pan":0.15},
+        "T":  {"w":"vc","v":0.16,"lp":null},
+        "ST": {"w":"str","v":0.025,"lp":2000,"cho":[0.37,2.5,0.5]}
+      }
+    }
+  },
+
+  /* (10-29 시안) 레제르브 음모(a1.hands — 당테스가 떠난 뒤 세 사람): D단조 느린 4/4. 마르세유 주제를 단조로 뒤집어 낮은 하프로 띄엄띄엄,
+     콘트라베이스 피치카토 두 번 박(심장 같은 D 페달), 높은 현 트레몰로 한 음(A↔B♭ 반음 비빔), 마디 첫 박 낮은 쿵. 세 손 뒤 bgmcut으로 끊긴다 */
+  "plot": {
+    "bpm": 54, "spb": 2, "bar": 8, "vol": 1, "filter": 2400,
+    "ch": {
+      "LO": {"chord":true,"pad":true,"w":"pad","v":0.05,"a":1200,"d":800,"s":0.9,"r":1500,"gate":1,"win":45,"lp":900,"send":{"rev":0.3}},
+      "PZ": {"w":"triangle","v":0.3,"a":3,"d":220,"s":0,"r":80,"gate":0.5},
+      "MO": {"w":"p25","v":0.12,"a":4,"d":400,"s":0.2,"r":200,"gate":0.8,"lp":1600,"send":{"rev":0.3,"echo":0.15}},
+      "HI": {"w":"sine","v":0.03,"a":800,"d":500,"s":0.9,"r":800,"gate":1,"trem":[6,0.5],"send":{"rev":0.4}},
+      "N":  {"kit":true,"v":0.6}
+    },
+    "pat": {
+      "A": {
+        "LO": "Dm - - - - - - - | Bb - - - - - - - | Gm - - - - - - - | A - - - - - - -",
+        "PZ": "D2 . D2 . . . . . | D2 . D2 . . . . . | D2 . D2 . . . . . | A2 . A2 . . . . .",
+        "MO": "D4 . E4 F4 . A4 . . | Bb4 . . A4 . . . . | G4 . F4 E4 . D4 . . | E4 . . . C#4 . . .",
+        "HI": "A5 - - - - - - - | A5 - - - - - - - | Bb5 - - - - - - - | A5 - - - - - - -",
+        "N":  "b . . . . . . . | . . . . . . . . | b . . . . . . . | . . . . q . q ."
+      },
+      "A2": {
+        "LO": "Dm - - - - - - - | Gm - - - - - - - | Bb - - - - - - - | A7 - - - - - - -",
+        "PZ": "D2 . D2 . . . . . | G2 . G2 . . . . . | Bb2 . Bb2 . . . . . | A2 . A2 . A2 . A2 .",
+        "MO": "D4 . E4 F4 . A4 . . | D5 . . C#5 . . Bb4 . | A4 . F4 G4 . E4 . . | D4 . . . . . . .",
+        "HI": "D6 - - - - - - - | D6 - - - - - - - | D6 - - - - - - - | C#6 - - - - - - -",
+        "N":  "b . . . . . . . | . . . . . . . . | b . . . . . . . | q . q . q . q ."
+      }
+    },
+    "order": ["A","A2"], "loopTo": 0,
+    "sfc": {
+      "echo": 0.556, "fb": 0.25, "vol": 0.85,
+      "ch": {
+        "LO": {"w":"str","v":0.05,"lp":1200},
+        "PZ": {"w":"bas","v":0.3},
+        "MO": {"w":"hp","v":0.14,"gate":1,"r":600,"lp":null},
+        "HI": {"w":"str","v":0.025,"trem":[7,0.6]},
+        "N":  {"v":0.5}
+      }
+    }
+  },
+
+  /* (10-29 시안) 검사실 독대(a2.villefort) 무서운 판: G단조 4/4, 60bpm = 박마다 1초 — 시계 초침(q 똑·딱). 빌포르 미뉴에트 머리(D F B♭ A G)를 낮은 하프시코드로 느리게,
+     베이스는 반음씩 내려가는 탄식 베이스(G F# F E♭), 둘째 판부터 높은 현 트레몰로·낮은 쿵. 문 열림 filterTo 3200 → 곡 기본 1800으로 돌아옴 */
+  "villefort_dark": {
+    "bpm": 60, "spb": 2, "bar": 8, "vol": 1, "filter": 1800, "echo": 0.5, "fb": 0.2,
+    "ch": {
+      "LO": {"chord":true,"pad":true,"w":"pad","v":0.05,"a":1500,"d":800,"s":0.9,"r":1500,"gate":1,"win":45,"lp":900,"send":{"rev":0.35}},
+      "PZ": {"w":"triangle","v":0.3,"a":3,"d":250,"s":0,"r":100,"gate":0.5},
+      "HC": {"w":"p25","v":0.1,"a":2,"d":500,"s":0.15,"r":200,"gate":0.8,"lp":1800,"send":{"rev":0.35,"echo":0.2}},
+      "TR": {"w":"sine","v":0.03,"a":1000,"d":500,"s":0.9,"r":800,"gate":1,"trem":[7,0.5],"send":{"rev":0.4}},
+      "N":  {"kit":true,"v":0.5}
+    },
+    "pat": {
+      "A": {
+        "LO": "Gm - - - - - - - | D/F# - - - - - - - | Gm/F - - - - - - - | Eb - - - - - - -",
+        "PZ": "G2 . . . G2 . . . | F#2 . . . F#2 . . . | F2 . . . F2 . . . | Eb2 . . . Eb2 . . .",
+        "HC": "D4 . F4 . Bb4 - - - | A4 . G4 - - - . . | . . . . . . . . | Eb4 - - - D4 - - -",
+        "N":  "Q . q . Q . q . | Q . q . Q . q . | Q . q . Q . q . | Q . q . Q . q ."
+      },
+      "A2": {
+        "LO": "Cm - - - - - - - | Gm/D - - - - - - - | D - - - - - - - | D7 - - - - - - -",
+        "PZ": "C3 . . . C3 . . . | D2 . . . D2 . . . | D2 . . . D2 . . . | D2 . D2 . D2 . D2 .",
+        "HC": "Eb4 . G4 . C5 - - - | Bb4 . A4 - - - . . | . . . . . . . . | F#4 - - - A4 - C5 -",
+        "TR": "D6 - - - - - - - | D6 - - - - - - - | Eb6 - - - - - - - | D6 - - - - - - -",
+        "N":  "bQ . q . Q . q . | Q . q . Q . q . | bQ . q . Q . q . | Q . q . Q . q ."
+      },
+      "A3": {
+        "LO": "Gm - - - - - - - | D/F# - - - - - - - | Gm/F - - - - - - - | Eb - - - - - - -",
+        "PZ": "G2 . . . G2 . . . | F#2 . . . F#2 . . . | F2 . . . F2 . . . | Eb2 . . . Eb2 . . .",
+        "HC": "D4 . F4 . Bb4 - - - | A4 . G4 - - - . . | . . . . . . . . | Eb4 - - - D4 - - -",
+        "TR": "G5 - - - - - - - | F#5 - - - - - - - | F5 - - - - - - - | Eb5 - - - - - - -",
+        "N":  "bQ . q . Q . q . | Q . q . Q . q . | bQ . q . Q . q . | Q . q . Q . q ."
+      }
+    },
+    "order": ["A","A2","A3","A2"], "loopTo": 0,
+    "sfc": {
+      "vol": 0.85,
+      "ch": {
+        "LO": {"w":"str","v":0.045,"lp":1200,"cho":[0.3,2.5,0.4]},
+        "PZ": {"w":"bas","v":0.3},
+        "HC": {"w":"hc","v":0.16,"lp":null},
+        "TR": {"w":"str","v":0.02,"trem":[8,0.6]},
+        "N":  {"v":0.45}
+      }
+    }
+  },
+
   "dream_b1": {
     "bpm": 60, "spb": 2, "bar": 8, "vol": 1, "filter": 2800, "echo": 0.75, "fb": 0.42, "scale": [4,6,7,11,2],
     "ch": {
@@ -38850,84 +38986,85 @@ SPR.cu_mouth_knife_c3 = { pal: 'cu_mouth_c', dens: 3, base0: 'cu_mouth_knife', r
 "ggggg93ggg9g99f99g636ggg9ggggg663395gg9g9gg8hhhh8g99999f933636663333m6333353333n333gggggggfggggggg98hhhhgghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh83hhhhhhhhhhhhh3h838hhhhh"
 ] };
 // [hands-c 10-28] 1막 끝 '탁자 위 세 손' — 사용자 「가운데와 맨 아래가 무엇을 하는지 모르겠다」: 제미나이 원본 hand_ink_g3·hand_wine_g1·hand_paper_g2에서 바로 96×80칸(tools/hands_c.ps1). 술잔 유리는 비친 초록만 회청으로.
-PALS.cu_hand_ink_c = { '0': '#070604', '1': '#050b04', '2': '#15130f', '3': '#1f1e19', '4': '#26281f', '5': '#372e2b', '6': '#2e3127', '7': '#5a4b43', '8': '#373b2e', '9': '#434938', 'a': '#555c42', 'b': '#666f4b', 'c': '#996f5d', 'd': '#98886f', 'e': '#a8997f', 'f': '#baab90', 'g': '#c39376', 'h': '#e0af8e', 'i': '#ccb88c', 'j': '#d6c297', 'k': '#d8c5a1', 'l': '#cbbca1', 'm': '#decba2', 'n': '#dfcdad', 'o': '#e2d0ab', 'p': '#e5d5b4', 'q': '#e6d7ba', 'r': '#eadcc0' };
+// [10-29 사용자] 당글라르 소매가 죄수 옷 같다(해진 초록 천) → 제미나이 hand_ink_suit_g1.png(남색 모직 양복 소매·흰 셔츠 소맷부리·깨끗한 왼손, 구도 그대로). 변환은 hands_c.ps1과 같은 HandsC
+PALS.cu_hand_ink_c = { '0': '#090805', '1': '#0b1409', '2': '#131315', '3': '#261f1c', '4': '#1b1e26', '5': '#20242f', '6': '#3e3330', '7': '#2a2d3b', '8': '#303343', '9': '#52443b', 'a': '#996d5e', 'b': '#bc8773', 'c': '#817163', 'd': '#9f8f76', 'e': '#b4a48b', 'f': '#cab589', 'g': '#b7a684', 'h': '#e6b095', 'i': '#d3be94', 'j': '#c7b79a', 'k': '#d9c69c', 'l': '#d4c09c', 'm': '#dac8a7', 'n': '#e0cfae', 'o': '#dfcca5', 'p': '#e6d5b4', 'q': '#e7d8be', 'r': '#dcdbd8' };
 SPR.cu_hand_ink_c = { pal: 'cu_hand_ink_c', dens: 2, base0: 'cu_hand_ink', rows: [
 "................................................................................................",
 "................................................................................................",
 "................................................................................................",
 "................................................................................................",
-".........................057555533550.70........................................................",
-"..........................1.33335255515c0.......................................................",
-"...........................1057555235257c0......................................................",
-"...........................155555552352c7d1.....................................................",
-"............................27735555255d75c1....................................................",
-".............................2535cd5525d75d74...................................................",
-"..............................255555552755a7c1.................f1...............................",
-"...............................375200550750552................fijd0.............................",
-"................................275525550327221.............1fjikjk01...........................",
-".................................257dd7752370231...........0kjkjijkmd1..........................",
-"....................................110353055532.........10qnokkkkmmome0........................",
-"...................................44320772275522.......0lqrnnkkkkkmmjjj00......................",
-"...................................255777750355551....00rrqponkkkkkkiiiiike.....................",
-"....................................05532355d25553...0fjkqqnl5knknkkiiijjone....................",
-".....................................15523573d355301lnnkknrq555lnkkjjjjknpqqf1..................",
-"......................................0572007303530qnnnnknqefef55ekkkkkkknqqpp1.................",
-".......................................055325500720l0pnknnnqnn55555fjknkkkqqqppl................",
-".........................................455530c35223pnnlnqqrqf5f555klkknknnppnppe..............",
-"..........................................135222c2a33lqq53lrrrqnnk5kk5fknnnnnqqqqnp11...........",
-"..........................................fl03552d03erre5555lqqpnkkedfe5eknnqqqqqqrrrl..........",
-"........................................1prqf02232232rrl5l355fnpppnkk5l55enqqqqqqrrrrrqf........",
-"......................................1jopl000222030rrrrqf55eeflppnnnon5e5qeqqqqrrrrrrqpf.......",
-"....................................1looo0000d0000000lrrrrrqee5p5lpponnlp555e5nqrrrrrqqpnol1....",
-"..................................1nnppk0g0chhhgghhgc00derqqqfne5elppppqqqel5lfrqrrrqnnpnqpof0..",
-".................................0lnnl02kcchghhghhhhhhegc0rrqqn5feqeflpqqrqql5r55frrqnnnnprpnk00",
-"...............................10nnf00hhghgcc00ggghhhhggg0erqppnfpe55ffpqrqrlr5f5f5rrnkkqnkoppmj",
-".............................10nnl00ehghgghhhhhh7ccggggchg0fpppnnnnef555lqqqqrf5ee5ekknnpnkkmnnm",
-"..........................1.1npn000hhhhhghhhhhhhc0cccccccgh0fqqpnnnkne5f55qrqpqrq5lf5eenpnkkknoo",
-"....................00.01020qpf00hhhgghhhhhg0gcckd00000cgggh0fqqppnpplf55epfpppqrqfl5f55dnkkkonk",
-"..............11...00b00bbb2000ghhhhhhhhhhc0hkhgchhg0000ccghg0qqppppqqn55pef5qpoqrqplef55dknnkkk",
-"a00210001001ababba03aa6bbbb900ghhhhhghhhgghggghgghhhhhh00cggg0qqqqqrrqpqpl55f55lppnnok5k5kknpkkj",
-"bba99bbb18bbbbbbbbbbbb68bbb980ghhhghhhhhggc20000chhhhhhgg00chclrrrrrrqpqqpnef55plrppppnekkkknnkj",
-"aba9abbbaab9abba4aaba994abbbb340ghhhihkhegggcghhdggghhhgd00cgg0rrrrrrqqqqppplfen55lqqqpnikknqpki",
-"bbbabbbbbbbaaba4ab99aa984abbaa2hhhhhhhggggggghhh00cccghg0c0cgg0rrrrrqqqqqqqqqnnf33f5nkkkkkkknnki",
-"abaabaabbbabba889a999a98499b68b32hhgggghgggcchghhc000cgc2c00gcdlrrrrqqqqqqqqpnjmle555flkkjkjnnkk",
-"99884aa6bbba9b99a99999aa64ba668a3hgggghhhgcghhhchhhhg00cccc00c2dqqqqqqqqqqqqpojkiif55557ijjjknl0",
-"99999baa488a9bba999894aa82aa864b2ghggghhgghchgcchgghhhc0gc22200qqqqqqqqqqqqqpomjjijfee5fijjjkf0.",
-"9aba9bbba66832999898848a83bb688220hhhhggccccc0cccccgghc02c2040fqqqqqqrqqqqqqpoomjjjjjeiiiiije0..",
-"9abaabab89b4009a9988846a83abb89200dghgcgggcgcc700cgcgc20cc20220rrrqqrrrqppqqqppoommjjijkijji1...",
-"99989aab46b822aa9999842b94b884930cgggggggggcgc7c7000cc000c20l0dlrrrqqqrppppqqqqpooomjiikj11.....",
-"99888aaa36ba9a668999844b96a113660cgggghghghhhcdcgcgc000eb000qf50frrqqqrpppppqqqqpppojiijm1......",
-"998688aa464aaa869886646b962219960ccgg72gcc2cc7ccccc30eeedddfrq30drnfqrqpppppppooppqppmjji.......",
-"9886688846399a86998986488636334627dcccccgcc00cdcgcd00eeeededeed07lk332nppooppomoopppojj1........",
-"9988998834a49a9aa99944b64666303840c7cccccc7cc0000000deeef222dedd72rr3f33ooooppommppppe0.........",
-"99999a964483699996a84328486632662ccc7cgc700007deededdeqrrl3ff22dferrqfofeooopooooppp00..........",
-"99999ba66499999888866306686462660000c70000deededdedddnrrrqrlfqr4frrrnfjoopooomoppol0............",
-"999999a64499886449664a304326846600000000dedededdedeelrrrfqnrfrrqf3e32koooooomjmope0.............",
-"998996962499980266664882202886640eeeddeeddedeededfqrrrrrleqrf3efffqqpomoopompooo00..............",
-"988944663369940066648640000486460eeededdeddeeeflqrrrrrrrrrnlpqrrpenpoommmmmoppn00...............",
-"9886344446aa933866448320000268342eeeeeedeelkpoprrrrppqpqqrrrrrrppppoooommmjopn0.................",
-"986333469999998868464400000366434edlooomooppqppqrrqpppppppppooopoooppooomjjmk1..................",
-"88646446a9963996888436000248886240eoopoooommoonrrqppppppppommmmjmmopppmjjiid1...................",
-"9864466898202888666334430483886040epopoommmmopnprrrqpppppppppoomjmoppqmiji1.....................",
-"99846648400003636632638668806841ed0opomonkoonkqreqrqpqppppqppppmjmmpqpmii0......................",
-"89846666200003233323988836866600depooomppnfppnllqqqnqnnpprqrqommmmmmppme1.......................",
-"684664420000233333269888246683dadkoommmpppofpkelfnnllppnpprqommmmmmjmp0.........................",
-"444664620000333332488444333680eeeomoooooppolle42e3lnqknpopopommmmmmji0..........................",
-"468864840023233323633333463880edfomopploopokfl3202dnlkopppppommmmmmi0...........................",
-"68686a64343023202686464666488322kompppppppkfe43433efnkoompppommmmmd0............................",
-"46646444442033008344666886868430jjmoomoklpnlflfkdefmkommimpoommmod1.............................",
-"464434664433300344348686666680edjjjjjimmonppnkkfjklomkjjjimjoomm0...............................",
-"434466664324000638868843464360ejjjjjjjjfjomjiimjfmkfmjiijjiimood................................",
-"344466623442003996431000001643emjjjjdejjjjjjjfjmjijjjjjjjijjmmf.................................",
-"44404600443000622000..00eea63mejjmjjjjjjjjjjjjijjjijijjjiiimk1..................................",
-"6664432442000000111....10kk0fjjjjjmjmmjjjjjjjjjjjjjjjjijjj011...................................",
-"6664666420000............14jjjjjjjjjjjjjjjjjjmmjmmmjjjjjijf.....................................",
-"64446660001...............1ejjjjjmmmmjijjjjjjmkmmmmmjjijjd......................................",
-"646664101...................eijjmommiijiiiijmklmmmmmmmjj1.......................................",
-"4432001.......................1emomjiimjjijfeekookmmmmj0........................................",
-"31..............................0jmjjiiiijiiifjoommmmd0.........................................",
-".................................0emjjijjjjjfijmommm01..........................................",
-"...................................0ijjjjjmmjjjjook0............................................",
+".........................066666630661.90........................................................",
+"............................33336336316c0.......................................................",
+"...........................1036696233339a0......................................................",
+"...........................066666662362ccc0.....................................................",
+"............................29636666233d6cd1....................................................",
+".............................2636cc6623c66c93...................................................",
+"..............................266666662ca699c1.................g0...............................",
+"...............................396200360c32663................giid0.............................",
+"................................266606960326231.............0giffii01...........................",
+".................................339ccc9303c0311...........0liilfiikd1..........................",
+"....................................1113630963320........10nmmklkkkkokg0........................",
+"...................................13300c92096620.......0jpqnmmllllkkiff00......................",
+"...................................169999960366661....00pqpnmmmlllllfffffkf.....................",
+"....................................06633366c366931..0gflqqmmgellllffiffimmd....................",
+".....................................06633693c336601gmmlimqejddlllififfimnnpl0..................",
+"......................................09c3006303633pmnmmlmppjeejllliiilllnqppn1.................",
+".......................................066326602932eenklmmmnnngdglllllmlllqqnnpj................",
+"........................................1366330033333nmmmmmppnmmlldgllllllomnnnppe..............",
+"..........................................126222d3933jppjelppnnjede9elllmmlmnnpppnn11...........",
+"..........................................je03662c93dqqnnegnnnnmlllig9jmmmmnnpppnppqpm..........",
+"........................................1nqpd02332033qqqpmgelnnnmmllllegmmmnpppnppppqppg1.......",
+"......................................1fonp0000j3022qqqppnnjdelnnmmmlllmjemnnpnnpppppppng.......",
+"....................................1lokkd000d0000000nppppnnnjemnmmmmmmmnjejnpnnpppppppnokf1....",
+"..................................1ooook0b00hhhhhhhba00eeppnnnmemmmmmmnnnnnmempppppppmmnopokg0..",
+".................................0jnol00ldehhhbhhhhhhhhhb0ppnnmmmmjmnnnnpnpnnnppnjqppmlllnqpnk00",
+"...............................00nnj00hhhhhbbhhhhhhhhhhbb0dpnnmmmmmjlmnmnpnppqpjjmqqpmiinmimooki",
+".............................00mmj00dhlhhhhhhhhhcabhhhhbhh0epnnmmmmmmmjdgnonppnejjjqmlmmnmiiinno",
+".......................00...0mpo000hhhhhhhhhhhhha0bbbbbbhhh0djnnmmmmmnmejjnonmnnqqnddlllmmiilmmn",
+"..................00024774000ej00hhhlhhhhhhh0haalb00000bahhh0ejemmmmnnnnljnnnmmnqqnnleellmllllml",
+"...........000024457888880err00hhhhhhhhhhhb3hlhbahhh0000bbhhh0nnnljnnnnnnnngjmmopppnmje9gllmmlll",
+"........058888888888888882qrq0hhhhlhhhlhhbbbhhbhhhhhhhh00aahb0qpnejmppnnnngegjgmmnmmlllle9jmnlil",
+"44422222278888888888888884rrr0bhhhhhhhhhhhb30a30ahhhhhhhh0abhajpnpnjennnnnmmmmgejqpnnnlilldlnnli",
+"888888872888888888888888850rqr0hhhhhlhlhbhbhbbbhbbhhhhhha00bhb0mnppppjjnnnmmmmmjdjppqqnofilmpnmf",
+"888888872888888888888888880rrq0hhhhhhhhhhhhhhhhh00abbbhh0a0bbb0pppppnnejmnnnnmilfeedqnokiilinnmi",
+"888888852888888888888888882rqr0hhhhhhhlhhhhbahhhhb000aabab00aa0dennnnpnjdennnoiiiimelmokilmllmll",
+"8888888528888888888888888840rr0ahhhhhhhhhhbbhhhahhhhb00abba00aa39dmnnpnnnjjmjggifffigdlifllilmj0",
+"8888888527888888888888888870qrq0hhhhlhhhhhbbhhhbbhhhhhb0abc3300d999ejplnnnnpjdeiifffffgfifiime0.",
+"8888888525888888888888888780rqr0hhhhhhhbbhbba0abbhhhhhb0aaa062eqed99edmnnnnnoldkiiiifiiffffid0..",
+"8888888524888888888888888582qrq0bhhhhhhhhhbhhbc00aabbba0aba3222qqje999llonnnnnlgelmiifilifif1...",
+"88888875228888888888888785840rr0ahhhhhhhhhhbhbaa0000ab000bb0j2ceqqppe99eloomppppjemliffkf11.....",
+"88888875228888888888887585750rqd0bhhhhhhlhhhbbbaabaa300da000pe72dqppp99d99dlnppppnjoffiii0......",
+"88888875208888888888757575770qrr0bhhhhhhba0bbaabbab90edddddeqp42cpqppne9999denoopppppiikf.......",
+"88888875407888888885555575550rqr0bhhhhhhbbb00aaabba30cddddddded09jpqppgje9999egjonnnpiid........",
+"88888875425878888755555555552rrr0bbbbbbbbbbbb00000a0c96cjjmmeddd92qqpnmjjd9999diknnnpd0.........",
+"88788875444878875555555555552rqr0aabababb000029c6cddddedejpqpqnjeemjjpnnmonj99cjonmn00..........",
+"887888754427575555555555555520rr000aaa0000cddc666ccddmqnjmmqqqqqqqmqjmnnnnooglljnnj0............",
+"878888754527575555555555555540rr00000000cddddd63366cmqqqmedjpqpqpqqqjnnenpoookknne0.............",
+"878888554505555555555555555540rrcceedddddddddddc666dqnqqqqqnejjmqqqpnogdjjlooooo00..............",
+"878887545524555555555555555550qrr0ddedddedcdcdeegedjmpnqqqqqjdmejppnooklegjlmnn00...............",
+"888755455524555555555555555550rdd0dddedddcdemppqpjed99elpqpnjjecdglloooooelnnm0.................",
+"77555545554255555555555555555000dddjnoofldlnnpppqppnc99dllnnoggmddjgennooiiol0..................",
+"555554554542555555555555555550dddddmnplojeeloljpppppnjd9edgkkkigildempoikffe1...................",
+"555545555550555555555555555550cdedgpnnooolgegmppqpjmnnoe99ejoookfgojlpofif0.....................",
+"555545554540555555555555555550ddjlpnppooloomd9emjempppnnjejjdlnoiijpmmoig0......................",
+"555555555550555555555555555542eemnoooooppjlnmee9gpppppppplleleefkkkoppng0.......................",
+"555555555550455555555555555223djnnoookkpppleemnd9dempppppppmd99ikkkkop0.........................",
+"555555555550455555555555420dedejnokooonnpnoongemnd9jnpnpppnpodddkkkki0..........................",
+"5555555555504555555554200cdddejoppkkoppnnpookoojejee99jnppppokfgfkkj0...........................",
+"55555555555255555554200dcdcgloooookpppnpnppokoonojeled9eknnookkkkoe0............................",
+"55555555520055555202cddcdgfiiiikikkonnnpppnoooppooojgmd9delkokkkod1.............................",
+"5555554200.05542..0ccddffiiiiiiiiiiikkkonpppokkokknnmgkdgioiooooc...............................",
+"55554200....1......10kokkkkiiikkiiiikkiiookkkkikiioookigfiffkkod................................",
+"55420................0fkkkkkkknkkiiiiiiiiiiiiiiikikkkkiifffiiog.................................",
+"42....................0dkkokkikiikkikiiiiiiiiiiikkkiiiiifffki0..................................",
+".......................00ookkiiiiioikkiiiiiiiikkkkkkiiiifi011...................................",
+".........................0jkkkkiiiikkiiiikikikkkokkkkiiffkg.....................................",
+"..........................1gikiiikkkkkiiiiiikooooookkiiifg......................................",
+"............................gfkkkookififfiiioooooookkkkk0.......................................",
+"..............................1goooiffoifikkoooonookooi0........................................",
+"................................0lokifiiiikkiooooooooe0.........................................",
+".................................0dokiiiiikkkkkonooo00..........................................",
+"...................................0iiiikkkkkkkkooo0............................................",
 "................................................................................................",
 "................................................................................................",
 "................................................................................................",
@@ -42090,7 +42227,7 @@ const pt = n => (SPR[n] ? n : null);
         { "t": "신부님 앞에서,\n다시 에드몽이 되었다.", "cond": F("a4m.n1_touch") },
         { "t": "벽에 네 이름을 새겼다.", "cond": F("a4d.deduced") },
         { "t": "신부님 대신 자루에 들었다.", "cond": F("s4x.sewn") },
-        { "t": "손가락으로 세어 보았다.\n열네 해였다.", "cond": F("s4e.counted") }
+        { "t": "손가락으로 세어 보았다.\n14년이었다.", "cond": F("s4e.counted") }
       ]
     },
     "morrel": {
@@ -42149,7 +42286,7 @@ const pt = n => (SPR[n] ? n : null);
       "bio": [
         { "t": "'난 기다리는 쪽을 골랐어.'\n페르낭에게 그렇게 말했다.", "cond": F("a1.catalan_done") },
         { "t": "기다리겠다고 외쳤다.\n끌려가는 내 등 뒤에서.", "cond": F("a2.arrested") },
-        { "t": "열네 해가 지났다.\n그녀도 이제 서른하나다.", "cond": F("s4e.counted") }
+        { "t": "14년이 지났다.\n그녀도 이제 서른하나다.", "cond": F("s4e.counted") }
       ]
     },
     "villefort": {
@@ -44853,7 +44990,7 @@ MC.addMaps({
 
 </script>
 <script>/* ==== data/events_a0.js ==== */
-/* events_a0.js — 프롤로그 '자루 속'(a0.start): 완전한 검정(a0_void 맵) → 심장 → ??? 두 줄 → 속마음 → 숨 참기(custom breath 5초, 실패 없음) → '하나, 둘—' → 흰 섬광 → 갈매기·파도 → narr '열네 해 전. 마르세유.' → 1-1(a1.arrive). 담당: content-a12
+/* events_a0.js — 프롤로그 '자루 속'(a0.start): 완전한 검정(a0_void 맵) → 심장 → ??? 두 줄 → 속마음 → 숨 참기(custom breath 5초, 실패 없음) → '하나, 둘—' → 흰 섬광 → 갈매기·파도 → narr '14년 전. 마르세유.' → 1-1(a1.arrive). 담당: content-a12
    S4(content-s4a, ARCHITECTURE_S4 §C-3): 가운데 토막(심장 → 「하나,{p:450} 둘—」)을 a0.sack으로 떼어 a0.start가 call — S4 장면 9 s4x.sack이 같은 토막을 부른다. 프롤로그는 한 박도 다르지 않다.
    flags: a0.done · vars: s4_rel1(숨 참기 중 뗀 횟수 — breath var) */
 (function (MC) { 'use strict';
@@ -44877,9 +45014,10 @@ MC.addEvents({
     { "op": "wait", "ms": 240 },
     { "op": "fade", "to": 0, "ms": 700, "color": "#ffffff" },
     { "op": "wait", "ms": 500 },
-    { "op": "narr", "t": [ "열네 해 전.{p:700}", "마르세유." ], "speed": 45, "ms": 2600 },
+    { "op": "narr", "t": [ "14년 전.{p:700}", "마르세유." ], "speed": 45, "ms": 2600 },          // [10-29 사용자] 해·달은 숫자로(옛 「열네 해 전.」)
     { "op": "sfx", "id": "gull", "pan": -0.3 },
-    { "op": "comic", "id": "open1815" },                                // [comic-c] 모션 코믹 편 1 「돌아온 배」(구성안 §6-4) — 자루 토막(a0.sack)·narr 뒤에 붙기만 한다. 소리는 항구 환경음을 잇는다
+    { "op": "comic", "id": "open1815", "bgm": "opening" },              // [comic-c] 모션 코믹 편 1 「돌아온 배」(구성안 §6-4) — 자루 토막(a0.sack)·narr 뒤에 붙기만 한다. 소리는 항구 환경음을 잇는다
+                                                                         // [10-29 사용자] 음악 없음 → 곡 opening(마르세유 주제 느린 현). a1.arrive의 marseille(fade 1800)로 같은 D장조에서 이어진다
     { "op": "set", "flag": "a0.done", "v": true },
     { "op": "map", "id": "port", "at": "arrive", "trans": "fade" },
     { "op": "call", "ev": "a1.arrive" }
@@ -45390,7 +45528,7 @@ MC.addEvents({
     { "op": "move", "id": "player", "path": "R1", "speed": 240 },
     { "op": "show", "id": "player", "v": false },
     { "op": "letterbox", "on": true, "ms": 500, "async": true },
-    { "op": "music", "fn": "filterTo", "args": [ 600, 2 ] },
+    { "op": "bgm", "id": "plot", "fade": 1500 },                          // [10-29 사용자] 예전 filterTo(600)는 폰에서 음악이 없는 것처럼 들렸다 → 음모 곡(마르세유 주제를 단조로)
     { "op": "light", "dark": 0.45, "r": 72, "at": [7, 8], "color": "#ffb060", "flicker": true, "ms": 1800, "async": true },
     { "op": "cam", "to": [7, 8], "ms": 1800 },
     { "op": "wait", "ms": 700 },
@@ -45610,7 +45748,7 @@ MC.addEvents({
       { "op": "say", "who": "dantes", "t": "기다려." },
       { "op": "face", "id": "sailor_m", "dir": "down" },
       { "op": "emote", "id": "sailor_m", "kind": "exclaim", "ms": 700, "async": true },
-      { "op": "say", "who": "sailor", "t": "이 사람아,{p:200} 이월 바다야!", "pos": "top" },
+      { "op": "say", "who": "sailor", "t": "이 사람아,{p:200} 2월 바다야!", "pos": "top" },
       { "op": "say", "who": "dantes", "face": "smile", "t": "금방 와요." },
       // 뛰어든다
       { "op": "sfx", "id": "swing" },
@@ -45632,7 +45770,7 @@ MC.addEvents({
       { "op": "say", "who": "boy", "t": "형 물고기예요?" },
       { "op": "say", "who": "sailor", "t": "저 녀석 숨은{p:200}\n이 항구에서 제일 길어.", "pos": "top" },   // 21장
       { "op": "shake", "p": 0.05 }, { "op": "vibrate", "p": [ 20, 40, 20 ] },
-      { "op": "say", "who": "think", "t": "{tremble}……이월 바다는{p:200} 역시 이월 바다다.{/tremble}" },
+      { "op": "say", "who": "think", "t": "{tremble}……2월 바다는{p:200} 역시 2월 바다다.{/tremble}" },
       { "op": "face", "id": "player", "dir": "right" },
       { "op": "sfx", "id": "pickup", "gain": 0.4 },
       { "op": "fx", "kind": "sparkle", "at": "luc_p", "n": 4 },
@@ -45727,7 +45865,7 @@ MC.addEvents({
       { "op": "face", "id": "player", "dir": "down" },
       { "op": "wait", "ms": 500 },
       { "op": "face", "id": "mercedes_e", "dir": "up" },
-      { "op": "say", "who": "mercedes", "t": "이월 바다에 들어갔다며?{p:300}\n뤼크가 온 동네에 떠들고 다녀." },
+      { "op": "say", "who": "mercedes", "t": "2월 바다에 들어갔다며?{p:300}\n뤼크가 온 동네에 떠들고 다녀." },
       { "op": "say", "who": "dantes", "face": "smile", "t": "종 쳤어.{p:200} 들었어?" },
       { "op": "say", "who": "mercedes", "t": "……들었어.{p:300} 카탈루냐까지." },
       // 숄을 어깨에 걸어 준다
@@ -46266,7 +46404,7 @@ MC.addEvents({
     { "op": "vignette", "a": 0.35, "ms": 0 },
     { "op": "light", "dark": 0.42, "r": 76, "at": [6, 3], "color": "#ffb040", "flicker": true, "ms": 0 },
     { "op": "amb", "id": "office", "fade": 0 },
-    { "op": "bgm", "id": "villefort", "fade": 0 },
+    { "op": "bgm", "id": "villefort_dark", "fade": 0 },                    // [10-29 사용자] 독대는 무서워야 → 시계 초침·탄식 베이스 판(옛 미뉴에트 villefort는 bgm.js에 남김)
     { "op": "music", "fn": "filterTo", "args": [ null, 0 ] },
     { "op": "vista", "id": "vs_villefort" },                               // [vista] 맵을 바꾼 뒤 · 페이드를 걷기 전(검정 위) — 빈 집무실, 타는 벽난로(편지 태우기 복선). 빌포르 곡이 이미 흐른다
     { "op": "fade", "to": 0, "ms": 800 },
@@ -59883,7 +60021,7 @@ MC.addLang('ko', {
     "deduce.tapWall": "벽을 누른다.",
 
     "hint.move": "화면을 끌어서 걷는다",
-    "recap.p.s4_counted": "1829년. 열네 해가 지났다",
+    "recap.p.s4_counted": "1829년. 14년이 지났다",
     "recap.p.s4_drank": "선장이 건넨 럼을 마셨다",
     "recap.p.s4_helmed": "선장 말대로 키를 잡았다",
     "recap.p.s4_deck": "지나던 배에 건져 올려졌다",
@@ -60097,7 +60235,7 @@ MC.addLang('ko', {
     "story.knot3": "당기면 끝.",
     "story.knotMemory": "……매듭은 손이 기억한다.",
     "rec.days": "갇혀 있던 날",
-    "rec.daysV": "1815년 2월 28일 ~ 1829년 2월 28일 · 열네 해",
+    "rec.daysV": "1815년 2월 28일 ~ 1829년 2월 28일 · 14년",
     "rec.age": "나이",
     "rec.ageV": "들어갈 때 열아홉 · 나올 때 서른셋",
     "rec.tally": "그은 빗금",
@@ -61000,7 +61138,7 @@ MC.addLang('en', {
     "죽은 놈은 원래 무거워.": "Dead men always are.",
     "……숨.{p:600} 아직 쉬면 안 돼.": "...Air.{p:600}\nHold it. Not yet.",
     "하나,{p:450} 둘—": "One,{p:450} two—",
-    "열네 해 전.{p:700}": "Fourteen years earlier.{p:700}",
+    "14년 전.{p:700}": "Fourteen years earlier.{p:700}",
     "마르세유.": "Marseille.",
 
     "어이, 파라옹호!{p:200} 깃발은 왜 반만 올렸나!": "Pharaon ahoy!{p:200} Why is your flag at half-mast?",
