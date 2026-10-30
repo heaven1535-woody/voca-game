@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.25-shout';
+  var VERSION = '0.7.26-look';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -445,7 +445,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       MC.errors.push(rec);
       if (MC.errors.length > 60) MC.errors.shift();
       console.error('[MC:' + (where || '?') + ']', e);
-      try { localStorage.setItem('mc34.lastError', JSON.stringify({ where: rec.where, msg: rec.msg, stack: rec.stack.slice(0, 800), at: Date.now() })); } catch (_) {}
+      try { localStorage.setItem('mc34.lastError', JSON.stringify({ where: rec.where, msg: rec.msg, stack: rec.stack.slice(0, 800), at: Date.now(), ver: MC.VERSION || '' })); } catch (_) {}   // [r3 A10④] ver: 어느 판의 오류인지(판이 바뀌면 save.init이 지운다)
     } else {
       for (let i = MC.errors.length - 1; i >= 0; i--) if (MC.errors[i].where === (where || '') && MC.errors[i].msg === msg) { MC.errors[i].n = n; break; }
     }
@@ -1456,6 +1456,62 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const ctx = g.ctx;
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
     g.ditherRect(0, 0, g.W, g.H, c, level);
+    ctx.restore();
+  };
+  /* [r3 A5] 덮개를 50% 체커 대신 '한 단 어두운 색'으로(도트 평가 C · F17): 지금 논리 화면을 한 번 읽어 색마다 밝기 ×k(기본 0.4) →
+     가장 가까운 팔레트 색으로 바꾼 판을 만든다. 팔레트 = 게임 스프라이트 팔레트(MC.data.sprites.pals)의 어두운 색 + 그 화면에 쓰인 색 + 창 어둠 단.
+     색마다 한 번만 찾는다(LUT 캐시). 그림 형태는 그대로 — 색만 내린다. 쓰는 쪽(필드 메뉴 · 인물 소개 컷 · 클로즈업)은 처음 그릴 때 한 판 만들어 두고
+     g.drawDim으로 얹는다(들어오고 나갈 때만 Bayer 단으로 잇는다). 되돌리기: [r3 A5] 꼬리표를 찾아 g.ditherFill 줄로 */
+  const DIM_RAMP = ['#05060c', '#0b0a12', '#100e18', '#15131c', '#1a1822', '#201d2a', '#262330', '#2c2a36'];
+  let dimPal = null;
+  const dimLut = new Map();
+  function dimPalette() {
+    if (dimPal) return dimPal;
+    const seen = new Set(), out = [];
+    const add = hex => { const v = rgb(hex), key = (v[0] << 16) | (v[1] << 8) | v[2]; if (seen.has(key) || Math.max(v[0], v[1], v[2]) > 150) return; seen.add(key); out.push(v); };
+    DIM_RAMP.forEach(add);
+    const P = (MC.data && MC.data.sprites && MC.data.sprites.pals) || {};
+    for (const n in P) { const p = P[n]; if (p && typeof p === 'object') for (const ch in p) if (typeof p[ch] === 'string' && p[ch][0] === '#') add(p[ch]); }
+    dimPal = out; return out;
+  }
+  g.dimSnap = function (k) {
+    k = k > 0 && k < 1 ? k : 0.4;
+    const W = g.W, H = g.H;
+    let id; try { id = g._main.getImageData(0, 0, W, H); } catch (_) { return null; }
+    const d = id.data, pal = dimPalette().slice(), uniq = new Set();
+    for (let i = 0; i < d.length; i += 4) uniq.add((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
+    for (const key of uniq) { const v = [key >> 16, (key >> 8) & 255, key & 255]; if (Math.max(v[0], v[1], v[2]) <= 150) pal.push(v); }   // 그 화면의 어두운 색도 후보
+    const lut = new Map();
+    for (const key of uniq) {
+      const ck = k + ':' + key; let hit = dimLut.get(ck);
+      if (!hit) {
+        const r = (key >> 16) * k, gg = ((key >> 8) & 255) * k, b = (key & 255) * k;
+        let bd = Infinity;
+        for (let j = 0; j < pal.length; j++) { const p = pal[j], dr = p[0] - r, dg = p[1] - gg, db = p[2] - b, dd = dr * dr * 2 + dg * dg * 4 + db * db * 3; if (dd < bd) { bd = dd; hit = p; } }
+        if (dimLut.size > 20000) dimLut.clear();
+        dimLut.set(ck, hit);
+      }
+      lut.set(key, hit);
+    }
+    for (let i = 0; i < d.length; i += 4) { const p = lut.get((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]); d[i] = p[0]; d[i + 1] = p[1]; d[i + 2] = p[2]; d[i + 3] = 255; }
+    const c = mk(W, H); c.getContext('2d').putImageData(id, 0, 0);
+    return c;
+  };
+  let dimTmp = null;
+  g.drawDim = function (c, level) {                      // [r3 A5] dimSnap 판을 전체 화면에(오프셋 무시). level 0..16 — 16 = 그대로, 그 밑은 Bayer 단으로 성글게
+    level = Math.round(level);
+    if (!c || level <= 0) return;
+    const ctx = g.ctx;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (level >= 16) ctx.drawImage(c, 0, 0);
+    else {
+      if (!dimTmp || dimTmp.width !== c.width || dimTmp.height !== c.height) dimTmp = mk(c.width, c.height);
+      const tx = dimTmp.getContext('2d');
+      tx.globalCompositeOperation = 'copy'; tx.drawImage(c, 0, 0);
+      tx.globalCompositeOperation = 'destination-in'; tx.fillStyle = pattern('#ffffff', level); tx.fillRect(0, 0, c.width, c.height);
+      tx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(dimTmp, 0, 0);
+    }
     ctx.restore();
   };
   const gradCache = new Map();
@@ -4736,7 +4792,12 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   const SV = MC.save = {
     KEY,
     settings: loadSettings(),
-    init() { SV.settings = Object.assign(SV.settings, loadSettings()); },
+    init() {
+      SV.settings = Object.assign(SV.settings, loadSettings());
+      // [r3 A10④] 판이 바뀌면 지난 판의 마지막 오류(mc34.lastError)를 지운다(QA B11 — 0.6.1 오류가 0.7.x에도 남아 있었다).
+      //   알아차리는 법: 오류 기록에 적힌 판(ver, core.js)이 지금 VERSION과 다르거나 ver가 없는 옛 기록이면. 새 키는 만들지 않는다
+      try { const raw = get('mc34.lastError'); if (raw) { let o = null; try { o = JSON.parse(raw); } catch (_) {} if (!o || o.ver !== (MC.VERSION || '')) del('mc34.lastError'); } } catch (_) {}
+    },
     // MC.state 직렬화. auto는 쓰기 전에 이전 것을 .bak로
     write(slot) {
       slot = slot || 'auto';
@@ -8681,7 +8742,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   }
   function forward(s, f, ev) { const stk = MC.scene.stack, i = stk.indexOf(s), b = i > 0 ? stk[i - 1] : null; return b && typeof b[f] === 'function' ? b[f](ev) : false; }
   // i18n(docs/I18N.md §3-5 엔진 키): 한국어 값은 옛 하드코딩과 같다. i18n.js가 없으면 옛 글로
-  const KO_FB = { 'ev.skipping': '▶▶ 넘기는 중', 'ev.saved': '기록했습니다.', 'ev.got': '{c:gold}{item}{/c}{을/를} 얻었다.', 'ev.gotN': '{c:gold}{item} {n}개{/c}{을/를} 얻었다.', 'ev.learned': '{c:gold}{skill}{/c}{을/를} 익혔다.', 'fmt.year': '{y}년' };
+  const KO_FB = { 'ev.skipping': '▶▶ 넘기는 중', 'ev.saved': '기록했습니다.',
+    'ev.got': '{c:gold}{item}{/c}{을/를} 얻었다.', 'ev.gotN': '{c:gold}{item} {n}개{/c}{을/를} 얻었다.', 'ev.learned': '{c:gold}{skill}{/c}{을/를} 익혔다.', 'fmt.year': '{y}년' };
   function tf(key, p) { const I = MC.i18n; if (I) return I.tf(key, p); return String(KO_FB[key] || key).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null ? String(p[k]) : m)); }
   function noun(src, kind) { const I = MC.i18n; return I ? I.N(src, kind) : src; }
   function shownName(n) { const I = MC.i18n; return I && I.active ? I.name(n) : n; }
@@ -17764,10 +17826,10 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const tag = T('chainTag'), tl = MC.text.wrap(tag, b.w - 6, 'small');
     if (tl.length <= 1) {
       MC.text.draw(lab, x + (b.w >> 1), y + 4, { color: '#a8a6b8', align: 'center', outline: '#07060a' });
-      MC.text.draw(tag, x + (b.w >> 1), y + 21, { font: 'small', color: '#8a88a0', align: 'center', outline: '#07060a' });
+      MC.text.draw(tag, x + (b.w >> 1), y + 21, { font: 'small', color: '#9a98a8', align: 'center', outline: '#07060a' });   // [r3 A8] 옛 #8a88a0
     } else {
       MC.text.draw(lab, x + (b.w >> 1), y + 2, { font: 'small', color: '#a8a6b8', align: 'center', outline: '#07060a' });
-      for (let i = 0; i < Math.min(2, tl.length); i++) MC.text.draw(tl[i], x + (b.w >> 1), y + 13 + i * 10, { font: 'small', color: '#8a88a0', align: 'center', outline: '#07060a' });
+      for (let i = 0; i < Math.min(2, tl.length); i++) MC.text.draw(tl[i], x + (b.w >> 1), y + 13 + i * 10, { font: 'small', color: '#9a98a8', align: 'center', outline: '#07060a' });   // [r3 A8] 옛 #8a88a0
     }
     if (p < 1 && p > 0 && (((V.t / 40) | 0) & 1)) g.rectO(x + 1, y + 1, b.w - 2, b.h - 2, '#c8ccd8');   // 채워지는 순간 번쩍
   }
@@ -18084,7 +18146,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (ow.subT0 >= 0) {
       const q = clamp((V.t - ow.subT0) / 600, 0, 1);
       const s = ow.sub + Math.round((ow.subN || 0) * q);
-      MC.text.draw(s, W >> 1, (Hh >> 1) + 10, { font: 'small', color: '#8a88a0', align: 'center' });
+      MC.text.draw(s, W >> 1, (Hh >> 1) + 10, { font: 'small', color: '#9a98a8', align: 'center' });   // [r3 A8] 옛 #8a88a0
       if (ow.sub2) MC.text.draw(ow.sub2, W >> 1, (Hh >> 1) + 24, { font: 'small', color: '#a8a0c0', align: 'center' });
     }
   }
@@ -25298,10 +25360,11 @@ PALS.pt_faria_young = { o: O, e: '#140c18', E: '#3e2a1c', w: '#fff8f0', l: '#ffe
   d: '#22160e', D: '#140c08', g: '#e8b48c', G: '#bc8660', m: '#6e2a2a', n: '#c47a64', c: '#2a2630', C: '#18161c', x: '#3a3440', k: '#46404c', y: '#f0ece0', Y: '#b8b4a8',
   u: '#c09880' };   // u = 면도 자국(각진 턱 — 마흔 무렵 사내)
 const PD4 = SRCP().pt_dantes_d4 || {};
-// [c50-conv-a 0.5.0 B6-2] 새 초상(제미나이 dantes_d5_g1 변환) 팔레트: 머리 초상 슬롯 h #4a2e1e · H #7a4e32 + d 가장 어두운 단 + j 결 · 살 = 에드몽 사다리(§7-1 t S s l L) ·
-//   눈 e 동공 · E 홍채 · w 흰자 · 회색 셔츠 C c k K(U.SLEEVE.dantes). 예전 손그림 판 팔레트(PD4 위 덧씀)는 docs/art_wip/c50/conv_a/before/spr_chars_s3.js
-PALS.pt_dantes_d5 = { o: O, e: '#0e0810', E: '#4a3a2a', w: '#efe6da', t: '#654540', S: '#8e6450', s: '#b58566', l: '#d8ac8c', L: '#f0d6ba',
-  d: '#24160e', h: '#4a2e1e', H: '#7a4e32', j: '#98683e', m: '#6a3a32', c: '#4a4742', C: '#2e2b28', k: '#6e6a62', K: '#8e8a80' };
+// [r3] 사용자(10-30, 메뉴·인물 목록 폰 화면): 「주인공만 너무 튀어」 → 0.5.0의 사실체(제미나이 dantes_d5_g1 변환)를 걷고 0.4.6 만화체 손그림 팔레트로 되돌림(d4 위 덧씀).
+//   사실체 판(팔레트·그림·표정)은 release/monte_0.7.25-shout.html 번들과 docs/art_wip/c50/conv_a/에 남아 있다
+PALS.pt_dantes_d5 = Object.assign({}, PD4, { o: O, e: '#0e0810', E: '#4a2e22', w: '#fff8f0', l: '#f8e2c8', s: '#d4a888', S: '#a87a5a', t: '#845236',
+  d: '#20120c', h: '#3a2616', H: '#5a3e2a', j: '#76523a', x: '#3a2618', X: '#22140c', m: '#6a2a2a', n: '#b87a66', c: '#9c988c', C: '#6c685e', k: '#4e4a44',
+  p: '#847254', P: '#ccc4ac', y: '#b89868' });
 PALS.pt_governor = { o: O, e: '#140c18', E: '#3a4050', l: '#f6d2b4', s: '#e6b496', S: '#b8846a', t: '#8a5a40', d: '#6a6460', m: '#7a2e2e',
   x: '#aca8a0', X: '#7e7a74', c: '#2c3656', C: '#1a2036', V: '#d8b048', v: '#9a7a2a', h: '#c8c4bc', H: '#eeeae2' };
 PALS.pt_madking = { o: O, e: '#0c0612', w: '#f4e8ff',
@@ -25769,70 +25832,83 @@ Object.assign(SPR, {
 
 /* ================================================================ 6. 초상 32×32 */
 /* 6-1. 당테스 1825~(d5): d4와 같은 사람 — 풀어 내린 긴 머리(먼 쪽으로도 흘러내림)·가슴까지 내려온 수염·팬 볼, 눈빛은 d4보다 가라앉음(학자)
-   [c50-conv-a 0.5.0 B6-2·C5④] 큰 눈 만화체 손그림 → 제미나이 원본 docs/art_refs/gemini/dantes_d5_g1.png(face_g1과 같은 사람, pt_jacopo처럼 오른쪽을 보는 3/4 흉상)를
-   형태 그대로 격자·팔레트만: docs/art_wip/c50/conv_a/specs_a.js SPA.d5 — k 0.030(얼굴 이마~턱 약 21칸) · 원본 (432,348)부터 32×32 · 10×10 표본 ·
-   재질 머리·수염 d h H j / 살 t S s l L / 흰자 w / 셔츠 · 두 눈 상자만 칸 안 표본에서 흰자·홍채·동공을 다시 고름. */
+   [r3] 0.4.6 만화체 손그림으로 되돌림(사용자: 메뉴·인물 목록에서 주인공만 튐). 0.5.0 사실체 변환판은 release/monte_0.7.25-shout.html */
 SPR.pt_dantes_d5 = { pal: 'pt_dantes_d5', rows: [
-".....oohHHHHHHHHHHHhhHHHHo......",
-"....ohhhHHHHHHHHHHHHHhhhHHo.....",
-"...ohhhHHHHHHHHHHHHHHHhhHHHo....",
-"..ohhhHHhhHHHHHHHHHHHHHhhhHHo...",
-"..ohhhhhHhHHHHHHHHHHHddhddhHHo..",
-"..ohhhhHhHHhHHHHHHHHHlllssdHHo..",
-".ohhhhhhhhhhHHHHHhhHlllllsddHo..",
-"ohhhhhhhhhhHhhhhhhlHlllllltdHHo.",
-"hhhhhhhhhhHhhhhhhshlllllllthHoo.",
-"ohhhhhhhhHhhhhhhsslllllllllhhoo.",
-"ohhhhhhhHdhhhhhSlllllllllllhho..",
-"ohhhdhdhhddhhhSllllllllllllhho..",
-"ohhdhdhhddhhhhStttttttllllltho..",
-"ohdhhhhdhhhhhSSosSSootssloooddo.",
-"hhhhhhtddhhhhsSsSSooESSlStssdho.",
-"hhhhhtttdhdhtssSowowSSllSooedho.",
-"hhhdtttthdddtlllssSSssllltoeddo.",
-"hhddtttddhdSslllllsslllllllhhoo.",
-"hhdhddttsdhSSslllllllllllllhhoo.",
-"hdhhdsttsdhSSssllllllllllllho.o.",
-"hddhdtslddhdSSsllllllllllllho.o.",
-"hhdhddtllhhdSSSssllllSSSSlho....",
-"hhddhdtdddhdhSSSslllllSShlho....",
-"hhddhddodhhhhhjjslllHhHhhHhHo...",
-"hhhhdhdddhhhhhhsslHHHhhHhhHho...",
-"hhhdhhddddhhHHhhhHHddllllHHo....",
-"hhhHhhddddhhHHHHhhHlllllllo.o...",
-"hhhHhhddjdhhhHHHhhllllhhhho.....",
-"hhhHdhhdjddhhhhHhHHlllHHHHo.....",
-"hhhHdhhhddddhhhhHHHHHHHHHHo.....",
-"ohhHhhhhjdjdhhhhHHHHHHHHHHo.....",
-"hhhHhhhhhjjjohhhhHHHHHHHHHo....."] };
-// [c50-conv-a 0.5.0] 표정 변형 — 새 초상(dantes_d5_g1) 위에서 눈·눈썹·입 칸만 바꾼 over(웃음: 입꼬리 · 슬픔: 눈썹 안쪽이 올라감·입꼬리 처짐 · 놀람: 흰자·벌린 입 ·
-//   화남: 눈썹 안쪽이 내려옴·일자 입 · 차가움: 내려앉은 눈꺼풀·일자 입 · 다정: 풀린 눈썹·작은 웃음). B6-4 얼굴 문법표에서 다시 다듬을 자리.
+"................................",
+"...........oooooooooo...........",
+".........ooHHjjjjHhhhoo.........",
+"........oHHjjjjjHHhhhhdo........",
+".......oHHjjjHHHHhhhhhhdo.......",
+"......oHHHjHHHhhhhhdhhhhddo.....",
+".....oHHHHHhhhhhdhhhhhhhddo.....",
+"....oHHHhhhhhdhhhhhdhhhhhddo....",
+"....oHHhhhhhdhhhhhdhhhhhhdddo...",
+"...oHHhhhhhdhhhhhdhhhhhhhdddo...",
+"...oHhhhhhdhhsssssssssShhdddo...",
+"..odHhhhhhdhsssssssssssSShhddo..",
+"..odHhhhhdhssssssssssssSSShhdo..",
+"..odHhhhdhShhhhsssshhhsSSSdohdo.",
+"..odhhoSsSSoooossssoooSSSdohdo..",
+"..odhhStSsswEewssssEewSSSdohdo..",
+"..odhhStsSswEEssssSEESSSSohhdo..",
+"..odhhoSsstttsssssStttSSSohhdo..",
+"..odhhdxSSSsssssssSssSSxXohdo...",
+"..odhhdxxSssSsssslSSSSxXohhdo...",
+"..odhhdxxxxxsSxxxxxxxxXXohdo....",
+"..odhhdoxxxxxxxmmmxxxxXXohdo....",
+"..odhhdo.oxxxxxxxxxxxXXohdo.....",
+"..odhhdo..oxxxxxxxxxXXohdo......",
+"..odhhdooccooxxxxxxxXooohdo.....",
+"..odhhdocccccoxxxxxXocccCoohdo..",
+"..odhdoccccccoxxxXXoCCCCccohdo..",
+"...ohdPpPpPccoxxXoCCCCCCCChdo...",
+"...odhpppppcccoxocCCCCCCCCdo....",
+"..occPpppPccccoocCCCCCCkCCCo....",
+"..occpPpPpccccccccCCCCCCCkCCo...",
+".occcccccccccccccccCCCCCCCCCCo.."] };
 Object.assign(SPR, {
 "pt_dantes_d5_smile": { base: "pt_dantes_d5", over: {
-"24": "hhhhdhdddhhhhhhsslHdHhhHhdHho...",
-"25": "hhhdhhddddhhHHhhhHHlddddlHHo...." } },
+"14": "..odhhoSsSSsssssssssssSSSdohdo..",
+"15": "..odhhStSsssoosssssoosSSSdohdo..",
+"16": "..odhhStsSsossosssoSSoSSSohhdo..",
+"21": "..odhhdoxxxxxxmxxxmxxxXXohdo....",
+"22": "..odhhdo.oxxxxxmmmxxxXXohdo....." } },
 "pt_dantes_d5_sad": { base: "pt_dantes_d5", over: {
-"12": "ohhdhdhhddhhhhStttttotllloltho..",
-"13": "ohdhhhhdhhhhhSSosSSSstsslsooddo.",
-"25": "hhhdhhddddhhHHhhhHHddddddHHo....",
-"26": "hhhHhhddddhhHHHHhhdlllllldo.o..." } },
+"12": "..odHhhhhdhsshhsssshsssSSShhdo..",
+"13": "..odHhhhdhShhssssssshhsSSSdohdo.",
+"14": "..odhhoSsSSsssssssssssSSSdohdo..",
+"15": "..odhhStSssoooossssoooSSSdohdo..",
+"16": "..odhhStsSswEEwsssSEEwSSSohhdo..",
+"22": "..odhhdo.oxxxxmxxxmxxXXohdo....." } },
 "pt_dantes_d5_shock": { base: "pt_dantes_d5", over: {
-"14": "hhhhhhtddhhhhsSsowEwESSlStssdho.",
-"15": "hhhhhtttdhdhtssSwwowSSllSooedho.",
-"25": "hhhdhhddddhhHHhhhHHldeedlHHo...." } },
+"12": "..odHhhhhdhhhhhsssshhhsSSShhdo..",
+"13": "..odHhhhdhSoooossssooosSSSdohdo.",
+"14": "..odhhoSsSSwwwwsssswwwSSSdohdo..",
+"16": "..odhhStsSsswwssssSwwSSSSohhdo..",
+"21": "..odhhdoxxxxxxxxmmxxxxXXohdo....",
+"22": "..odhhdo.oxxxxxmeemxxXXohdo.....",
+"23": "..odhhdo..oxxxxmmxxxXXohdo......" } },
 "pt_dantes_d5_angry": { base: "pt_dantes_d5", over: {
-"13": "ohdhhhhdhhhhhSSossSootssloooddo.",
-"14": "hhhhhhtddhhhhsSsSSooEoSlotssdho.",
-"25": "hhhdhhddddhhHHhhhHHddddddHHo...." } },
+"13": "..odHhhhdhSShhsssssshhSSSSdohdo.",
+"14": "..odhhoSsSSoohhsssshhoSSSdohdo..",
+"16": "..odhhStsSstSSssssStSSSSSohhdo..",
+"21": "..odhhdoxxxxxxmmmmmxxxXXohdo....",
+"22": "..odhhdo.oxxxxmwwwmxxXXohdo....." } },
+// (추가) 차가움 — 눈꺼풀이 내려앉은 곧은 시선, 일자 입
 "pt_dantes_d5_cold": { base: "pt_dantes_d5", over: {
-"14": "hhhhhhtddhhhhsSsooooESSlStssdho.",
-"15": "hhhhhtttdhdhtssSoEoESSllSooedho.",
-"25": "hhhdhhddddhhHHhhhHHddddddHHo...." } },
+"13": "..odHhhhdhShhhhhsshhhhhSSSdohdo.",
+"14": "..odhhoSsSSsssssssssssSSSdohdo..",
+"15": "..odhhStSssoooossssoooSSSdohdo..",
+"16": "..odhhStsSswEesssssEewSSSohhdo..",
+"21": "..odhhdoxxxxxxmmmmmxxxXXohdo...." } },
+// (추가) 다정 — 풀린 눈썹, 부드러운 눈, 수염 속 작은 웃음
 "pt_dantes_d5_tender": { base: "pt_dantes_d5", over: {
-"13": "ohdhhhhdhhhhhSSosSSSStssloooddo.",
-"14": "hhhhhhtddhhhhsSsSSSSESSlStssdho.",
-"24": "hhhhdhdddhhhhhhsslHdHhhHdhHho...",
-"25": "hhhdhhddddhhHHhhhHHdddddlHHo...." } }
+"13": "..odHhhhdhShhssssssshhsSSSdohdo.",
+"14": "..odhhoSsSSsssssssssssSSSdohdo..",
+"15": "..odhhStSssoooossssoooSSSdohdo..",
+"16": "..odhhStsSswEEwsssSEEwSSSohhdo..",
+"21": "..odhhdoxxxxxxmxxxmxxxXXohdo....",
+"22": "..odhhdo.oxxxxxxmmmxxXXohdo....." } }
 });
 
 /* 6-2. 파리아 — 발작 밤(pain·weak) + (추가) 두려움·자조·지침 */
@@ -34556,8 +34632,29 @@ SPR.ob_pharaon_hull = { pal: 'c50ph', rows: [
 // 반쯤 내린 깃발(손 도트 — AI 원본 밖의 별개 오브젝트) — 오른쪽 끝(15열)이 돛대 기둥 왼쪽 가장자리(그림 82열 = 월드 208)에 닿는다. 색은 ob_flag_half(spr_world.js tw 6·0·M)
 // [u51] 10×12 → 16×21(폰 폭 187에서 읽히게 — 0.5.0 남은 흠). 바람 없이 늘어진 천: 세로 주름 셋(L 밝은 결·0 그늘), 깃대 쪽 흰 띠(M), 바깥쪽 아래 모서리가 더 처진다.
 //   위 7줄·아래 4줄은 돛대를 따라 내려온 깃줄(r) — 깃발이 꼭대기가 아니라 돛대 가운데에 내려와 있음이 보이게. 32×32(오브젝트 w 2 = 32px라 x 자리는 예전 그대로)
-PAL.c50flag = { k: '#2b1d2a', '6': '#3a6aa8', '0': '#23304a', M: '#fbf4ea', L: '#5a8ac8', r: '#d8c8a8' };   // r: 깃줄 — 돛대 나무색(#64503f~#98806a)과 갈리게 밝은 삼베
-SPR.ob_pharaon_flag = { pal: 'c50flag', rows: [
+// [r3 A4] 사용자(10-30): 「깃발인지 모르겠어. 오프닝에선 흰색이었잖아」 → 오프닝 코믹(cm_open_1815)처럼 **흰 천**으로 다시 찍음(손 도트라 형태도 새로).
+//   깃줄(r) 가운데에 매달린 흰 깃발 — 돛대 쪽(오른쪽)이 줄에 묶이고, 천 전체가 한 물결(위아래 가장자리 3칸 높낮이)로 나부낀다.
+//   물결이 내려가는 면은 그늘 s, 골 바닥은 w, 올라오는 면·마루는 W. 늘어진 둥근 천은 조개껍데기로, 얕은 물결 네모는 흰 상자로 읽혀 물결을 키웠다
+//   옛 파란 줄무늬 네모는 커튼으로 읽혔다
+PAL.c50flag = { k: '#2b1d2a', W: '#fbf4ea', w: '#e2d8c6', s: '#b4a894', r: '#d8c8a8' };   // r: 깃줄 — 돛대 나무색(#64503f~#98806a)과 갈리게 밝은 삼베
+//   두 장(_0·_1)이 번갈아(맵 anim 450ms) 물결이 옮겨 간다 — 네모 천만으로는 흰 상자로 읽혀, 나부낌으로 깃발임을 보인다. 돛대 쪽(15열 깃줄 옆)은 늘 3줄에 묶여 있다
+SPR.ob_pharaon_flag_0 = { pal: 'c50flag', rows: [
+"...............r................",
+"...............r................",
+"...............r................",
+"..kkk.......kkkr................",
+".kWWsk.....kWWWr................",
+"kWWWssk...kWWWWr................",
+"kWWWssskkkWWWWWr................",
+"kWWWssswwWWWWWWr................",
+"kWWWssswwWWWWWWr................",
+"kWWWssswwWWWWWWr................",
+"kWWWssswwWWWWWWr................",
+"kWWWssswwWWWWWWr................",
+"kWkkksswwWWWkkkr................",
+"kk...kswwWWk...r................",
+"k.....kwwWk....r................",
+".......kkk.....r................",
 "...............r................",
 "...............r................",
 "...............r................",
@@ -34565,31 +34662,49 @@ SPR.ob_pharaon_flag = { pal: 'c50flag', rows: [
 "...............r................",
 "...............r................",
 "...............r................",
-".kkkkkkkkkkkkkkk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60MMk................",
-"k6L606L606L60kkr................",
-"k6L606L606L6k..r................",
-"k6L606L606kk...r................",
-"k6L606L6kk.....r................",
-"k6L60kk........r................",
-".kkk...........r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
 "...............r................",
 "...............r................",
 "...............r................",
 "...............r................"] };
+SPR.ob_pharaon_flag_1 = { pal: 'c50flag', rows: [
+"...............r................",
+"...............r................",
+"...............r................",
+"....kkk....kkkkr................",
+"...kWWsk..kWWWWr................",
+"..kWWWsskkWWWWWr................",
+"kkWWWWssWWWWWWWr................",
+"kWWWWWssWWWWWWWr................",
+"kWWWWWssWWWWWWWr................",
+"kWWWWWssWWWWWWWr................",
+"kWWWWWssWWWWWWWr................",
+"kWWWWWssWWWWWWWr................",
+"kWWWkkksWWWkkkkr................",
+"kWWk...kWWk....r................",
+"kWk.....kk.....r................",
+"kk.............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................",
+"...............r................"] };
+SPR.ob_pharaon_flag = SPR.ob_pharaon_flag_0;   // 멈춘 그림이 필요할 때(지도·검사)
 // 타르탄(새벽 — 시간은 장면 grade가): 나무 o·n·a·e·b·c·d(원본 #8e6347 근처 그대로 — B6-6 '갑판 한 단 밝게') · 돛 1~4 · 밧줄 r·R·t (s4deckob 사다리)
 PAL.c50ta = {'1':'#6e6656', '2':'#8e826e', '3':'#b0a48c', '4':'#cfc4ac', 'o':'#1e1612', 'n':'#2c2219', 'a':'#4a3a2e', 'e':'#5e4636', 'b':'#8a6044', 'c':'#a8745a', 'd':'#c49274', 'r':'#5e564a', 'R':'#857a68', 't':'#aca08a'};
 SPR.ob_tartane_hull = { pal: 'c50ta', rows: [
@@ -43400,7 +43515,7 @@ MC.addMaps({
       //   조사: 부두(8열 15~26행)에서 오른쪽을 보거나 배를 탭 — 19~23행 = 깃발(a1.flag), 16~18·24~26행 = 배(a1.ship). 그림 오브젝트는 이벤트 없음(탭이 칸 사각형으로만 갈리게)
       //   (27~29행은 부두 끝 아래라 닿을 수 없다 — validate는 y+h ≤ 맵 높이로 재므로 사각형을 26행까지만)
       { "id": "pharaon_hull", "type": "thing", "x": 8, "y": 29, "w": 10, "solid": false, "z": -1, "sprite": "ob_pharaon_hull" },
-      { "id": "pharaon_flag", "type": "thing", "x": 12, "y": 21, "w": 2, "solid": false, "z": 200, "sprite": "ob_pharaon_flag" },
+      { "id": "pharaon_flag", "type": "thing", "x": 12, "y": 21, "w": 2, "solid": false, "z": 200, "sprite": "ob_pharaon_flag", "anim": 450 },   // [r3 A4] 흰 깃발 두 장(_0·_1)이 번갈아 나부낌
       { "id": "flag",     "type": "thing", "x": 9,  "y": 23, "w": 7, "h": 5, "event": "a1.flag" },
       { "id": "pharaon",  "type": "thing", "x": 9,  "y": 26, "w": 7, "h": 3, "event": "a1.ship" },
       { "id": "pharaon_fore", "type": "thing", "x": 9, "y": 18, "w": 7, "h": 3, "event": "a1.ship" },
@@ -44941,6 +45056,9 @@ MC.addMaps({
 
   MC.addMaps({
     "tartane": {
+      // [r3 A10③] 장소 이름이 없어 이어하기 요약이 「어딘가」, 메뉴 장소 칸이 비었다(QA B10). 대사에 배 이름이 나오지 않아,
+      //   이 배의 장소 그림 이름표(vista.tartane.place 「밀수선 갑판 · 새벽」)와 같은 이름으로 — validate가 맵 이름과 이름표를 맞춰 본다
+      "name": "밀수선 갑판",
       "tileset": "deck", "ui": "act5", "save": true,
       // [c50-conv-ships B6-7] 14×24 — 배는 ob_tartane_hull(바닥) + ob_tartane_rig(돛대 기둥·활대·라틴 돛, 사람 위) 두 층 그림(tartane_top_g1 형태 그대로, 119×296).
       //   위가 뾰족한 뱃머리(1행) · 아래 둥근 고물(17행) · 돛대 (7,11) · 키 (7,16) · 통 (8,13) = 물통 · 박 (8,14). 그림 안에 키·통·박이 있어 그 오브젝트들은 그림 없이 자리·이벤트만.
@@ -45168,6 +45286,17 @@ MC.addEvents({
     { "op": "emote", "id": "morrel", "kind": "dots", "ms": 1200 },
     { "op": "say", "who": "morrel", "t": "……화물은?" },
     { "op": "say", "who": "dantes", "t": "한 상자도 안 잃었습니다. 약속보다 하루 늦었을 뿐입니다." },
+    // [r3 A4] 입항 첫 조작(7상자째): 반쯤 내린 깃발을 올려다본다(탭) — 코믹 「깃발은 반쯤」 → 모렐 「반만 올렸나」를 손이 잇는다. 대사는 하나도 빼지 않았다.
+    //   기존 조작(custom deduce tap — 3막 「벽에 금을 긋는다」와 같은 칸 탭)과 컷신 줌(cam zoom)만 쓴다. 되돌리기: 이 꼬리표 주석 두 줄과 아래 op 9줄(「일찍 온 걸세」 앞까지)을 지운다
+    { "op": "face", "id": "player", "dir": "right" },
+    { "op": "custom", "id": "deduce", "args": { "stage": "tap", "id": "pharaon_flag", "hint": "반쯤 내린 깃발을 올려다본다." } },
+    { "op": "face", "id": "morrel", "dir": "right" },
+    { "op": "cam", "zoom": 2, "at": "pharaon_flag", "ms": 280 },
+    { "op": "sfx", "id": "wind_gust", "gain": 0.5 },
+    { "op": "wait", "ms": 1300 },
+    { "op": "cam", "zoom": 1 },
+    { "op": "face", "id": "player", "dir": "up" },
+    { "op": "face", "id": "morrel", "dir": "down" },
     { "op": "say", "who": "morrel", "t": "선장 없이 하루 늦었다면,{p:300} 그건 일찍 온 걸세." },
     { "op": "bgm", "id": "marseille", "fade": 1800 },
     { "op": "sfx", "id": "gull", "pan": -0.4 },
@@ -58107,7 +58236,8 @@ MC.addEvents({
     "credit": [ "원작", "알렉상드르 뒤마 『몬테크리스토 백작』" ], "fin": "끝",
     "cursorMs": 7000, "music": "orgel_end",                         // [s44-director B3-24] 빈 이름칸 3초 → 7초(뒤2-3: 열네 해를 닫는 빈칸에 머물 시간). 크레딧은 커서가 멎고 1.5초 뒤(스테이지)
     // [c50-cine B5-8 · 작12] 장부 위쪽에 27번 칸을 흐리게(s4c.ledger27과 같은 글자) — 쓰는 손이 먼저 넷째 줄 「생존」에 줄을 긋고(0.6초) 34번 세 줄로 내려온다. 글 추가 없음
-    "ledger27": [ "27번.", "1811년 입소.", "비고: 정신 이상.", "1828년 현재, 생존." ], "strike27": 3 };
+    "ledger27": [ "27번.", "1811년 입소.", "비고: 정신 이상.", "1828년 현재, 생존." ], "strike27": 3,
+    "hand": false };   // [r3] 사용자(10-30): 「손과 펜은 빼고 처음대로. 손이 너무 어색해」 — 쓰는 손(c50-cine B5-8) 없이 글자만 타자로
   // 기록(H2-16): [라벨 키, 값 키] — 값 안의 {…}는 스테이지가 채운다. 맨 아래 등급은 grade(var 이름)로
   const RECORD = { "stage": "record", "grade": "s4_grade",
     "lines": [ [ "rec.days", "rec.daysV" ], [ "rec.age", "rec.ageV" ], [ "rec.tally", "rec.tallyV" ], [ "rec.counted", "rec.countedV" ],
@@ -59879,7 +60009,7 @@ MC.addLang('ko', {
     "ev.saved": "기록했습니다.",
     "fmt.year": "{y}년",
     "sys.noStorage": "기록을 저장할 수 없는 환경입니다",
-    "sys.saveMoved": "저장한 자리를 찾지 못해 근처에서 이어 갑니다",
+    "sys.saveMoved": "기록한 자리를 찾지 못해 근처에서 이어 갑니다",
 
     "ui.cancel": "그만둔다",
     "ui.yes": "예",
@@ -59978,7 +60108,7 @@ MC.addLang('ko', {
     "people.era2": "탈옥 뒤",
     "people.era2n": "서른셋",
     "menu.twoPeople": "두 사람",
-    "menu.saveOnlyCell": "감방에서 · 자동 기록은 늘",
+    "menu.saveOnlyCell": "늘 자동 기록 · 직접 기록은 감방에서",
     "menu.saveOnlyCellToast": "기록은 감방(짚 침대 곁)에서만 할 수 있다.",
     "menu.use": "사용한다",
     "menu.cantUse": "지금은 쓸 수 없다.",
@@ -60416,7 +60546,7 @@ MC.addLang('ko', {
     "ev.got": { "w": 160, "font": "body", "lines": 3, "note": "대화창 시스템 줄. {item}=아이템 이름(명사)" },
     "ev.gotN": { "w": 160, "font": "body", "lines": 3, "note": "대화창 시스템 줄. {item}=아이템 이름, {n}=개수(2 이상)" },
     "ev.learned": { "w": 160, "font": "body", "lines": 3, "note": "대화창 시스템 줄. {skill}=기술 이름" },
-    "ev.saved": { "w": 156, "font": "body", "lines": 2, "note": "수동 기록 토스트" },
+    "ev.saved": { "w": 156, "font": "body", "lines": 2, "note": "수동 저장 토스트" },
     "fmt.year": { "w": 80, "font": "big", "note": "연도 롤 카드의 연도(한 자씩 굴러감)·메뉴 첫 쪽 오른쪽 아래 연도(small). {y}=숫자" },
     "sys.noStorage": { "w": 156, "font": "body", "lines": 2, "note": "저장 불가 환경 토스트" },
     "sys.saveMoved": { "w": 156, "font": "body", "lines": 2, "note": "이어하기 — 업데이트로 맵이 없어져 거점으로 옮긴 기록 토스트(r3 A2)" },
@@ -60455,7 +60585,7 @@ MC.addLang('ko', {
     "title.somewhere": { "w": 60, "font": "small", "note": "저장 정보에 장소 이름이 없을 때" },
     "title.soundOff": { "w": 156, "font": "body", "lines": 1, "note": "타이틀 음소거 단추 토스트" },
     "title.soundOn": { "w": 156, "font": "body", "lines": 1, "note": "타이틀 음소거 해제 토스트" },
-    "title.wipeConfirm": { "w": 148, "font": "body", "lines": 3, "note": "새 게임 확인창 본문(기록이 지워진다는 경고)" },
+    "title.wipeConfirm": { "w": 148, "font": "body", "lines": 3, "note": "새 게임 확인창 본문(저장이 지워진다는 경고)" },
     "title.wipeYes": { "w": 64, "font": "body", "lines": 1, "note": "새 게임 확인창 '지운다'(붉은 단추, 1초 길게 누르기)" },
     "title.loadFail": { "w": 156, "font": "body", "lines": 2, "note": "이어하기 실패 토스트" },
     "title.tapToStart": { "w": 170, "font": "body", "lines": 1, "note": "타이틀 1단계 가운데 깜빡이는 안내" },
@@ -60503,7 +60633,7 @@ MC.addLang('ko', {
     "menu.skills": { "w": 90, "font": "body", "lines": 1, "note": "메뉴 목록 항목(기술)" },
     "menu.status": { "w": 90, "font": "body", "lines": 1, "note": "메뉴 목록 항목(상태)" },
     "menu.settings": { "w": 90, "font": "body", "lines": 1, "note": "메뉴 목록 항목(설정)" },
-    "menu.save": { "w": 90, "font": "body", "lines": 1, "note": "메뉴 목록 항목(기록 = 저장)" },
+    "menu.save": { "w": 90, "font": "body", "lines": 1, "note": "메뉴 목록 항목(저장)" },
     "menu.toTitle": { "w": 90, "font": "body", "lines": 1, "note": "메뉴 목록 항목(타이틀로)" },
     "menu.nKinds": { "w": 70, "font": "body", "lines": 1, "note": "도구 오른쪽 '가진 종류 수'. {n}" },
     "menu.memNew": { "w": 70, "font": "body", "lines": 1, "note": "기억 오른쪽 '새로 얻은 기억 수'(금색). {n}" },
@@ -60518,8 +60648,8 @@ MC.addLang('ko', {
     "people.era2": { "w": 60, "font": "small", "lines": 1, "note": "[people-il] 같은 이름표: 탈옥 뒤(담요를 두른 그림). 몇 해가 지났는지 알기 전(자코포가 날짜를 말하기 전)" },
     "people.era2n": { "w": 60, "font": "small", "lines": 1, "note": "[people-il] 같은 이름표: 탈옥 뒤, 열네 해를 센 다음(s4e.counted) — 나이 서른셋" },
     "menu.twoPeople": { "w": 70, "font": "body", "lines": 1, "note": "상태 오른쪽(에드몽·파리아 둘)" },
-    "menu.saveOnlyCell": { "w": 120, "font": "small", "lines": 2, "note": "기록 오른쪽(손 기록은 감방에서만, 자동 기록은 맵을 옮길 때마다 늘 된다 — 흐린 글). 칸을 넘으면 작은 글꼴 두 줄(ui List)" },
-    "menu.saveOnlyCellToast": { "w": 156, "font": "body", "lines": 2, "note": "감방 밖에서 기록을 누르면 토스트" },
+    "menu.saveOnlyCell": { "w": 120, "font": "small", "lines": 2, "note": "기록 오른쪽(직접 기록은 감방에서만, 자동 기록은 맵을 옮길 때마다 늘 된다 — 흐린 글). 칸을 넘으면 작은 글꼴 두 줄(ui List). [r3] 옛 「감방에서 · 자동 기록은 늘」이 「늘」로 끝나 잘린 글로 읽혀(F19) 어순만 바꿈" },
+    "menu.saveOnlyCellToast": { "w": 156, "font": "body", "lines": 2, "note": "감방 밖에서 저장을 누르면 토스트" },
     "menu.use": { "w": 68, "font": "body", "lines": 1, "note": "도구 쪽 사용 단추(76폭)" },
     "menu.cantUse": { "w": 156, "font": "body", "lines": 2, "note": "도구를 지금 쓸 수 없을 때 토스트" },
     "menu.noNeed": { "w": 156, "font": "body", "lines": 2, "note": "체력·정신력이 가득일 때 토스트" },
@@ -60528,10 +60658,10 @@ MC.addLang('ko', {
     "menu.usedParts": { "w": 156, "font": "body", "lines": 2, "note": "도구 사용 토스트 + 회복량. {item} 명사, {parts}='체력 +10 · 정신력 +5'" },
     "menu.hpPlus": { "w": 70, "font": "body", "note": "회복량 조각 {n}" },
     "menu.mpPlus": { "w": 70, "font": "body", "note": "회복량 조각 {n}(정신력 = MP)" },
-    "menu.saveConfirm": { "w": 148, "font": "body", "lines": 3, "note": "기록 확인창 본문(혼잣말 톤)" },
-    "menu.saveYes": { "w": 64, "font": "body", "lines": 1, "note": "기록 확인창 '예' 단추" },
-    "menu.saved": { "w": 156, "font": "body", "lines": 1, "note": "기록 성공 토스트" },
-    "menu.saveFail": { "w": 156, "font": "body", "lines": 1, "note": "기록 실패 토스트" },
+    "menu.saveConfirm": { "w": 148, "font": "body", "lines": 3, "note": "저장 확인창 본문(혼잣말 톤)" },
+    "menu.saveYes": { "w": 64, "font": "body", "lines": 1, "note": "저장 확인창 '예' 단추" },
+    "menu.saved": { "w": 156, "font": "body", "lines": 1, "note": "저장 성공 토스트" },
+    "menu.saveFail": { "w": 156, "font": "body", "lines": 1, "note": "저장 실패 토스트" },
     "menu.titleConfirm": { "w": 148, "font": "body", "lines": 3, "note": "타이틀로 확인창 본문" },
     "menu.titleYes": { "w": 64, "font": "body", "lines": 1, "note": "타이틀로 확인창 '예' 단추" },
     "menu.noItems": { "w": 160, "font": "body", "lines": 1, "note": "도구가 하나도 없을 때" },
@@ -60987,7 +61117,6 @@ MC.addLang('en', {
     "ev.saved": ["Progress saved.", "1ul5ir1"],
     "fmt.year": ["{y}", "sif9h4"],
     "sys.noStorage": ["Progress can’t be saved on this device", "1aw5ywh"],
-
     "ui.cancel": ["Cancel", "g1dfkx"],
     "ui.yes": ["Yes", "3ia7qv"],
     "ui.holdKeep": ["Keep holding", "1g2nh9u"],
@@ -61071,7 +61200,7 @@ MC.addLang('en', {
     "menu.memNew": ["{n} new", "1ie0msu"],
     "menu.memCount": ["{n} kept", "1o4twrm"],
     "menu.twoPeople": ["Two of us", "1eicq3h"],
-    "menu.saveOnlyCell": ["In the cell · autosave always on", "zh10af"],
+    "menu.saveOnlyCell": ["In the cell · autosave always on", "9fvsay"],   // [r3] 한국어 어순만 바뀜(「늘 자동 기록 · 직접 기록은 감방에서」, 옛 해시 zh10af) — 뜻은 같아 영어 값 그대로
     "menu.saveOnlyCellToast": ["You can only save by your cell’s straw bed.", "1j57vp"],
     "menu.use": ["Use", "99l8vy"],
     "menu.cantUse": ["You can’t use that now.", "1yyspib"],
@@ -61265,6 +61394,7 @@ MC.addLang('en', {
     "레제르브": "La Réserve",
     "검사 대리의 집무실": "Prosecutor’s Study",
     "이프 성 앞바다": "Off the Château d’If",
+    "밀수선 갑판": "The Smugglers’ Deck",   // [r3 A10③] 타르탄 맵 장소 이름(새 원문 — 장소 그림 이름표 vista.tartane.place와 같은 말)
     "아버지의 골목": "Father’s Lane",
     "아버지의 집": "Father’s House",
     "이프 성 · 독방": "Château d’If · Cell",
@@ -61291,6 +61421,7 @@ MC.addLang('en', {
     "열병이었습니다.{p:200} 사흘 앓으시고, 그대로.": "A fever, sir.{p:200} Three days, and then he was gone.",
     "……화물은?": "And the cargo?",
     "한 상자도 안 잃었습니다. 약속보다 하루 늦었을 뿐입니다.": "Not a single crate lost. We’re only a day late.",
+    "반쯤 내린 깃발을 올려다본다.": "Look up at the flag at half-mast.",   // [r3 A4] 입항 깃발 탭 안내(새 원문)
     "선장 없이 하루 늦었다면,{p:300} 그건 일찍 온 걸세.": "A day late, and without a captain?{p:300} Then you’re early, my boy.",
     "하루가 아니라 하루 반입니다, 선주님.": "Not a day, Monsieur Morrel. A day and a half.",
     "엘바 섬에 들렀거든요. 급료와 식비는 제가 다 적어 뒀습니다.": ["We put in at Elba, sir.", "I’ve written it all down—wages and rations, to the last sou."],
@@ -62280,7 +62411,10 @@ MC.addLang('en', {
       sc.render = () => {
         const t = sc.t, W = g.W, H = g.H;
         if (sc.dark) g.clear('#000');
-        else g.ditherFill('#000', cont ? 7 : Math.min(7, t / Math.max(1, OPEN) * 7));
+        else {                                       // [r3 A5] 띠 위아래 필드: 체커(옛 g.ditherFill('#000', cont ? 7 : min(7, t/OPEN*7))) 대신 '한 단 어두운 색' 판
+          if (!sc.dimC || sc.dimC.width !== W || sc.dimC.height !== H) sc.dimC = g.dimSnap ? g.dimSnap(0.4) : null;
+          if (sc.dimC) g.drawDim(sc.dimC, cont ? 16 : Math.min(16, t / Math.max(1, OPEN) * 16)); else g.ditherFill('#000', cont ? 7 : Math.min(7, t / Math.max(1, OPEN) * 7));
+        }
         const mid = (H >> 1) - 12;
         const bh = OPEN ? Math.round(BAND * MC.ease.outCubic(MC.clamp(t / OPEN, 0, 1))) : BAND;
         const top = mid - (bh >> 1);
@@ -63869,7 +64003,7 @@ MC.addLang('en', {
         if (pts > 0) {
           const ex2 = MC.text.draw(String(pts), sx, top + 24, { font: 'small', color: P.gold }) + 3;
           for (let i = 0; i < Math.min(pts, 4); i++) candlePip(ex2 + i * 5, top + 25, true, t, i);
-        } else MC.text.draw(U.tf('hub.none'), sx, top + 24, { font: 'small', color: g.mix(P.dim, P.f, 0.3) });
+        } else MC.text.draw(U.tf('hub.none'), sx, top + 24, { font: 'small', color: P.dim });   // [r3 A8] 옛 g.mix(P.dim, P.f, 0.3)
         // 과목 카드
         cards.forEach((c, i) => {
           const [cx0, cy0, cw, chh] = c.rect;
@@ -64985,7 +65119,7 @@ MC.addLang('en', {
           const lab = MC.text.bake(U.tf('deduce.memWritten'), 'small', '#c8a060', { shadow: '#000' });
           if (lab) U.drawDither(lab, cx - (lab.width >> 1), cy - 114, Math.round(16 * fadeA));
           const cnt = Math.min(ids.length, sc.pile.length + (sc.idx >= 0 && t < ids.length * PER ? 1 : 0));
-          MC.text.draw(cnt + ' / ' + ids.length, cx, cy + 34, { font: 'small', color: '#8a8898', align: 'center', alpha: fadeA });
+          MC.text.draw(cnt + ' / ' + ids.length, cx, cy + 34, { font: 'small', color: '#9a98a8', align: 'center', alpha: fadeA });   // [r3 A8] 옛 #8a8898
         }
       };
       return MC.scene.push(sc);
@@ -65175,7 +65309,7 @@ MC.addLang('en', {
         }
         // 기억 머리줄
         MC.text.draw(U.tf('deduce.memCount', { n: cards.length }), Gm.L + 2, Gm.gy - 14, { font: 'small', color: '#a8a4b8', shadow: '#000' });
-        if (maxScroll > 0) MC.text.draw(U.tf('deduce.dragHint'), Gm.R - 2, Gm.gy - 14, { font: 'small', color: '#6e6c7e', align: 'right' });
+        if (maxScroll > 0) MC.text.draw(U.tf('deduce.dragHint'), Gm.R - 2, Gm.gy - 14, { font: 'small', color: '#9a98a8', align: 'right' });   // [r3 A8] 끌기 안내 옛 #6e6c7e
         // 카드
         g.pushClip(Gm.L - 3, Gm.gy - 2, Gm.gw + 6, Gm.gh + 4);
         cards.forEach((c, i) => drawCard(c, i, Gm, now, blink));
@@ -65207,7 +65341,7 @@ MC.addLang('en', {
           MC.text.draw(U.tf('deduce.tryOther'), cxp, py + Gm.panelH - 18, { font: 'small', color: P.dim, align: 'center' });
         } else {
           MC.text.draw(args.help || U.tf('deduce.pickAnswer'), cxp, py + (Gm.panelH >> 1) - 13, { font: 'small', color: P.dim, align: 'center' });
-          MC.text.draw(U.tf('deduce.tapAgain'), cxp, py + (Gm.panelH >> 1) + 2, { font: 'small', color: g.mix(P.dim, P.f, 0.35), align: 'center' });
+          MC.text.draw(U.tf('deduce.tapAgain'), cxp, py + (Gm.panelH >> 1) + 2, { font: 'small', color: P.dim, align: 'center' });   // [r3 A8] 안내 옛 g.mix(P.dim, P.f, 0.35)
         }
       }
       MC.scene.push(sc);
@@ -70179,6 +70313,51 @@ MC.addLang('en', {
        offLine:{who,t,max:3}|"글" 허용 폭 밖으로 나갈 때 부두의 뤼크 말풍선(최대 max번, 3초 간격 — 러너가 번역, {p:} 표시는 뺌)
        end:"buoy" 100%에서 바위·장조 대신 앞에 부표(cu_buoy_0/_1 2배, 없으면 코드)가 떠오르고 아무 데나 한 번 누르면 낮은 종(bell) — bellT 글이 종 위에 —
                   1.6초 뒤 끝. 9초 손이 없으면 저절로 친다 */
+  /* [r3 A7] 헤엄 뒤 수평선의 이프 성(도트 평가 J · F20 — 옛 ob_if_far는 계단 덩어리로 보여 타이틀의 성과 같은 건물로 읽히지 않았다):
+     타이틀 성 그림(ch1.titleCastle — 호송선 외경 컷 custom castle이 이미 쓰는 판)을 잘라 남색으로 그레이드만 한다(형태 그대로).
+     창 틈(#05060a)은 불 켜진 창(옛 ob_if_far 밤 팔레트의 창 #ffcf80)으로. 크기는 진행에 따라 2 → 1 → ½배(옛 3 → 2 → 1배와 같은 폭 단계 — ½배는 2×2 칸을 한 칸으로).
+     타이틀 판이 없으면 옛 ob_if_far 그대로. 되돌리기: IF_TITLE = false */
+  const IF_TITLE = true, IF_NAVY = ['#04060c', '#070b16', '#0b1222', '#13203a', '#22365a'], IF_WIN = '#ffcf80';
+  let ifTitle = null;
+  function ifFarTitle() {
+    if (!IF_TITLE) return null;
+    const src = ch1.titleCastle ? ch1.titleCastle() : null;
+    if (!src) return null;
+    if (ifTitle && ifTitle.src === src && ifTitle.w === src.width) return ifTitle;
+    const W = src.width, H = src.height, id = src.getContext('2d').getImageData(0, 0, W, H), d = id.data;
+    let x0 = W, y0 = H, x1 = -1, y1 = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0) return null;
+    const w = x1 - x0 + 1, h = y1 - y0 + 1, lum = (r, g2, b) => r * 0.3 + g2 * 0.59 + b * 0.11;
+    let lo = 1e9, hi = -1;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const o = (y * W + x) * 4; if (!d[o + 3]) continue; const l = lum(d[o], d[o + 1], d[o + 2]); if (l < lo) lo = l; if (l > hi) hi = l; }
+    const ramp = IF_NAVY.map(h2 => G().rgb(h2)), win = G().rgb(IF_WIN);
+    const c1 = G().makeCanvas(w, h), x2 = c1.getContext('2d'), od = x2.createImageData(w, h), q = od.data;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const o = ((y + y0) * W + x + x0) * 4, p = (y * w + x) * 4;
+      if (!d[o + 3]) continue;
+      let v;
+      if (d[o] === 5 && d[o + 1] === 6 && d[o + 2] === 10) v = win;                        // 창 틈 → 불 켜진 창
+      else { const k = hi > lo ? (lum(d[o], d[o + 1], d[o + 2]) - lo) / (hi - lo) : 0; v = ramp[Math.min(ramp.length - 1, Math.round(k * (ramp.length - 1)))]; }   // 밝기 차례 그대로 남색 단으로
+      q[p] = v[0]; q[p + 1] = v[1]; q[p + 2] = v[2]; q[p + 3] = 255;
+    }
+    x2.putImageData(od, 0, 0);
+    const hw = Math.ceil(w / 2), hh = Math.ceil(h / 2), c2 = G().makeCanvas(hw, hh), x3 = c2.getContext('2d'), hd = x3.createImageData(hw, hh), r2 = hd.data;   // ½배: 2×2 칸 → 한 칸(창이 있으면 창, 아니면 가장 어두운 칸)
+    for (let y = 0; y < hh; y++) for (let x = 0; x < hw; x++) {
+      let pick = null, isWin = false, best = 1e9;
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+        const sx = x * 2 + dx, sy = y * 2 + dy; if (sx >= w || sy >= h) continue;
+        const p = (sy * w + sx) * 4; if (!q[p + 3]) continue;
+        if (q[p] === win[0] && q[p + 1] === win[1] && q[p + 2] === win[2]) { isWin = true; pick = p; }
+        else if (!isWin) { const l = lum(q[p], q[p + 1], q[p + 2]); if (l < best) { best = l; pick = p; } }
+      }
+      if (pick == null) continue;
+      const t2 = (y * hw + x) * 4; r2[t2] = q[pick]; r2[t2 + 1] = q[pick + 1]; r2[t2 + 2] = q[pick + 2]; r2[t2 + 3] = 255;
+    }
+    x3.putImageData(hd, 0, 0);
+    ifTitle = { src, w: src.width, c1, c2 };
+    return ifTitle;
+  }
   const SWIM_TOP = 8;                                      // 헤엄 그림 아랫변을 화면 아래로 몇 칸 넘길지(물보라 끝을 잘라 몸을 크게)
   // [a43-play P1] 몸이 옆으로 밀리면 그림(184칸)의 세로 끝이 화면 안으로 들어와 물보라·팔이 곧은 세로선으로 잘려 보였다(플2-5 '직사각형 이음새').
   //   드러나는 쪽 끝 SWIM_FEATHER칸을 Bayer 디더로 밤바다에 녹인다(형태는 그대로, 끝만 성글게). side −1 왼쪽 끝 · +1 오른쪽 끝 — 그림마다 한 번 구워 둔다
@@ -70499,8 +70678,13 @@ MC.addLang('en', {
         if (DAY) S.lucXY = drawQuay(cx - Math.round(dx * 1.1), hy, p < 0.4 ? 2 : 1, t, !!(S.lucB && t - S.lucB.t0 < S.lucB.ms));   // [stage-s1] 낮: 그가 떠나온 부두와 뤼크
         else if (!short) {
           const far = pick2(['ob_if_far']), q = p < 0.3 ? 3 : p < 0.65 ? 2 : 1, edge = p < 0.3 ? 0.3 - p : p < 0.65 ? Math.min(p - 0.3, 0.65 - p) : p - 0.65;
-          const fx = cx - Math.round(dx * 1.1);
-          if (far) {
+          const fx = cx - Math.round(dx * 1.1), tc = ifFarTitle();
+          if (tc) {                                       // [r3 A7] 타이틀 성(남색) — 옛 단계 q 3/2/1 = 2배 · 1배 · ½배 판, 바뀔 때 디더로 잇기는 그대로
+            const stepOf = n => (n === 3 ? [tc.c1, 2] : n === 2 ? [tc.c1, 1] : [tc.c2, 1]);
+            const sc2 = (n, lv) => { const [im, s] = stepOf(n); U.drawDither(im, fx - ((im.width * s) >> 1), hy - (im.height - 2) * s, lv, s); };
+            const prev = p >= 0.3 && p < 0.34 ? 3 : p >= 0.65 && p < 0.69 ? 2 : 0;
+            if (prev) { const k = (p - (prev === 3 ? 0.3 : 0.65)) / 0.04; sc2(prev, Math.round(16 * (1 - k))); sc2(q, Math.round(16 * k)); } else sc2(q, 16);
+          } else if (far) {
             const sc2 = (s, lv) => U.drawDither(far, fx - ((far.width * s) >> 1), hy - far.height * s + 2, lv, s);
             const prev = p >= 0.3 && p < 0.34 ? 3 : p >= 0.65 && p < 0.69 ? 2 : 0;
             if (prev) { const k = (p - (prev === 3 ? 0.3 : 0.65)) / 0.04; sc2(prev, Math.round(16 * (1 - k))); sc2(q, Math.round(16 * k)); } else sc2(q, 16);
@@ -72419,6 +72603,9 @@ MC.addLang('en', {
      소매는 그림 오른쪽 끝 열을 화면 오른쪽 밖까지 늘인다(팔 원칙). 박자(이름칸 7초 · 크레딧 1.5초 뒤 · 「익」 멈춤)는 그대로 — 손은 그 시간표를 따라갈 뿐 */
   //   원본은 왼손(투서의 왼손 글씨)이라 좌우를 뒤집어 오른손으로 쓴다 — 소매가 오른쪽 밖으로 빠져 이미 쓴 글자(왼쪽)를 가리지 않는다
   const NIB = [22, 23], HAND_ROWS = 24, HAND_S = 2, CLERK = { c: '#3a3644', C: '#26242e', i: '#4a4656', I: '#5a5668' };
+  // [r3 A6] 깃펜 색 바꾸기는 되돌림 — 사용자(10-30): 「수감 기록은 손과 펜은 빼고 처음대로. 손이 너무 어색해」 → 엔딩은 ENDING.hand:false(events_s4e.js)로 손 없이 쓴다.
+  //   다시 색을 바꿀 때: QUILL = { f: '#e8dcc0', F: '#8e8070' }, NIB_INK = [[22, 23], [21, 22]]
+  const QUILL = {}, NIB_INK = [], INK_NIB = '#2b2218';
   let clerkHand = null;
   function clerkHandCv() {
     if (clerkHand !== null) return clerkHand;
@@ -72431,8 +72618,9 @@ MC.addLang('en', {
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const ch = at(x, y); if (!ch || KEEP.indexOf(ch) < 0) continue;
       if (ch === 'o') { let ok = false; for (let dy = -1; dy <= 1 && !ok; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && kept(x + dx, y + dy)) { ok = true; break; } if (!ok) continue; }   // 종이 테두리 o는 뺀다
-      const hex = CLERK[ch] || pal[ch]; if (!hex) continue;
-      const v = G().rgb(hex), o = (y * w + (w - 1 - x)) * 4; d[o] = v[0]; d[o + 1] = v[1]; d[o + 2] = v[2]; d[o + 3] = 255;   // 좌우 뒤집기(오른손)
+      const fx = w - 1 - x, nib = NIB_INK.some(q => q[0] === fx && q[1] === y);                        // [r3 A6] 뒤집은 칸 좌표로 펜촉 끝
+      const hex = nib ? INK_NIB : (CLERK[ch] || QUILL[ch] || pal[ch]); if (!hex) continue;              // [r3 A6] QUILL: 깃털 색
+      const v = G().rgb(hex), o = (y * w + fx) * 4; d[o] = v[0]; d[o + 1] = v[1]; d[o + 2] = v[2]; d[o + 3] = 255;   // 좌우 뒤집기(오른손)
     }
     x2.putImageData(id, 0, 0);
     clerkHand = c; return c;
@@ -72606,6 +72794,9 @@ MC.addLang('en', {
      rec.escapeV {n}=s4_try2+s4_try3 {hp}=s4_swimHp · rec.timeV {h}{m}=playMs(「2시간 20분」, 1시간 미만이면 rec.timeV0 「41분」 — 0.4.2 A6). 그 밖 값 키는 고정 글자.
      종이 뒷면 디더 400ms → 줄이 하나씩(small, 라벨 왼쪽·값 오른쪽 — 안 들어가면 값은 다음 줄 오른쪽) → 맨 아래 등급(rec.grade + 금색 big S/A/B + rec.gradeS/A/B)과 함께 종 1회 →
      탭 → 검정으로 남기고 끝(이벤트가 custom title). 등급 var가 비었으면 §D-5 식으로 계산(폴백). s3Auto 600ms */
+  // [r3 C4②] 사용자 결정(2026-10-30 「추천으로」): 기록 카드 위치는 그대로, 「등급 A」 알파벳 글자를 빼고 등급에 맞는 별칭 한 줄(rec.gradeS/A/B)만 보인다.
+  //   등급 값(S/A/B)은 계속 계산해 돌려준다(이벤트 결과 → 2부 인계 기록 mc34.ch1clear). 되돌리기: GRADE_WORD = true
+  const GRADE_WORD = false;
   function gradeOf(arg) {
     const ok = x => x === 'S' || x === 'A' || x === 'B';
     if (ok(arg)) return arg;
@@ -72716,7 +72907,7 @@ MC.addLang('en', {
         });
         return { items, h: y - gap };
       };
-      const GH = 56, room = H - g.safe.top - g.safe.bottom - 64 - GH;                      // 아래 30px는 nextMark 자리 · [s44-director] 등급 묶음 72 → 56(금색 글자를 본문 크기로)
+      const GH = GRADE_WORD ? 56 : 32, room = H - g.safe.top - g.safe.bottom - 64 - GH;   // [r3 C4②] 별칭 한 줄이면 묶음 32                      // 아래 30px는 nextMark 자리 · [s44-director] 등급 묶음 72 → 56(금색 글자를 본문 크기로)
       let b = build(6); if (b.h > room) b = build(3); if (b.h > room) b = build(0);
       const top = Math.max(g.safe.top + 10, Math.round((H - 30 - (b.h + 16 + GH)) / 2));
       lay = { W, H, rev: MC.i18n.rev, mL, wid, items: b.items, top, gy: top + b.h + 16 };
@@ -72748,7 +72939,7 @@ MC.addLang('en', {
             const y = L2.top + it.y; cover(MC.text.bake(it.lab, 'small', LAB), L2.mL, y);
             it.vl.forEach((v, j) => { const img = MC.text.bake(v, 'small', INK); cover(img, L2.mL + L2.wid - img.width, y + (it.one ? 0 : 13 * (j + 1))); });
           });
-          if (t >= tGrade) gaps.push([L2.gy - 10, L2.gy + 46]);
+          if (t >= tGrade) gaps.push(GRADE_WORD ? [L2.gy - 10, L2.gy + 46] : [L2.gy - 10, L2.gy + 24]);   // [r3 C4②] 별칭 한 줄만이면 묶음이 낮다
           gaps.sort((p, q) => p[0] - q[0]);
           let yy = 0;
           for (const [a0, b0] of gaps) { if (a0 > yy) g.vline(cx, yy, a0 - yy, '#c0b090'); yy = Math.max(yy, b0); }
@@ -72764,10 +72955,13 @@ MC.addLang('en', {
           const lv = U.lvl(t, tGrade, 500), gy = L2.gy;
           g.ditherRect(cx - 50, gy - 8, 100, 1, '#a89878', lv);
           // [s44-director C2③] 금색 등급 글자는 본문 크기(옛 big — 1장에서 가장 큰 글자였다, 작2), 주인공은 문구 한 줄(본문 글꼴)
-          const lab = MC.text.bake(U.tf('rec.grade'), 'small', LAB), big = MC.text.bake(grade, 'bold', '#b8860e'), phT = U.tf('rec.grade' + grade), ph = MC.text.bake(phT, MC.text.width(phT, 'body') <= W - 16 ? 'body' : 'small', INK);
-          U.drawDither(lab, cx - ((lab.width + 6 + big.width) >> 1), gy + 1, lv);
-          U.drawDither(big, cx - ((lab.width + 6 + big.width) >> 1) + lab.width + 6, gy, lv);
-          U.drawDither(ph, cx - (ph.width >> 1), gy + 22, lv);
+          const phT = U.tf('rec.grade' + grade), ph = MC.text.bake(phT, MC.text.width(phT, 'body') <= W - 16 ? 'body' : 'small', INK);
+          if (GRADE_WORD) {
+            const lab = MC.text.bake(U.tf('rec.grade'), 'small', LAB), big = MC.text.bake(grade, 'bold', '#b8860e');
+            U.drawDither(lab, cx - ((lab.width + 6 + big.width) >> 1), gy + 1, lv);
+            U.drawDither(big, cx - ((lab.width + 6 + big.width) >> 1) + lab.width + 6, gy, lv);
+            U.drawDither(ph, cx - (ph.width >> 1), gy + 22, lv);
+          } else U.drawDither(ph, cx - (ph.width >> 1), gy + 4, lv);   // [r3 C4②] 「등급 A」 글자 없이 별칭 한 줄만(내부 등급 S/A/B는 그대로 — sc.end({grade}) · 2부 인계 기록)
         }
         if (t >= tMark && S.out < 0) MC.ui.nextMark(W - 14 - g.X0, H - 14 - g.safe.bottom);      // 오른쪽 아래(작은 화면에서 등급 문구와 겹치지 않게)
         if (t < IN) g.ditherFill('#000000', 16 - t / IN * 16);
@@ -74351,7 +74545,10 @@ MC.addLang('en', {
       sc.render = () => {
         const t = sc.t, W = g.W, H = g.H, P = g.uiPal, outP = sc.out >= 0 ? MC.clamp(sc.out / OUT, 0, 1) : 0;
         if (sc.dark) g.clear('#000');
-        else g.ditherFill('#05060c', Math.min(9, t / OPEN * 9) * (1 - outP));
+        else {                                       // [r3 A5] 체커(옛 g.ditherFill('#05060c', min(9, t/OPEN*9)·(1−outP))) 대신 '한 단 어두운 색' 판
+          if (!sc.dimC || sc.dimC.width !== W || sc.dimC.height !== H) sc.dimC = g.dimSnap ? g.dimSnap(0.4) : null;
+          if (sc.dimC) g.drawDim(sc.dimC, Math.min(16, t / OPEN * 16) * (1 - outP)); else g.ditherFill('#05060c', Math.min(9, t / OPEN * 9) * (1 - outP));
+        }
         let e = MC.ease.outCubic(MC.clamp(t / OPEN, 0, 1));
         if (sc.out >= 0) e *= 1 - MC.ease.inQuad(MC.clamp((sc.out - OUT * 0.35) / (OUT * 0.65), 0, 1));
         const bh = Math.round(BH * e) & ~1, cy = Math.round(H * 0.42), top = cy - (bh >> 1);
@@ -74823,7 +75020,7 @@ MC.addLang('en', {
           yy += itemH(it);
         } else {
           yy += 4;
-          MC.text.draw(it.ls[0], X0 + 90, yy, { color: g.mix(Pl.dim, PAGE_BG, 0.25), align: 'center' });
+          MC.text.draw(it.ls[0], X0 + 90, yy, { color: Pl.dim, align: 'center' });   // [r3 A8] 「─ 아직 모른다 ─」 흐린 글을 #9a98a8로(옛 g.mix(Pl.dim, PAGE_BG, 0.25) ≈ #757380 — s0_06 도 L)
           yy += 18;
         }
       }
@@ -75710,7 +75907,7 @@ MC.addLang('en', {
         if (sc.info) {
           // [s44-director C2③] 아직 안 열어 본 기록이면 은빛 → 금빛으로 천천히 반짝(글 없음 — 누를 수 있다는 표시만)
           const k = sc.recNew ? 0.5 - 0.5 * Math.cos((t - sc.st1) / 1400 * Math.PI * 2) : 0;
-          const col = k > 0.8 ? '#e8d49a' : k > 0.45 ? '#b8b090' : '#8a98b8';
+          const col = k > 0.8 ? '#e8d49a' : k > 0.45 ? '#b8b090' : '#9aa8c8';   // [r3 A8] 바탕 은빛 옛 #8a98b8
           const im = MC.text.bake(sc.info, 'small', col, { shadow: '#03050b' });
           if (im) U.drawDither(im, (W - im.width) >> 1, bCont.y + bCont.h + 3, p * 16);
         }
@@ -75723,7 +75920,7 @@ MC.addLang('en', {
         if (v) g.ctx.drawImage(v, 3 + g.safe.left, 3 + g.safe.top - (v.padTop || 0));
       }
       // [l45-guide B8-5] 소리 안내 한 줄(옛 「무음 모드에서는 소리가 나지 않아요」 + 「(소리가 켜집니다)」를 하나로 — 플16·모4·소17)
-      const n = MC.text.bake(tf('title.soundLine'), 'small', '#7a84a0', { shadow: '#03050b' });
+      const n = MC.text.bake(tf('title.soundLine'), 'small', '#9aa4c0', { shadow: '#03050b' });   // [r3 A8] 흐린 안내 옛 #7a84a0
       if (n) U.drawDither(n, (W - n.width) >> 1, H - 14 - g.safe.bottom, U.lvl(t, 900, 500));
       if (t < 300) g.ditherFill('#000', 16 - t / 300 * 16);
     };
@@ -76021,7 +76218,7 @@ MC.addLang('en', {
       if (this.tab === 0) MC.text.draw(tf('set.silentHint'), x + (w >> 1), hintY, { font: 'small', color: P.dim, align: 'center' });
       // [a42-ui 0.4.2 A7] 버전 글씨: 타이틀 왼쪽 위에서 설정 창 맨 아래 오른쪽으로(스토어 첫 화면에 개발 흔적이 남지 않게). 숫자라 번역 키 없음
       //   줄·무음 안내와 겹칠 만큼 창이 낮으면(180×320 소리 탭, 디버그의 언어 줄) 그 탭에서는 그리지 않는다(다른 탭에서 보인다)
-      if (MC.VERSION && verY >= rowsEnd + 1 && !(this.tab === 0 && verY < hintY + 13)) MC.text.draw('v' + MC.VERSION, x + w - 6, verY, { font: 'small', color: g.mix(P.dim, P.f, 0.35), align: 'right' });
+      if (MC.VERSION && verY >= rowsEnd + 1 && !(this.tab === 0 && verY < hintY + 13)) MC.text.draw('v' + MC.VERSION, x + w - 6, verY, { font: 'small', color: P.dim, align: 'right' });   // [r3 A8] 옛 g.mix(P.dim, P.f, 0.35)
     }
   }
   ch1.SettingsPanel = SettingsPanel;
@@ -76582,7 +76779,7 @@ MC.addLang('en', {
       sc.pplPage = MC.clamp(sc.pplPage | 0, 0, pages.length - 1);
       let yy = by + 8;
       for (const it of pages[sc.pplPage]) {
-        if (it.more) { MC.text.draw('……', x + 18, yy, { color: g.mix(P.dim, P.f, 0.35) }); yy += hOf(it); continue; }
+        if (it.more) { MC.text.draw('……', x + 18, yy, { color: P.dim }); yy += hOf(it); continue; }   // [r3 A8] 옛 g.mix(P.dim, P.f, 0.35)
         const k = it.l.k, isFresh = fresh.has(k);
         if (k === 0) {
           it.ls.forEach((l, j) => MC.text.draw(l, x + 8, yy + j * LH, { color: P.text }));
@@ -76684,7 +76881,7 @@ MC.addLang('en', {
       [[tf('menu.weapon'), m.weapon], [tf('menu.armor'), m.armor]].forEach((e, i) => {
         const ry = ey + 4 + i * 13, d = e[1] ? itemDef(e[1]) : null;
         MC.text.draw(e[0], x + 8, ry, { font: 'small', color: P.dim });
-        MC.text.draw(d ? tr(d.name, 'item') : tf('menu.none'), x + 40, ry, { font: 'small', color: d ? P.text : g.mix(P.dim, P.f, 0.3) });
+        MC.text.draw(d ? tr(d.name, 'item') : tf('menu.none'), x + 40, ry, { font: 'small', color: d ? P.text : P.dim });   // [r3 A8] 「없음」 옛 g.mix(P.dim, P.f, 0.3)
         if (d) MC.text.draw(bonusText(d), x + w - 8, ry, { font: 'small', color: g.mix(P.gold, P.text, 0.4), align: 'right' });
       });
     }
@@ -76751,7 +76948,9 @@ MC.addLang('en', {
     sc.render = () => {
       lay();
       const p = sc.closing >= 0 ? 1 - MC.clamp(sc.closing / 130, 0, 1) : MC.clamp(sc.t / 140, 0, 1);
-      g.ditherFill('#05060c', 10 * p);
+      // [r3 A5] 뒤 필드는 체커(옛 g.ditherFill('#05060c', 10 * p)) 대신 '한 단 어두운 색' 판 — 처음 그릴 때(아래 필드만 있는 화면) 한 번 굽는다
+      if (!sc.dimC || sc.dimC.width !== g.W || sc.dimC.height !== g.H) sc.dimC = g.dimSnap ? g.dimSnap(0.4) : null;
+      if (sc.dimC) g.drawDim(sc.dimC, 16 * p); else g.ditherFill('#05060c', 10 * p);
       if (p < 0.25) return;
       const P = g.uiPal, [x, y, w, h] = content();
       const dy = Math.round((1 - MC.ease.outCubic(p)) * 8) + (sc.pageT < 120 ? Math.round((1 - MC.ease.outCubic(sc.pageT / 120)) * 4) : 0);
