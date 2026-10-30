@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.22-unknot';
+  var VERSION = '0.7.23-caderousse';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -20567,6 +20567,14 @@ MC.data.sfx = {
     {"n":"white","bp":[1900,1200],"q":1,"gate":[40,70],"a":30,"s":1,"h":240,"r":90,"g":0.055},
     {"n":"brown","lp":520,"a":40,"s":1,"h":240,"r":110,"g":0.05},
     {"t":60,"n":"white","hp":3200,"a":2,"d":5,"g":0.03,"rep":5,"every":50,"jit":30,"rgm":[0.3,1]}]},
+  /* [10-30] paper_crumple: 투서를 손안에서 구김(바스락 틱 여럿 + 종이 몸통) · paper_land: 구겨진 종이가 바닥에 툭 — 추리의 밤 정자 되감기 */
+  "paper_crumple": {"c":"story","p":3,"cd":200,"gain":3,"L":[
+    {"n":"white","bp":[2600,1700],"q":0.9,"gate":[30,60],"a":20,"s":1,"h":360,"r":120,"g":0.04},
+    {"t":10,"n":"white","hp":3500,"a":1,"d":6,"g":0.045,"rep":12,"every":36,"jit":24,"rgm":[0.25,1]},
+    {"n":"brown","lp":450,"a":30,"s":1,"h":300,"r":120,"g":0.03}]},
+  "paper_land": {"c":"story","p":2,"cd":120,"gain":2,"L":[
+    {"n":"brown","lp":700,"a":2,"d":70,"g":0.05},
+    {"n":"white","hp":3000,"a":1,"d":12,"g":0.025,"rep":2,"every":45,"jit":15,"rgm":[0.4,0.8]}]},
   /* (선택) spoon: 갈아 둔 숟가락으로 수염을 다듬는 소리(1822 이발 — 가위 대신) */
   "spoon": {"c":"story","p":2,"cd":150,"rp":0.06,"gain":3.8,"L":[
     {"n":"white","bp":[3400,2600],"q":2.5,"gate":[26,40],"a":20,"s":1,"h":160,"r":50,"g":0.035},
@@ -24016,6 +24024,10 @@ MC.addSprites({
 "12":"...ohhhhdssddddssssdssSSSodo....",
 "21":".........ossstssssmsStSo........",
 "22":"..........ossssmmmssSSo........."}},
+"pt_danglars_cold": {"base":"pt_danglars","over":{
+"12":"...ohhhhdssdddssssssddSSSodo....",
+"13":"...ohhhhdsssssddtsddssSSSoo.....",
+"22":"..........ossstssstsSSo........."}},
 "pt_fernand": {"pal":"pt_fernand","rows":[
 "............oooooo..............",
 "........ooooHHhhhhoooo..........",
@@ -29708,7 +29720,13 @@ function obCrowd() {
   outline(c, 'k');
   return c;
 }
+function obPaperBall() {                          // [10-30] 구겨 던진 투서(추리의 밤 정자 되감기 — 당글라르가 구석에 버리고 페르낭이 줍는다)
+  const c = new Cv(16, 16);
+  c.st(5, 9, ["..kkk..", ".kMMNk.", "kMNMXNk", "kNMMNXk", ".kXNXk.", "..kkk.."]);
+  return c;
+}
 (function objTown() {
+  put('ob_paper_ball', 'tw', obPaperBall());
   put('ob_pharaon', 'tw', obPharaon()); put('ob_rowboat', 'tw', obRowboat()); put('ob_rope', 'tw', obRope());
   put('ob_board', 'tw', obBoard()); put('ob_fishstall', 'tw', obFishstall());
   put('ob_table_long', 'tw', obTableLong()); put('ob_table_round', 'tw', obTableRound()); put('ob_bench', 'tw', obBench());
@@ -42266,7 +42284,7 @@ const pt = n => (SPR[n] ? n : null);
       "bio": [
         { "t": "아버지께 빚을 받아 갔다.\n받을 생각은 없었다면서.", "cond": F("a1b.father_done") },
         { "t": "내가 끌려갈 때,\n입을 열었다가 잔을 비웠다.", "cond": F("a2.arrested") },
-        { "t": "정자의 탁자에 그도 있었다.\n잔을 내려놓지 않았다.", "cond": F("dd.n3"), "betray": true }
+        { "t": "쓰지도, 넘기지도 않았다.\n다만 입을 다물었다.", "cond": F("dd.n3"), "betray": true }
       ]
     },
     "fernand": {
@@ -45534,6 +45552,12 @@ MC.addEvents({
     { "op": "wait", "ms": 700 },
     { "op": "face", "id": "r_danglars", "dir": "right" },
     { "op": "face", "id": "r_fernand", "dir": "down" },
+    // [10-30 사용자 「카드루스 서사」] 당글라르가 잔을 채워 주고(원작: 일부러 계속 따른다), 취한 카드루스가 시기와 정을 함께 흘린다 — 인사의 「선장 자리에 신부까지라」를 되받는 말. 편지 이야기는 여기서 하지 않는다
+    { "op": "sfx", "id": "pour", "gain": 0.6 },
+    { "op": "wait", "ms": 600 },
+    { "op": "jump", "id": "r_caderousse", "h": 2, "ms": 180 },
+    { "op": "say", "who": "caderousse", "t": "선장에, 신부에……{p:200}\n거참, 누구는 복도 많아.", "pos": "top" },
+    { "op": "say", "who": "caderousse", "t": "……그래도 좋은 녀석이야.{p:200}\n에드몽은.", "pos": "top" },
     { "op": "say", "who": "danglars", "t": "장부에 없는 짐은{p:200} 꼭 탈이 나.", "pos": "top" },   // [s44-writer B3-2] '엘바에서 편지…' 삭제 — 추리의 밤이 풀 것을 먼저 말하지 않는다
     { "op": "wait", "ms": 400 },
     { "op": "say", "who": "fernand", "t": "……그래서?", "pos": "top" },
@@ -46123,7 +46147,7 @@ MC.addEvents({
     { "op": "face", "id": "player", "dir": "up" },
     { "op": "cam", "to": [8, 19], "ms": 0 },
     { "op": "wait", "ms": 500 },
-    { "op": "say", "who": "danglars", "t": [ "하루가 아니라\n{p:150}하루 반입니다, 선주님.", "엘바 섬에 들렀거든요." ] },
+    { "op": "say", "who": "danglars", "t": "하루가 아니라\n하루 반입니다.{p:200}\n엘바 섬에 들렀거든요." },   // [10-30] 두 상자 → 한 상자: 정자 되감기가 한 상자 늘어 되감기 전체를 10상자로 맞춤
     { "op": "sfx", "id": "quill" },
     { "op": "emote", "id": "danglars", "kind": "cloud", "ms": 1600 },
     { "op": "say", "who": "think", "t": "……펜 쥔 소매 끝이\n{p:200}잉크로 새까맣다." },
@@ -46163,8 +46187,8 @@ MC.addEvents({
     { "op": "map", "id": "reserve", "at": "rw", "trans": "cut" },
     { "op": "sprite", "id": "player", "sprite": "ch_dantes" },
     { "op": "show", "id": "player", "v": false },
-    { "op": "light", "dark": 0.4, "r": 72, "at": [7, 8], "color": "#ffb060", "flicker": true, "ms": 0 },
-    { "op": "cam", "to": [7, 8], "ms": 0 },
+    { "op": "light", "dark": 0.4, "r": 84, "at": [7, 9], "color": "#ffb060", "flicker": true, "ms": 0 },   // [10-30 카드루스] 출구(7,12)까지 보이게 한 칸 아래·넓게
+    { "op": "cam", "to": [7, 9], "ms": 0 },
     { "op": "wait", "ms": 500 },
     { "op": "say", "who": "think", "t": "……내가 떠난 뒤,\n{p:300}그 탁자에서는." },
     { "op": "face", "id": "r_danglars", "dir": "down" },
@@ -46172,13 +46196,36 @@ MC.addEvents({
     { "op": "say", "who": "whisper", "t": "……왼손으로 쓰면……", "pos": "top" },
     { "op": "jump", "id": "r_caderousse", "h": 2, "ms": 180 },
     { "op": "sfx", "id": "glass_clink" },
-    { "op": "say", "who": "whisper", "t": "……장난이지, 장난……", "pos": "top" },
-    { "op": "face", "id": "r_fernand", "dir": "right" },
+    { "op": "say", "who": "whisper", "t": "……에드몽은 친구라니까……{p:200} 장난이지?", "pos": "top" },   // 원작의 반대 말(1막 끝 세 손 속삭임 「장난이지? 장난이지」의 앞부분)
+    // [10-30 사용자 「카드루스 서사」] 원작 4장: 당글라르가 「장난」이라며 투서를 구겨 정자 구석에 던지고, 취한 카드루스를 데리고 나가다 돌아보면 페르낭이 그것을 줍는다.
+    //   카드루스는 속은 사람이라 먹구름을 띄우지 않는다(당글라르·페르낭만). 종이 뭉치 ob_paper_ball은 6행 왼쪽 기둥 곁(4,6)에 떨어진다
+    { "op": "face", "id": "r_danglars", "dir": "right" },
+    { "op": "sfx", "id": "paper_crumple" },
+    { "op": "say", "who": "whisper", "t": "……장난이고말고. 버리세……", "pos": "top" },
+    { "op": "face", "id": "r_danglars", "dir": "up" },
+    { "op": "spawn", "id": "rw_paper", "sprite": "ob_paper_ball", "x": 6, "y": 8, "solid": false, "z": 2 },
+    { "op": "sfx", "id": "swing", "pitch": 1.4, "gain": 0.5 },
+    { "op": "jump", "id": "rw_paper", "h": 14, "ms": 420, "async": true },
+    { "op": "move", "id": "rw_paper", "path": "U2 L2", "speed": 100 },
+    { "op": "sfx", "id": "paper_land" },
+    { "op": "wait", "ms": 400 },
+    { "op": "move", "id": "r_danglars", "path": "D1 R1", "speed": 260, "async": true },   // 당글라르가 탁자를 돌아 카드루스 곁으로 → 둘이 출구(7~8, 11)로
+    { "op": "jump", "id": "r_caderousse", "h": 3, "ms": 200 },
+    { "op": "move", "id": "r_caderousse", "path": "D1", "speed": 320 },
+    { "op": "move", "id": "r_danglars", "path": "D2", "speed": 300, "async": true },
+    { "op": "move", "id": "r_caderousse", "path": "L1 D2", "speed": 340, "async": true },
+    { "op": "jump", "id": "r_caderousse", "h": 2, "ms": 220, "async": true },
+    { "op": "emote", "id": "r_fernand", "kind": "dots", "ms": 1200 },
+    { "op": "move", "id": "r_fernand", "path": "L3", "speed": 260, "face": "up" },
+    { "op": "face", "id": "r_fernand", "dir": "up" },
     { "op": "sfx", "id": "page" },
+    { "op": "despawn", "id": "rw_paper" },
     { "op": "say", "who": "whisper", "t": "……검사에게……", "pos": "top" },
+    { "op": "face", "id": "r_danglars", "dir": "up" },
+    { "op": "wait", "ms": 300 },
     { "op": "sfx", "id": "heartbeat" },
-    { "op": "emote", "id": "r_danglars,r_caderousse,r_fernand", "kind": "cloud", "ms": 1800 },
-    { "op": "light", "dark": 1, "r": 0, "at": [7, 8], "ms": 700 },
+    { "op": "emote", "id": "r_danglars,r_fernand", "kind": "cloud", "ms": 1800 },
+    { "op": "light", "dark": 1, "r": 0, "at": [7, 9], "ms": 700 },
     { "op": "show", "id": "player", "v": true }
   ]
 
@@ -46388,7 +46435,11 @@ MC.addEvents({
     { "op": "sfx", "id": "heartbeat", "gain": 1.4 },
     { "op": "closeup", "who": "fernand", "face": "glare", "t": "메르세데스만 본다.", "ms": 1500 },
     { "op": "sfx", "id": "heartbeat", "gain": 1.4 },
-    { "op": "closeup", "who": "caderousse", "face": "nervous", "t": "입을 열었다가,\n잔을 비운다.", "ms": 1800 },
+    // [10-30 카드루스] 한 컷 → 세 컷: 입을 열다 → 당글라르의 눈(새 표정 cold) → 잔을 비운다. 추리의 밤 「누구를 봤지?」의 근거
+    { "op": "closeup", "who": "caderousse", "face": "nervous", "t": "입을 열었다가……", "ms": 1300 },
+    { "op": "sfx", "id": "heartbeat", "gain": 1.0 },
+    { "op": "closeup", "who": "danglars", "face": "cold", "t": "카드루스를 본다.", "ms": 1300 },
+    { "op": "closeup", "who": "caderousse", "face": "nervous", "t": "잔을 비운다.", "ms": 1300 },
     ...FATHER_CUT,                                                      // [c50-cine B5-4] 아버지 클로즈업(그림 있을 때만)
     { "op": "call", "ev": "a2.villefort" }
   ],
@@ -50922,14 +50973,14 @@ MC.addEvents({
 /* data/events_a4c.js — [story-clues] 기억과 추리(설계: docs/S2_NARRATIVE_V2.md §5·§9). 파리아가 묻고, 플레이어가 '기억' 카드로 답한다(custom deduce ask).
    흐름: 1817 둘째 밤 a4c.n2_clues(이야기한 것 7장 + 연습 물음) → 1820 깰 때마다 a4c.check(한 번에 큰 장면 하나)
      D1 a4c.n1 「이득」(당글라르 → 물음 q.elba·q.hand) → [꿈속 부두 두 조각] → D2 a4c.n2 「글씨」(편지를 본 눈·투서·평소 글씨 → 왼손 1탭 → 물음 q.love)
-     → [꿈속 카탈루냐 칼] → D3 a4c.n3 「정자」(칼은 편지가 아님 → 잔치 전 며칠을 되짚어 정자를 고름 → 떠오름 → 되감기 → 세 손 → 카드루스(빚) → '셋.' → 검사는 미룸)
+     → [꿈속 카탈루냐 칼] → D3 a4c.n3 「정자」(칼은 편지가 아님 → 잔치 전 며칠을 되짚어 정자를 고름 → 떠오름 → 되감기 → 세 손 → 카드루스('장난이지?' → 빚은 사람됨 → 누가 그를 보고 있었나: 당글라르) → '셋.' → 검사는 미룸)
      → (굴 1구간까지 판 뒤) a4c.y2 '이 년' 조각(별 얘기로 돌림·겨울 기침·'봄에 하세') → a4c.card22 '2년 후' → D4 a4c.n4 「검사」('봄입니다' → 신부의 방: 네 물음 → '아버지일세' → 네 초상 붉은 줄 → '알고 계셨군요')
      → a4c.dark 어둠 속의 하루(벽에 네 이름 → 간수 → 세 번 두드림 → 구멍 탭) → a4c.dark_open 일요일 저녁(흰 빵 반씩, '괜한 걸 가르쳤군').
    flags(소유): q.elba q.hand q.love(열린 물음 — 켜고 끄는 곳 모두 여기) · dd.n1~dd.n4(추리의 밤 끝) · a4d.deduced(벽에 이름을 새긴 순간) · a4.y1822(카드) · rw.on(되감기 동안만)
    vars: wt_big(1 = 이번 깸의 큰 장면을 이미 씀; 0으로는 부르는 쪽이 둔다) · dd_pick(고른 기억) · dd_miss(오답 수 — ask·hands가 쌓음, a4c.hands가 먼저 비움)
    읽는 값: n3_vow(A/B/없음) father(A/B/없음) honest doubt inspector(없으면 생략) · mem.*(기억, op clue — data/clues_s2.js)
    부르는 곳: a4m.n2_story → a4c.n2_clues / a4d.deduce_check(← a4.wake_tail·a4t.goal) → a4c.check / a4m.migrate → a4c.migrate
-   목소리: 파리아 하게체(격언은 밤마다 하나: D1 '왕이 죽으면' · D3 '잔을 내려놓네' · D4 '출세가 탐날 나이'), 당테스는 D1~D3에서 남의 말을 인용하는 긴 문장,
+   목소리: 파리아 하게체(격언은 밤마다 하나: D1 '왕이 죽으면' · D3 '손을 보탠 걸세'(10-30, 옛 '잔을 내려놓네') · D4 '출세가 탐날 나이'), 당테스는 D1~D3에서 남의 말을 인용하는 긴 문장,
    D4 '아버지일세' 뒤로는 짧은 평서문. 한 상자 36자, 조작 없이 이어지는 상자 10개 이하. 섬 이름·보물·막 번호 금지. */
 (function (MC) { 'use strict';
   const SPR = (MC.data && MC.data.sprites && MC.data.sprites.spr) || {};
@@ -51108,15 +51159,19 @@ MC.addEvents({
       { "op": "call", "ev": "a4c.rewind" },
       { "op": "call", "ev": "a4c.hands" },
       { "op": "say", "who": "dantes", "face": "shock", "t": "탁자에 잉크병이랑 종이가……{p:300} 왜 여태 몰랐지?" },
+      // [10-30 사용자 「카드루스 서사」] 카드루스는 꾸미지도 넘기지도 않았다 — '장난이지?' 하고 반대했다가 속고, 체포 때 당글라르의 눈에 입을 다문 사람.
+      //   빚은 동기가 아니라 사람됨(빈 찬장을 보고도 눈감은 사람). 되감기(a1b.rw_pavilion)·체포 클로즈업 세 컷(a2.arrest)이 근거
+      { "op": "say", "who": "dantes", "t": "카드루스는 '장난이지?' 하고 물었습니다.{p:200} 말리려던 거겠죠." },
+      { "op": "say", "who": "faria", "t": "그러고는 '장난'이란 말을 믿었지.{p:200} 믿고 싶었을 걸세." },
       // (fixer-s2n) 빚을 이미 떠올렸으면(이야기 ③·꿈속 빈 찬장) 물음으로 답하고, 아직이면 신부님이 짚어 준 자리에서 처음 떠오른다 — 방금 쥐여 준 카드를 곧바로 고르게 하지 않는다
       { "op": "if", "cond": { "flag": "mem.debt" },
         "then": [
-          ask('카드루스는 왜 말리지 않았을까?', 'debt', {
+          ask('카드루스가 어떤 사람이던가?', 'debt', {
             "*": "카드루스가 자네 집에서 받아 간 게 있었지?",
-            "thimble": "골무는 누구 손인지 알려 줄 뿐일세.{p:200} 왜인지는 아니고." }) ],
+            "thimble": "골무는 누구 손인지 알려 줄 뿐일세.{p:200} 어떤 사람인지는 아니고." }) ],
         // 아직이면 신부님 물음에 1막 아버지의 집을 되짚어 답한다(선택 — 틀린 답은 당테스가 스스로 고친다). 떠올림 카드는 조작이 아니라 이 선택이 상자 줄을 끊는다
         "else": [
-          { "op": "choice", "who": "faria", "t": "카드루스가 왜 가만있었겠나.{p:300}\n자네 집에서 뭘 받아 갔지?", "opts": [
+          { "op": "choice", "who": "faria", "t": "카드루스는 어떤 사람이던가.{p:300}\n자네 집에서 뭘 받아 갔지?", "opts": [
             { "t": "제 빚을", "v": "debt", "do": [] },
             { "t": "골무 하나", "v": "thimble", "do": [ { "op": "say", "who": "think", "t": "골무는 늘 그자 손에 있었다.{p:300}\n받아 간 건……" } ] },
             { "t": "아무것도", "v": "none", "do": [ { "op": "say", "who": "think", "t": "……아니다.{p:300}\n아버지 찬장이 비어 있었다." } ] }
@@ -51125,9 +51180,18 @@ MC.addEvents({
       { "op": "if", "cond": { "var": "father", "eq": "A" },
         "then": [ { "op": "say", "who": "dantes", "t": "아버지께 빚을 받아 간 손이……{p:300} 그 잔을 들고 있었군요." } ],
         "else": [ { "op": "say", "who": "dantes", "t": "찬장이 빌 때까지 빚을 받아 간 손이……{p:300} 그 잔을 들고 있었군요." } ] },
-      { "op": "say", "who": "dantes", "t": "카드루스는……{p:300}\n말렸다고 하겠죠." },
-      { "op": "say", "who": "faria", "t": "말리는 사람은 잔을 내려놓네." },
+      { "op": "say", "who": "faria", "t": "빈 찬장을 보고도 눈감은 사람일세.{p:200}\n정자에서도 그랬을 테지." },
       { "op": "say", "who": "dantes", "face": "sad", "t": "제가 끌려갈 때,{p:200} 입을 열었다가 잔을 비우더군요." },
+      // 체포 클로즈업 「입을 열었다가…… / 카드루스를 본다. / 잔을 비운다.」를 되짚는다. 틀린 답은 그 클로즈업의 다른 두 컷으로 당테스가 스스로 지운다
+      { "op": "choice", "who": "faria", "t": "입을 연 사람이 왜 다물었겠나.{p:200}\n누가 그를 보고 있었지?", "opts": [
+        { "t": "당글라르", "v": "dang", "do": [] },
+        { "t": "페르낭", "v": "fern", "do": [ { "op": "say", "who": "think", "t": "……아니다.{p:300}\n페르낭은 메르세데스만 보고 있었다." } ] },
+        { "t": "경찰", "v": "cop", "do": [ { "op": "say", "who": "think", "t": "……아니다.{p:300}\n경찰은 나만 보고 있었다." } ] }
+      ] },
+      { "op": "say", "who": "dantes", "t": "당글라르가……{p:300} 그를 보고 있었습니다." },
+      { "op": "say", "who": "faria", "t": "'말하면 자네도 한패일세.'{p:200}\n겁 많은 입이 닫혔겠지." },
+      { "op": "say", "who": "dantes", "t": "쓰지도, 넘기지도 않았는데……" },
+      { "op": "say", "who": "faria", "face": "stern", "t": "입을 다문 것도 손을 보탠 걸세." },
       { "op": "wait", "ms": 700 },
       { "op": "say", "who": "dantes", "t": "……셋." },
       { "op": "wait", "ms": 500 },
@@ -51143,7 +51207,7 @@ MC.addEvents({
       { "op": "save", "slot": "auto" }
     ]),
 
-    /* 되감기(옛 4-7 절차 그대로): 흑백·덮개 → 1-2 항구 · 1-6 카탈루냐 · 1-7 정자 → 감방 복귀. 되감기 장면(a1b.rw_*)은 고치지 않는다 */
+    /* 되감기(옛 4-7 절차 그대로): 흑백·덮개 → 1-2 항구 · 1-6 카탈루냐 · 1-7 정자 → 감방 복귀. 되감기 장면(a1b.rw_*)은 고치지 않는다(10-30 사용자 「카드루스 서사」로 정자만 보강 — 구겨 버린 투서·페르낭이 주움, 엘바는 한 상자로 줄여 전체 10상자) */
     "a4c.rewind": [
       { "op": "set", "flag": "rw.on" },
       { "op": "hud", "show": false },
@@ -59111,26 +59175,26 @@ MC.addEvents({
     s32: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAe1BMVEU4uEgBAQECAwIGBgUKCwgLCwsREREWFhYbGxsgICB5d2qCgHORjoOXlYaem5Ogno6mo5qoppWrqKOwraK3tKy+uqu/u7PFwbTEwbvMyLvMyMHQzMHV0cbX083a1sve2c/g3Nbj3tTm4dfm4tfp49rq49vp5dzq5uDv7ObkTodpAAAAAXRSTlMAQObYZgAAARFJREFUeNrVk9F6wiAMhU0i2K7KmDjWKhJBhnv/Jxzt1S7CAyy9zP+dkxPS3e5fFSqlFSJ2+62I9IE6CBLAykD7RECNB42lRtMxASAiKDUzl0UiVmnAEDkxBwmArQwhfbHosQ3H0e4/wn7/JoY0CN88n2/ZHsUU1MYvtaRc/CIC6AzFWgtzdCKww5g4Vw7udOoAeEvp+czL8t4BsssxheCsDOjzlSJHXsKnbKHwnrwJKbEcQiNc5vuMZE1HoC364dm2XYv9A64v8fKv4KauAMDdem8n+V42AC/LHBD6AOBEUzPrE0p559plyQAh6OH8qKhljfUoh1H7H6NBnKP9EsM4jupqNZGYZOuPAx61gj/b+gVDRxDJrL3rEgAAAABJRU5ErkJggg==' };
 })(window.MC);
 /* @@END pt_villefort_shock */
-/* @@GEN pt_danglars — gen_pt.ps1(손으로 고치지 말 것). pt_danglars_g1.png 크롭 (209,108) 1728px · n 18 · C 48색 투명 5489칸 · PNG C 2165 B · s48 816 B · s32 520 B */
+/* @@GEN pt_danglars — gen_pt.ps1(손으로 고치지 말 것). pt_danglars_g1.png 크롭 (209,108) 1728px · n 18 · C 48색 투명 5489칸 · PNG C 2233 B · s48 839 B · s32 526 B */
 (function (MC) { 'use strict';
   if (!MC) return;
   const P = MC.data.ptC || (MC.data.ptC = {});
   P.pt_danglars = { w: 96, h: 96, eye: [50, 40], n: 18, src: 'pt_danglars_g1.png',
-    pal: ['#060505','#110a08','#0f0c0f','#1d0f0c','#171314','#1c151d','#1c1a1c','#231a1a','#271d29','#232122','#331c16','#2e2221','#292728','#322534','#392927','#43302b','#422f41','#453230','#513933','#4e384c','#6e4b41','#7c5347','#8b5c4f','#8a6051','#946354','#83756d','#a16c59','#a07460','#af7862','#aa7d66','#b6856c','#bc8f78','#c58c71','#a8968b','#c69377','#d09679','#d69f81','#dea282','#d8a68a','#e2a987','#e3a88b','#e9a987','#e8ad8a','#e9ae8f','#edae8c','#e9b18d','#cebfb0','#f3e4d2'],
-    C: 'data:image/png;base64,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',
-    s48: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAflBMVEU4uEgGBQURCggPDA8dDwwXExQcFR0cGhwjGhonHSkjISIuIiEpJygyJTQ5KSdDMCtCL0FROTNOOExuS0F8U0eLXE+KYFGDdW2hbFmgdGCveGKqfWa2hWy8j3iolovGk3fQlnnWn4HeooLYporiqYforYrtrozpsY3Ov7Dz5NIGBpC9AAAAAXRSTlMAQObYZgAAAmBJREFUeNrdlN1iojAUhEliQiDyI1pXCiVEkkbe/wU7ida92Bp6vUeFC+fLzDlHzLL/tKRS6rdapepYTVPLX8gb6IIYN7y3XaJcReCI2ybRxMODUCnZqAbXpF7GGFJy9CwlLlzyJIB2m0PTqN1oqORcSorLhsEBDoOPZXacDiRlIZt7eO/w8vhY74YUgEQHONTO/y2dBFSYUl1r9/nt4Q1JJJIqhKrV4O3TxCYAHgaJnrm/y52F3h9fA1TGgl7vpNJQG+MsTfQg6QDAQPn5vsPOhlnL5OYoJaOUIUxPQ516gmsK0JRI5ZzzRspluGhL6S6hz4aZ0FnZYOGu42itO18uKSDT/dl9mLBoa+3VWt/PqbEi00zsMhgX9Djf2uFyTQIZsXZZ9F3u5qt3x/ekPqOELMuCMEY73x/fTqfE3h7EAMKcxzk8eKp+SydCJhcsjDHj2F8u73LzfyMAZjF4FPT4ocfjaRvQPSywPHfFnrcSCbZO85kgETZhRt2/bZzfstt6GyjpjQ0ebt6YUdExPq3rDcP9CL8ot7G1rO1alnMQEyEEHnZja1XXdUWew2QKRKikXnSheJ6X/HYnpluSiPqu4mVZ5pzQw5ZBdQc6EYGcM8ZESl8UD6Bj5R4EZ5yIInV++22BUOH8nHFWvfKI/T4tBMH5BL0QUaXiV+0DaBlmxFmw+dni++SnRUVWtkfTcKrYb4AWodD2xEgpip+IBxLbDrnalrEyzyeWl6ISxU+zelq0IjIFKfc5JWXJKxAvG0HbBb6u4qRKTm58jybEq3UEi4K1orj3zdifdeW8/dfhC1XYQzSulQQCAAAAAElFTkSuQmCC',
-    s32: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAe1BMVEU4uEgGBQURCggPDA8dDwwXExQcFR0cGhwjGhonHSkjISIzHBYuIiEyJTQ5KSdDMCtCL0FOOExuS0F8U0eLXE+KYFGUY1SDdW2hbFmgdGCqfWa2hWy8j3jFjHGolovGk3fQlnnWn4HeooLYporiqYforYrpsY3Ov7Dz5NLNvKCEAAAAAXRSTlMAQObYZgAAATtJREFUeNq9kd2OgyAUhDnYI+Ai1f3pVukWrYB9/yfcozbZpJ7e7iTGi/mYGVSI/5R11rqje+kfH3KWtR3JPh79EkBNsoiMrx1l65hzOGgpGcIu3T6TEkEcQPOdy5tG2DdYTRP0ej7nuAcEbdOYgu7pfMxyD6BEfcvp54DS08w9IKW0KUV6dUEyvui7/i3lFMdwSyfPAMJ3U4gpLupuHABDmEZykw/9mQOEhGkKffD0K95ZAPppGqLvzt2BG0kzw2WKdBHff7J+OV++YKSZg//g/NrgfZZwSZTBfGgh2gbV/Q4AwZ84v2nbWimciYArV9CSyqpSKIEtWIFGEYBYGMZegdYoVRQKTbnvfxAIwESs1gY0BaoCirLcE02zcUWlvlHVT8gWYRaoVBWoypjnHRRRm9IQB3idl4S/Hb/uDBzTwiZ9DwAAAABJRU5ErkJggg==' };
+    pal: ['#050405','#0c0a0d','#100908','#140f15','#1c0e0c','#141213','#1b1415','#1e1620','#1b191b','#231a1b','#2e1814','#222021','#2a1e2b','#2c2121','#292728','#332535','#352726','#3e2c2a','#45322e','#443043','#4d384c','#553c36','#593b53','#69483f','#775045','#85594c','#936354','#85766f','#ab7560','#a57964','#b7856d','#a69488','#c79075','#d29a7c','#cd9d86','#dda487','#d8a68a','#e1a383','#bfb1a3','#e5a98a','#e7ad89','#e9ad8d','#edad8b','#e8b08d','#e9af91','#f3b793','#d9caba','#f5e5d3'],
+    C: 'data:image/png;base64,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',
+    s48: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAilBMVEU4uEgFBAUMCg0QCQgUDxUcDgwUEhMbFBUeFiAbGRsjGhsiICEqHissISEpJygzJTU1JyY+LCpFMi5EMENNOExVPDZZO1NpSD93UEWFWUyTY1SFdm+rdWCleWS3hW2mlIjHkHXSmnzNnYbdpIfYporho4O/saPlqYrnrYntrYvosI3zt5PZyrr15dNCcJi7AAAAAXRSTlMAQObYZgAAAmtJREFUeNrdk1uToyAQhQUMIspI1JlcVgisJrBO8v//3jbkslu1CeZ52yp9OV+f091llv2nxYUQ72qFXK+llOu2lcUb8nW7DtW2bSCWXdrQPHRv2w1YSbnUPzZfQ2spRQuP4G/E50VRgJJzKQpOk4C8GoiVnghgnJOCpgbnMsq5mmPZVUEUSgKwIkgvZv8930ulgLCeT1iSn/8AJgkIcIDH/OVgUSIRlxyOJYWanb8DI3kNUF5AKNjlfYaIbV8DBFYfbjB7u+LCzPAd5znhkMEWYfnWz+OvYQWkMgYaJACyIpoLiOEVCbVVCN4pQBMkhIfklvOTUuZIyCqhz5RFxArQf3tvtR6d3w1DCsi02ntjQybvjg6s9uaYuANkMmie9Ah675wDSA9pIENunCbjgtx5e/R+k46UEYSmaRqds8Z7tdntdom73QgFhNlrG348IXfpRJDJBwtrYUnDfhh4+g8NDp5MMAZMrbUxertZApA3IRMA/gjnXkrE6OVg9+jnCJudrTbDfqF/h0+XswqDu+DhzUKius/p6XI5wHJ1BFK/WzToO1rSCyAIIbjaceFqdd/3rKxKiBWIUEl93oeiVVnR0yESh3OSiPq+oRUUReRzyaC5Aj0DfQmjYEzzlJ7VN6DH1QcQUDivE/2/ursFhAr9gcHNKw8WhA+LHIX2MAtiLyyarwh0N6DDsCNKowV7pr93flg06EI/MA5jN/gdoGMQiNIDxRWrnxE3JI4dcnUdAGV5wGXFGlY/i/Ww6FhkalR9lAReefOCiEjT9TWr82CU46pEZwoAzl+dI1iwvLtesEGY/jifS9r96/AbLRhKnpvrD64AAAAASUVORK5CYII=',
+    s32: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAflBMVEU4uEgFBAUMCg0QCQgUDxUcDgwUEhMbFBUeFiAbGRsjGhsuGBQiICEqHissISEzJTU1JyY+LCpFMi5EMENNOExpSD93UEWFWUyTY1SFdm+rdWCleWS3hW2mlIjHkHXSmnzNnYbdpIfYporho4O/saPlqYrnrYnosI3Zyrr15dPSd6JLAAAAAXRSTlMAQObYZgAAAT5JREFUeNq9kNFygyAQRUESEKqIYpu0EBQTofn/H+xGM9OZsnntzigP53DvKiH/OcYYbfr+JR/6vh8GeGv8OmDTbxlGvRCMFgpGC4FwDelGxZyDEIwhhh4g3ud9AscaYDvzFCIruNIauHoKqRQI7KZEmhS0xDUjgmACVlzDUTAPTykwxnTKKxwuMIQT79xbgvZrWNPZIwIYS8gprWtKbsIEOs1zTA8cvs6YQBhdluCChz/+gQrULct0hV3cEVuSELi8xJSSdyeUH+7zicaU4+TfMd7V/H5j1ENEpJgwWi5vd0pp8Og32HHspOSQQekFKxhhZNNIzmiFbvAQLBic86otcDtuwthCSSV5XZf9T+NAKyRiQ7tgKw4ZRcSG7F7CG/nJZfdH2SNaC9ahaZhs2roMsV1bt+BV/PL9SPgVfgBKFR9p8eNTVgAAAABJRU5ErkJggg==' };
 })(window.MC);
 /* @@END pt_danglars */
-/* @@GEN pt_danglars_smirk — gen_pt.ps1(손으로 고치지 말 것). pt_danglars_smirk_g1.png 크롭 (209,108) 1728px · n 18 · C 48색 투명 5479칸 · PNG C 2194 B · s48 839 B · s32 539 B */
+/* @@GEN pt_danglars_smirk — gen_pt.ps1(손으로 고치지 말 것). pt_danglars_smirk_g1.png 크롭 (209,108) 1728px · n 18 · C 47색 투명 5479칸 · PNG C 2250 B · s48 874 B · s32 547 B */
 (function (MC) { 'use strict';
   if (!MC) return;
   const P = MC.data.ptC || (MC.data.ptC = {});
   P.pt_danglars_smirk = { w: 96, h: 96, eye: [50, 40], n: 18, src: 'pt_danglars_smirk_g1.png',
-    pal: ['#060505','#110a08','#0f0c0f','#1d0f0c','#171314','#1c151d','#1c1a1c','#231a1a','#271d29','#232122','#331c16','#2e2221','#292728','#322534','#392927','#43302b','#422f41','#453230','#513933','#4e384c','#6e4b41','#7c5347','#8b5c4f','#8a6051','#946354','#83756d','#a16c59','#a07460','#af7862','#aa7d66','#b6856c','#bc8f78','#c58c71','#a8968b','#c69377','#d09679','#d69f81','#dea282','#d8a68a','#e2a987','#e3a88b','#e9a987','#e8ad8a','#e9ae8f','#edae8c','#e9b18d','#cebfb0','#f3e4d2'],
-    C: 'data:image/png;base64,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',
-    s48: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAkFBMVEU4uEgGBQURCggPDA8dDwwXExQcFR0cGhwjGhonHSkjISIzHBYuIiEpJygyJTQ5KSdDMCtCL0FFMjBROTNOOExuS0F8U0eLXE+KYFGUY1SDdW2hbFmgdGCveGKqfWa2hWy8j3jFjHGolovGk3fQlnnWn4HeooLYporiqYfjqIvpqYforYrpro/trozOv7Dz5NJY+I5fAAAAAXRSTlMAQObYZgAAAmVJREFUeNrdlNuaojAQhOm0OcBGWBR1XBlQJLhogu//dtuJM97MGOZ6Wz9urD9V1VGT5D8dpWl+qNW6CLNaFeoHctKtvJie9J438eriAWyC1Zw+aAs6mmZFLx1PpUMMpTh1VooeXPGYnms6fr1aad4apjhXCukRAVTh9Vo1NoxZcNZAzEL5yrpQ9nP+2lsTA3yFNW3GWvdkzlFA+y0VxdG6J2EgkkjpR6jGjk9giADcL5LWyu2Hw+jf29cAauW3T/rzQmtSm/FibXRLrCXAOGvsga7haM7mGL05xqBV2qdpEBnniz3jLNIhgTMDApx1Ri0uzeFkiIvok8YA69UYKg/vLbVYHA4xIOnf9+5EHZwdx4H0bn+KrZUy9WAvrQkrHQm4toc4kMB1vFzOXkzy/mqvm/eoPkGAC40xTW9tvd5tt5s4kHBoCOhZfap//6Jv7jaeyGfyFmYY6v3b7lAvZv83wIVMtCc39G2zmUtEwLkmYPRf7BrZbiaRwHs3vJHHeCPg1O93M+eXON2nhkHtL+HmXD+TKK2Qd/f7xACOzrmbi/3cgkFVokQiOgAYnLvO3FpaVVXKJZl4jzBRvaj8oJQZnzrvAd0UJYK+ynlGw5Gt5wzyB1CJbLmUFAwRBcYCpR9Ahdkyk5wjR5HGzi8/LSiUP98zuYj1fVoIIC1SFxB5LH5efgAl0o44epvvLT5PflrkcMcllQYp8u96fwFKCkU9OsRMpPgaCbV9rrJEXErZocxELtLvdvW0KEVgcsiWEukhciJeFqHaKX3sjQRmEiZOAIpX1+EtUlGmoUoJiH+mu+TlV4d/dE5LsxXxHUIAAAAASUVORK5CYII=',
-    s32: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAh1BMVEU4uEgGBQURCggPDA8dDwwXExQcFR0cGhwjGhonHSkjISIzHBYuIiEpJygyJTQ5KSdDMCtCL0FFMjBOOExuS0GLXE+KYFGUY1SDdW2hbFmgdGCveGKqfWa2hWy8j3jFjHGolovGk3fQlnnWn4HeooLYporiqYfjqIvorYrpro/trozOv7Dz5NJj4zxuAAAAAXRSTlMAQObYZgAAAUJJREFUeNq9kclywjAQRD0So8VxrBgncQJeMFgRMvz/92VkUhzwcE2fVNWvuntKWfafKkjOuaf+dtGbcwVru61blDLMM6BAQyoMcv2U7kyIcdwYgQxRpIb+HBeNLJAqbn6cYOWb5UBznhcgrIFEGIyj6WP0IYo1gALNFH8Gg9i3hgGEELQgSCGaTjJ+1u1aOnIOx2GKnwMDEOHHtC/EsDtyAIy9PwXy98P+mwMyAd6PYmhfiuKdBaD1/jT1u6bZcCOzrKUO+oupaz9YX128gFM8h7FjG0qL1wtAP88z8xOkukJ9vQLA0DWcX9V1qTVSBsCBK6hJKs81SpDsggRU+lUjorQr29YLkEqk1GjVuv+PUCCRWsqH/fUdqABzKaVSa6KqbpzM9RfqUtkVUdY2QXQJ6Nzaxx0UUVplUwQeLjq9794vPqwfFJSwpuMAAAAASUVORK5CYII=' };
+    pal: ['#050405','#0c0a0d','#100908','#140f15','#1c0e0c','#141213','#1b1415','#1e1620','#1b191b','#231a1b','#2e1814','#222021','#2a1e2b','#2c2121','#292728','#332535','#352726','#3e2c2a','#45322e','#443043','#4d384c','#553c36','#593b53','#69483f','#775045','#85594c','#936354','#85766f','#ab7560','#a57964','#b7856d','#a69488','#c79075','#d29a7c','#cd9d86','#dda487','#d8a68a','#e1a383','#bfb1a3','#e5a98a','#e9ad8d','#edad8b','#e8b08d','#e9af91','#f3b793','#d9caba','#f5e5d3'],
+    C: 'data:image/png;base64,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',
+    s48: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAkFBMVEU4uEgFBAUMCg0QCQgUDxUcDgwUEhMbFBUeFiAbGRsjGhsuGBQiICEqHissISEpJygzJTU1JyY+LCpFMi5EMENNOExVPDZZO1NpSD93UEWFWUyTY1SFdm+rdWCleWS3hW2mlIjHkHXSmnzNnYbdpIfYporho4O/saPlqYrprY3trYvosI3pr5Hzt5PZyrr15dPAFVN1AAAAAXRSTlMAQObYZgAAAohJREFUeNrdlFuTojAQhcllEshC5BLmogMIBoewjP7/f7cnOs7DroZ53qZKrfJ8fU53W0bRf1pKo36o1UVZFkVRVlWhfiAvq9JX5d+qYt0Eba/dq+pVazit9b82v1C6wqPDqXRRoalWEjMrpQotlQzpReH7V6WWnWVKSqWEFCELVXh5odvFlxueJGtpyEJ5OSIty6fzhH/aEKCR6BnE4ublVn0IKPzM2FO3zO4GDCSQSBU+VKlbd/wGbADADnEz7BLRf1/EfpDXxwDVCieQwmE/Wk/LcrDj4oJbYh3ONTgkakB2dhhaGQIYI53SDtUyxqR42jHJWAAgHSNaYwJnpfxo295SEdJH7UDYoCbnPqdp6Dp8eGqaEBD1zW7uB5/J2qMFsOuPgbUi00CmsbMAlmma3HRsmzAQEWcP48FOEwDXH+f5NRwpooSM42iHQ4dg7fN2u30LA5EgLYiBtX1T/sLvcBtOhEyztxisbXe77a6Rq/8bHrDj6LCho+2at7VEAHqfCRtyFudeSxTT897uyMH6zQ5d32xX+hv6cT61DIMjkpvnPvDb9pXVPPk4n/eMkAP0bl65WmRqQxNxBkIIwdWOK1fL6rqOk0QgFjwuFdTzFwAIlabitPceZH8KEvWlcpGiBGXPawb5FajjdLNJRSIEpZwH9HH2BRieblLoOadxFuj/Ym4WPhTaJyKh+SMLbiC8WdQxQX8KjDyyyC/7ycwtFMWOYACbPL6nv3X+tsjJWWwoKuE5vQOYvwGDUJh7T2kaZ/Qe8qXzY3vaGCo2SfJOkzTO4+zeIN8WJr4wGUk3CcULz0E8HCQ3dYavvRGnaUJOAgDnj3blLWJurhfMCRXvp1PCzb8OfwDjSE2KCZtEFAAAAABJRU5ErkJggg==',
+    s32: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAhFBMVEU4uEgFBAUMCg0QCQgUDxUcDgwUEhMbFBUeFiAbGRsjGhsuGBQiICEqHissISEpJygzJTU1JyY+LCpFMi5EMENNOExpSD93UEWFWUyTY1SFdm+rdWCleWS3hW2mlIjHkHXSmnzNnYbdpIfYporho4O/saPlqYrprY3trYvpr5HZyrr15dNzMbohAAAAAXRSTlMAQObYZgAAAU1JREFUeNq9kNFygyAQRQUsCBUqRtvaSEnQsDH5///rmnSmM3Hz2vvgyz2evVoU/xnnvfOtf9q3mN0OHzTi16b1mNabJ4B3ymCcUtR9tHuTluWolJAE4XaoD7AsCywQCWCd0Ho4L2uS2PTGOexNhtWxZLY1IGEUHEzA9xNsDYUSymXIUSkZgiEAIYQDyFKIIXKiL8ZxjwDkOWYYAgEUcUwRJ2a8sz9QAIvHKeWcYB/HgQIKwaYpihhevXsnATZO02HG14cXaiTOjGFKAHMYP8m+vBwFSxlSDB9U31TyemIsAJxn4kcXRd9JfboyxmIgv6Hr+0ZreRKIfFMHekxV11pxxskFK9Dpt1rqkttNbfsb0Fs8wrWsqu39X6JkfGUeFLfqDnRc1pxvFLeq61eR5bX+krp5QO4K2yFV1jXXtbVbSdfYyiLHy+/Lavjb8QNCvyBpQlXuoQAAAABJRU5ErkJggg==' };
 })(window.MC);
 /* @@END pt_danglars_smirk */
 /* @@GEN pt_fernand — gen_pt.ps1(손으로 고치지 말 것). pt_fernand_g2.png 크롭 (215,278) 1344px · n 14 · C 48색 투명 4475칸 · PNG C 2830 B · s48 1020 B · s32 611 B */
@@ -59243,6 +59307,17 @@ MC.addEvents({
     s32: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAe1BMVEU4uEgBAQEICAgQDg0aDwwWFhYlFRAgGxcfHyEqKiw2NTlGRUpnRTxZUk5UVlt0UEVfYWWCVklrYFqJYU5tcXR8cWiXaFGLbF6kblV5foGkd11/hIetd1mQhHm4gGGdkITDhmLKimPIj23RjmWonI6wnpWwp5nFu63Yzb9MuzTFAAAAAXRSTlMAQObYZgAAAYtJREFUeNp1kut2qyAQhXUG44VqMYAGCcGkHE/e/wk7aH9UpXu5Fgv52HNhsizLqjyq4fW6YnZSBfGg5s0KFGdgs6iaBv4CVm9sOMYVUg64AVsy1R8AxaiLAiEZgwCkHEgVKRWjqgosqrquf4CDy1Yn5YcFqaJAmDrOAT7ZB6673f31DxQtsvv9NvR9D/vzWAG02ulplteRXW7y0GwyAO0Qy695kCXrGSsPJcTkEBkb5KV0ng2lOVUJ7Aajm1+THP/Nz8sZyLSU0g+P52Ni87NPNArbYfJykK/H8CFZAoAroPfj/TV53yYmRpjcM7cEshknmXgsYa0K2gfnpzv7TIQQxlrjFx+8HoNLhFDKEKLe2oXgr+eZEtaQFGgArVs8jyWlYJTpcljii54nH5SJFkDA/+Dx+NjxvogE5N0SwgI53wPKkjpjFQB9yxuODnYVGJWrjgCMScARoAgChBEK3uBcB7uRVJsFNUIoq9x70Zbzju+7GC2sEBFaFmME578AJcwqWlVsp1NGdL+Ib/ODHxaaIVQrAAAAAElFTkSuQmCC' };
 })(window.MC);
 /* @@END pt_inspector */
+/* @@GEN pt_danglars_cold — gen_pt.ps1(손으로 고치지 말 것). pt_danglars_cold_g1.png 크롭 (112,148) 1728px · n 18 · C 46색 투명 5667칸 · PNG C 2212 B · s48 850 B · s32 526 B */
+(function (MC) { 'use strict';
+  if (!MC) return;
+  const P = MC.data.ptC || (MC.data.ptC = {});
+  P.pt_danglars_cold = { w: 96, h: 96, eye: [50, 40], n: 18, src: 'pt_danglars_cold_g1.png',
+    pal: ['#050405','#0c0a0d','#100908','#140f15','#1c0e0c','#141213','#1b1415','#1e1620','#1b191b','#231a1b','#2e1814','#222021','#2a1e2b','#2c2121','#292728','#332535','#352726','#3e2c2a','#45322e','#443043','#4d384c','#553c36','#593b53','#69483f','#775045','#85594c','#936354','#85766f','#ab7560','#a57964','#b7856d','#a69488','#c79075','#d29a7c','#cd9d86','#dda487','#d8a68a','#e1a383','#bfb1a3','#e5a98a','#e9ad8d','#edad8b','#e9af91','#f3b793','#d9caba','#f5e5d3'],
+    C: 'data:image/png;base64,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',
+    s48: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAh1BMVEU4uEgFBAUMCg0QCQgUDxUcDgwUEhMbFBUeFiAbGRsjGhsiICEqHissISEpJygzJTU1JyY+LCpFMi5EMENNOExVPDZZO1NpSD93UEWFWUyTY1SFdm+rdWCleWS3hW2mlIjHkHXSmnzNnYbdpIfYporho4O/saPlqYrprY3trYvpr5HZyrr15dMrYGF4AAAAAXRSTlMAQObYZgAAAnlJREFUeNrdlW1zqyAQhcOLCIhFg2mriQqhDbbx//++uzhpZu6Mhfv5bjLRD/twzp6N4+Hwv5asof61uWnapm5a+Cn/qb+FXqjmeARMZtvrNgpA97E9RZEs0UDB+dB+ak5wnxskCtQSrMCnbmUtS5oRaE/HRpal3IpKRtOeZAujyjGEYEsoHL8i6SgOLJclLMCAkAt9mcy2bmKW4QuIWCEsF4oT/QLWC1EuX5EIyzcwU3p5kA+kBHbCj8aUEtiAWtplE/DhG8AJJYGYiwzBWbDvfbj64EgSKIpSujAVEmQWG65LIVkaGMfahTAWpJRkcoWESxIYCZE+LLC1mRR9j8r5LdkPxDi55St4d7l4PxX9cMkB5MNCNt5ZD0Dvg80AB3e9upgQ1Kd9t2HIARh9XCFQONp/hmK0uRkOJblGIHg7jBMZhvSiYxG7EX5q27rp+2z/gYwATPbYNpde1uktxEKkBMBZa6dpes8LKLzOMAX8Vf1QFP17rp8rdl9nPPnw4VzwQ9aRMVjc1zuOTzVUdgm86xQTeF0Rif2fQ/phAIGu6ygT7LYSNI4DwvM52a+hvzNMCMFmgmLNt6Sh1wh0SlRVJRgjkckaikU3QDCMMU8aUg/A4OolSmCG1e8ENd0P0HEwBee/MEb1b38+Bf7Nk8AIzsdCVEip/XHNNu8T0GhGqEIwBtV7pvTro08/TaG7qBhCmHG9l9RPPk8JQ1ElKnzGTCi+90p5EBqu8daAqTj4mVWV0nw3q6eE0hvEIVt6xi8V10DsvrceAOecRiHMKnqGSbjGlO9ndYjJUmX4ZlC9YXxbb4IbzX9dXzRjlHnMfUb3+4qw0X9H+wd1YEPXE4WlbAAAAABJRU5ErkJggg==',
+    s32: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAgVBMVEU4uEgFBAUMCg0QCQgUDxUcDgwUEhMbFBUeFiAbGRsjGhsiICEqHissISEzJTU1JyY+LCpFMi5EMENNOExVPDZpSD93UEWFWUyTY1SFdm+rdWCleWS3hW2mlIjHkHXSmnzNnYbdpIfYporho4O/saPlqYrprY3trYvpr5HZyrr15dNKPeb/AAAAAXRSTlMAQObYZgAAATtJREFUeNq9kMF2gyAQRREJCIogtNZGIlIztun/f2DR9HSRjNvO9t1z580Q8r9jtLZWH8Z2n86aA8QYk+POvmircMAapbcRmmG57jqt4qiE4IJLXKDXFdYoJmACM+QO6+8MGKBMNnyuAOsXjFgHoVSECGuCBAEDTicFUYmwpFmgZ4ZSQRKlOA2lwCqQ8xCyfwpx6s8DBpAwT5DyxAHeUIAX80dKU1z6c4ECpMwATEa/4oIdmIIdBoV2JIRdyzn/YBzxiqRltxudU1rSAeBbzr9pAFh6NHfeV1Jey6Io+gu2wHvvZF3LjTgQeN9kgHPKqqe4cpvBe1ZLmokG8d8BV1DKJa8eiF1/J5oLl5lp2BHgmJR5i3wgyBY532wcreV7LdvmsUeOXFVlpOEsr2mfL/Gu3U9xtMgvb9s/ww8T5RwjHGWPsAAAAABJRU5ErkJggg==' };
+})(window.MC);
+/* @@END pt_danglars_cold */
 
 </script>
 <script>/* ==== data/debug_ptc.js ==== */
@@ -59975,7 +60050,7 @@ MC.addLang('ko', {
     "card.learned": "새로 익힌 것",
 
     "story.handInk": "……왼손으로 쓰면……",
-    "story.handThimble": "……장난이지, 장난……",
+    "story.handThimble": "……장난이지? 장난이지……",
     "story.handSash": "……검사에게……",
     "story.letter": "검사님께.\n왕과 교회의 벗이 알립니다. 파라옹호의 일등 항해사 에드몽 당테스는 엘바 섬에 들러 찬탈자의 편지를 받아 왔습니다. 파리의 보나파르트파에게 가는 편지입니다.\n증거는 그의 몸이나 아버지 집, 아니면 파라옹호 선실에 있을 것입니다.",
 
@@ -60271,7 +60346,7 @@ MC.addLang('ko', {
     "mem.nm.danglars": "왼손으로 투서를 썼다.",
     "mem.nm.fernand1": "메르세데스를 원한 사람.",
     "mem.nm.fernand": "투서를 검사에게 넘겼다.",
-    "mem.nm.caderousse": "다 보고도 말리지 않았다.",
+    "mem.nm.caderousse": "알고도 입을 다물었다.",
     "mem.nm.villefort": "제 앞길을 위해 나를 가뒀다."
   },
   "uiInfo": {
@@ -60514,7 +60589,7 @@ MC.addLang('ko', {
     "card.learned": { "w": 100, "font": "small", "lines": 1, "note": "기술 습득 카드 이름 위 작은 머리" },
 
     "story.handInk": { "w": 164, "font": "body", "lines": 1, "note": "1막 끝 '탁자 위의 세 손' 회색 속삭임 1 — 잉크 묻은 손(당글라르): 투서를 왼손으로 쓰자는 말. 한 줄, 말줄임표로 끊긴 속삭임" },
-    "story.handThimble": { "w": 164, "font": "body", "lines": 1, "note": "속삭임 2 — 골무 낀 손(카드루스): 술기운 섞인 변명 '장난이지'" },
+    "story.handThimble": { "w": 164, "font": "body", "lines": 1, "note": "속삭임 2 — 골무 낀 손(카드루스): 술기운에 매달리듯 묻는 '장난이지?'(10-30 — 단정 아닌 물음. 추리의 밤 되감기에서 '에드몽은 친구라니까…… 장난이지?'로 앞부분이 들린다)" },
     "story.handSash": { "w": 164, "font": "body", "lines": 1, "note": "속삭임 3 — 붉은 허리띠 손(페르낭): 투서를 검사에게 보내겠다는 뜻" },
     "story.letter": { "w": 138, "font": "small", "lines": 12, "note": "2막 밀고 투서 전문(왼손으로 삐뚤게 쓴 글씨로 한 자씩 그린다). 익명의 밀고자가 검사에게 — 격식 있는 고발문. 줄바꿈 \\n은 문단. 원작 영어판 문장을 옮기지 말고 새로 쓸 것" },
 
@@ -60810,7 +60885,7 @@ MC.addLang('ko', {
     "mem.nm.danglars": { "w": 124, "font": "small", "lines": 2, "note": "(l45-guide B8-8) '네 이름' 당글라르 혐의 — 셋째 추리(정자의 세 손) 뒤" },
     "mem.nm.fernand1": { "w": 124, "font": "small", "lines": 2, "note": "(l45-guide B8-8) '네 이름' 페르낭 — 첫 추리 뒤(메르세데스를 원한 사람)" },
     "mem.nm.fernand": { "w": 124, "font": "small", "lines": 2, "note": "(l45-guide B8-8) '네 이름' 페르낭 혐의 — 셋째 추리 뒤(되감기 속삭임 「……검사에게……」)" },
-    "mem.nm.caderousse": { "w": 124, "font": "small", "lines": 2, "note": "(l45-guide B8-8) '네 이름' 카드루스 혐의 — 셋째 추리 뒤(말리는 사람은 잔을 내려놓는다)" },
+    "mem.nm.caderousse": { "w": 124, "font": "small", "lines": 2, "note": "(l45-guide B8-8) '네 이름' 카드루스 혐의 — 셋째 추리 뒤(10-30: 쓰지도 넘기지도 않고, 체포 때 당글라르의 눈에 입을 다문 사람 — 옛 '다 보고도 말리지 않았다')" },
     "mem.nm.villefort": { "w": 124, "font": "small", "lines": 2, "note": "(l45-guide B8-8) '네 이름' 빌포르 혐의 — 넷째 추리 뒤(아버지 때문이 아니라 제 앞길 때문)" }
   }
 });
@@ -61043,7 +61118,7 @@ MC.addLang('en', {
     "card.learned": ["Newly learned", "3moskn"],
 
     "story.handInk": ["...Write left-handed...", "yijd87"],
-    "story.handThimble": ["...Only a joke, a joke...", "tfiqfp"],
+    "story.handThimble": ["...It’s a joke, right? A joke...", "10foeoe"],
     "story.handSash": ["...To the prosecutor...", "ejkilh"],
     "story.letter": ["To the King’s Prosecutor.\nA friend of Throne and Altar informs you that Edmond Dantès, first mate of the Pharaon, put in at Elba and came away with the usurper’s letter to the Bonapartists of Paris.\nThe proof lies on his person, in his father’s house, or else in his quarters on the Pharaon.", "1enslxl"],
 
