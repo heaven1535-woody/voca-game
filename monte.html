@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.27-resume';
+  var VERSION = '0.8.0-flow';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -13378,8 +13378,9 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (!tut && party && TU.party && !MC.game.flag(TU.party.flag)) tut = TU.party;                     // 첫 2인 전투: 파리아 안내
     if (!tut && !party && !B.boss && TU.first && !MC.game.flag(TU.first.flag)) tut = TU.first;          // (1인) 첫 전투 안내
     if (!tut || MC.game.flag(tut.flag)) return;
+    if (tut === TU.first) B.tutFirst = true;                             // [r3 B2] 첫 전투 표시 — battle_view가 [달아난다] 첫 확인(tutorials.flee)에 쓴다
     const lines = tut.lines || [{ who: tut.who || 'think', t: tut.t }];
-    for (const l of lines) S.push({ t: 'say', who: l.who || 'think', text: fmt(l.t, {}), hold: true });   // [a43-ui P3] 안내는 다 읽고 탭할 때 닫힌다(battle_view H.say)
+    for (const l of lines) S.push({ t: 'say', who: l.who || 'think', text: fmt(l.t, {}), hold: true, hl: l.hl || null });   // [a43-ui P3] 안내는 다 읽고 탭할 때 닫힌다(battle_view H.say) / [r3 B2] hl: 그동안 밝힐 칸
     if (tut.flag) MC.game.setFlag(tut.flag);
   }
 
@@ -14224,6 +14225,11 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   }
   function scriptFinale(B, e, S) {
     const f = SD(B).finale || {};
+    if (f.floorLine) {                                                   // [r3 B2] 지도록 짜인 싸움: HP를 바닥(minHp)까지 눌러 멈춘 뒤 한 줄 → 끝 대사
+      const lead = B.allies[0], fl = SD(B).minHp || 1;
+      if (lead && lead.alive && lead.hp > fl) { const n = lead.hp - fl; lead.hp = fl; S.push({ t: 'hurt', target: lead, n, hp: lead.hp, guard: false, src: e }); }
+      S.push({ t: 'say', who: f.floorLine.who || 'think', text: fmt(f.floorLine.t, {}) });
+    }
     if (f.line) S.push({ t: 'say', who: 'despair', text: fmt(f.line, {}), slow: true });
     S.push({ t: 'overwhelm', text: fmt(f.text || '', {}) });
     B.outcome = 'scripted';
@@ -14720,7 +14726,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     } else if (out === 'scripted') {
       const f = SD(B).finale || {};
       R.exp = f.exp || 0; R.label = f.expLabel ? tx(f.expLabel) : null;
-    } else if (out === 'lose' && !SD(B).keepMats) {                     // (S4 H-14) 최종전은 다시 할 때마다 재료가 녹지 않게(keepMats) — 보정 아님
+    } else if (out === 'lose' && !SD(B).keepMats && !(MC.game && !B.sim && MC.game.flag('s4.on'))) {   // (S4 H-14) 최종전은 다시 할 때마다 재료가 녹지 않게(keepMats) — 보정 아님 / [r3 B2] S4 애도 구간(s4.on) 꿈에서 져도 재료를 잃지 않는다(감독: 애도가 노동이 되지 않게)
       const its = DB().items || {};                                    // 재료 절반 손실(경험치 유지)
       for (const id in B.items) if (its[id] && its[id].kind === 'mat') B.items[id] = Math.floor(B.items[id] / 2);
     }
@@ -15775,11 +15781,22 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     switch (k) {
       case 'attack': choose({ kind: 'attack' }); break;
       case 'endure': commit({ kind: 'endure' }); break;
-      case 'flee': commit({ kind: 'flee' }); break;
+      case 'flee': fleeTap(); break;
       case 'skill': openList('skill'); break;
       case 'item': openList('item'); break;
       case 'repeat': { const c = C.repeatOf(B, u, V.last[u.idx]); if (c) commit(c); break; }
     }
+  }
+  // [r3 B2] 첫 전투(core tutorialSteps가 B.tutFirst를 붙인 판)에서 [달아난다]를 처음 누르면 한 번 묻는다(tutorials.flee, 기존 MC.ui.Confirm).
+  //   그 판에서 한 번만(V.fleeAsked) · 깃발로 다시는 안 나온다. 시험 자동 진행(BT.autoplay)·확인창이 없으면 예전대로 바로 달아난다
+  function fleeTap() {
+    const TU = (MC.data.battle.tutorials || {}).flee, v = V;
+    if (!TU || !v.B.tutFirst || v.fleeAsked || BT.autoplay || !(MC.ui && MC.ui.Confirm) || !MC.game || MC.game.flag(TU.flag)) { commit({ kind: 'flee' }); return; }
+    v.fleeAsked = true; MC.game.setFlag(TU.flag);
+    for (const b of curBtns()) b.arm(450);
+    MC.ui.Confirm({ text: trB(TU.t, 'tutorial'), yes: trB(TU.yes, 'tutorial'), no: trB(TU.no, 'tutorial') }).then(ok => {
+      if (ok && V === v && v.cmdRes && v.mode === 'cmd') commit({ kind: 'flee' });
+    }).catch(e => MC.core.error(e, 'battle.fleeAsk'));
   }
   function setAuto(u, on) {
     u.auto = !!on;
@@ -16094,6 +16111,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const sp = V.speech = { who: s.who, name: w.noTag ? null : name, color: w.color, text: w.text || G().uiPal.text, pal, shake: !!w.shake, voice: s.voice || w.voice, lines, chars, total, t0: V.t, spd, shown: 0, done: false, portrait, tempt: !!s.tempt,
       pz: pausesOf(String(s.text), chars) };
     if (s.tempt) { V.temptFx = { t0: V.t }; sfx2('tempt', 'sting', { gain: 0.6 }); }
+    V.tutHl = s.hl ? { k: s.hl, t0: V.t } : null;                        // [r3 B2] 첫 전투 입문: 이 말풍선 동안 밝힐 칸(drawTutHl)
     const t0 = V.t, pms = pauseMs(sp);
     await waitFor(() => V.abort || V.t - sp.t0 >= total * spd + pms || V.skipAt >= t0);
     if (!V) return;
@@ -16104,12 +16122,12 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       sp.holdT = t1 + 1200;
       await waitFor(() => V.abort || V.skipAt >= sp.holdT);
       if (!V) return;
-      V.speech = null;
+      V.speech = null; V.tutHl = null;
       logNote(String(s.text).replace(/\{p:\d+\}/g, ''), s.who === 'sys' ? 'sys' : 'think');   // 닫힌 뒤 로그에 생각 색으로 한 줄 — 앞 문구가 다시 드러나 '덮어쓴' 것처럼 보이지 않게
       return;
     }
     await waitFor(() => V.abort || V.skipAt > t1 || V.t - t1 >= (1500 + total * 30 * typeMul()) * kf());
-    if (V) V.speech = null;
+    if (V) { V.speech = null; V.tutHl = null; }
   };
   H.order = async function (s) { V.order = { list: s.list, pri: s.pri, cur: -1, t0: V.t }; syncChips(V.order); };
   H.turn = async function (s) {
@@ -17770,7 +17788,9 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     MC.text.draw(hs, cx + hw, ry, { font: 'small', color: hpCol, align: 'right' }); cx += hw + 4;
     const hpBarW = 40;
     statusBar(cx, ry + 5, hpBarW, av.dhp, av.ghp, u.maxHp, COL.hp, COL.hpHi, crit && (((t / 500) | 0) & 1));
+    V.hlR = { hp: [x + 4, ry - 1, cx + hpBarW + 3 - (x + 4), 11] };      // [r3 B2] 입문 테두리 자리(HP 줄 · MP 줄 — 위 이름 줄을 덮지 않게)
     cx += hpBarW + 7;
+    V.hlR.mp = [cx - 3, ry - 1, x + 172 - (cx - 3), 11];
     MC.text.draw(sMP, cx, ry, { font: 'small', color: P.dim }); cx += MC.text.width(sMP, 'small') + 3;
     const ms = Math.round(av.dmp) + '/' + u.maxMp, mw = MC.text.width(u.maxMp + '/' + u.maxMp, 'small');
     MC.text.draw(ms, cx + mw, ry, { font: 'small', color: cov ? P.dim : P.text, align: 'right' }); cx += mw + 4;
@@ -18007,6 +18027,24 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         g.rectO(b.x - 2, b.y - 2, b.w + 4, b.h + 4, COL.gold);
       }
     }
+  }
+  // [r3 B2] 첫 전투 입문: 말풍선이 짚는 칸을 밝힌다 — 단추는 '재생 중' 어두운 단색 대신 제 모습으로 다시 그리고, HP·MP 줄과 함께 숨 쉬는 금빛 테(바깥 검은 테)를 두른다
+  function drawTutHl() {
+    const h = V.tutHl;
+    if (!h || !V.speech) return;
+    const g = G(), p = 0.5 + 0.5 * Math.sin((V.t - h.t0) * 0.008), col = p > 0.35 ? COL.gold : '#c8a040';
+    let r = null;
+    if (h.k === 'hp' || h.k === 'mp') r = V.hlR && V.hlR[h.k];
+    else { const b = V.btn && V.btn[h.k]; if (b && !V.broken[h.k] && !cells2()) { renderLook(b, null); r = [b.x, b.y, b.w, b.h]; } }
+    if (!r) return;
+    if (h.k === 'hp' || h.k === 'mp') {                                  // 줄은 위 이름 줄과 1px 사이라 얇게(금빛 한 겹 + 안쪽 반짝)
+      g.rectO(r[0] - 1, r[1] - 1, r[2] + 2, r[3] + 2, col);
+      if (p > 0.5) g.rectO(r[0], r[1], r[2], r[3], '#8a6a20');
+      return;
+    }
+    g.rectO(r[0] - 3, r[1] - 3, r[2] + 6, r[3] + 6, '#000000');
+    g.rectO(r[0] - 2, r[1] - 2, r[2] + 4, r[3] + 4, col);
+    g.rectO(r[0] - 1, r[1] - 1, r[2] + 2, r[3] + 2, p > 0.5 ? '#fff2b0' : col);
   }
   function drawList() {
     if (V.mode !== 'list' || !V.list) return;
@@ -18303,6 +18341,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     drawFx(true);
     drawTurnBadge();
     drawGrid();
+    drawTutHl();
     drawList();
     drawPanel();
     MC.fx.renderFloats(0, 0);
@@ -19844,7 +19883,14 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       scan(data, '', 0);
     }
 
-    const res = { errors: E, warnings: W, info: I, counts: { sprites: nSpr, maps: Object.keys(maps).length, events: evIds.length, errors: E.length, warnings: W.length, info: I.length } };
+    /* 11. [r3 B1-check] 탭만 이어지는 상자 10 초과(QC 셈 — 경고만). 자세한 목록은 MC.dbg.tapRuns() */
+    try {
+      const tr = D.tapRuns({ limit: 10, all: opt.all });
+      tr.forEach(r => wrn('탭 연속 ' + r.from.ev, '탭만 이어지는 상자 ' + r.n + '개(>10) 「' + r.from.t + '」 → 「' + r.to.t + '」(' + r.to.ev + ')'));
+      if (tr.aborted) wrn('탭 연속', '검사가 너무 길어 중간에 멈춤(일부만 셈)');
+    } catch (e) { wrn('탭 연속', '검사 오류 ' + (e && e.message)); }
+
+    const res = { errors: E, warnings: W, info: I, counts:{ sprites: nSpr, maps: Object.keys(maps).length, events: evIds.length, errors: E.length, warnings: W.length, info: I.length } };
     if (i18nRes && Object.keys(i18nRes).length) res.i18n = i18nRes;
     if (opt.log !== false) {
       const head = '[dbg.validate] 오류 ' + E.length + ' · 경고 ' + W.length + ' · 정보 ' + I.length + ' (스프라이트 ' + nSpr + ', 맵 ' + res.counts.maps + ', 이벤트 ' + evIds.length + ')';
@@ -19853,6 +19899,114 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       else console.info(head);
     }
     return res;
+  };
+
+  /* ---------- [r3 B1-check] 탭만 이어지는 상자 — MC.dbg.tapRuns({limit:10, all}) -> [{n, from:{ev,t}, to:{ev,t}, root}] (n 큰 순, .aborted) ----------
+     QC(docs/review_panel/r3/qc_violations.md §2)와 같은 셈: 다른 이벤트가 call하지 않는 「뿌리」 이벤트에서 출발해 call을 따라 들어가며 탭이 필요한 상자를 센다.
+     센다: say(auto 제외 · 글 폭 160px로 3줄마다 한 페이지) · narr(ms 없는 것) · card. 0으로: choice · battle · custom(자동 연출 hands·rewind 제외) · watch·tether·follow·stealth(끄는 것 제외).
+     if는 두 갈래 중 긴 쪽, end는 그 이벤트만 끝낸다(부른 쪽은 이어 감). custom을 모두 조작으로 치므로(자동 still 등 포함) 실제보다 짧게 셀 수 있다(하한값).
+     limit:0이면 길이와 상관없이 모든 구간을 돌려준다. 되돌리기: 이 블록과 validate 11절([r3 B1-check])을 지운다 */
+  D.tapRuns = function (opt) {
+    opt = opt || {};
+    const LIMIT = opt.limit != null ? +opt.limit : 10;
+    const evs = (MC.data && MC.data.events) || {}, isArr = Array.isArray, DL = MC.dialogue;
+    const AUTO_CUSTOM = ['hands', 'rewind'], RESET = ['choice', 'battle', 'watch', 'tether', 'follow', 'stealth'];
+    const listOf = id => { const e = evs[id]; return isArr(e) ? e : (e && e.cmds) || null; };
+    const ids = Object.keys(evs).filter(id => id.indexOf('__') !== 0 && (opt.all || !/^t\./.test(id)));
+    const subLists = c => {
+      const out = [];
+      if (isArr(c.then)) out.push(c.then);
+      if (isArr(c.else)) out.push(c.else);
+      if (isArr(c.do)) { if (c.do.length && isArr(c.do[0])) c.do.forEach(l => { if (isArr(l)) out.push(l); }); else out.push(c.do); }
+      for (const o of c.opts || []) if (o && isArr(o.do)) out.push(o.do);
+      for (const k of ['onWin', 'onLose', 'onFlee']) if (isArr(c[k])) out.push(c[k]);
+      return out;
+    };
+    const target = c => c.ev || c.event || c.id;
+    const called = new Set();
+    const scan = l => { for (const c of l || []) { if (!c || typeof c !== 'object') continue; if (c.op === 'call' && target(c)) called.add(target(c)); subLists(c).forEach(scan); } };
+    ids.forEach(id => scan(listOf(id)));
+    const clean = s => { s = String(s == null ? '' : s); try { if (DL && DL.prep) s = DL.prep(s); if (DL && DL.strip) s = DL.strip(s); } catch (_) { /* 원문 그대로 */ } return s; };
+    const pages = s => {
+      if (s == null) return 0;
+      if (typeof s === 'object') { let m = 0; for (const k in s) if (typeof s[k] === 'string') m = Math.max(m, pages(s[k])); return m; }
+      const n = MC.text && MC.text.wrap ? MC.text.wrap(clean(s), 160, 'body').length : 1;
+      return Math.max(1, Math.ceil(n / 3));
+    };
+    const boxes = c => {
+      if (c.op === 'say') return c.auto ? 0 : (isArr(c.t) ? c.t.reduce((a, s) => a + pages(s), 0) : pages(c.t));
+      if (c.op === 'narr') return c.ms != null ? 0 : (isArr(c.t) ? c.t.length : 1);
+      if (c.op === 'card') return 1;
+      return 0;
+    };
+    const snip = (c, last) => {
+      let s = isArr(c.t) ? c.t[last ? c.t.length - 1 : 0] : c.t;
+      if (s && typeof s === 'object') s = Object.keys(s).map(k => s[k]).find(v => typeof v === 'string') || '';
+      return clean(s).replace(/\s+/g, ' ').trim().slice(0, 18);
+    };
+    const isOff = c => (c.off != null && c.off !== false) || c.on === false || c.id === null;
+    const isAction = c => (RESET.indexOf(c.op) >= 0 && !isOff(c)) || (c.op === 'custom' && AUTO_CUSTOM.indexOf(c.id) < 0);
+    const ZERO = { n: 0, first: null, last: null };
+    const max = (a, b) => (!a ? b : !b ? a : (b.n > a.n ? b : a));
+    const found = new Map();
+    let steps = 0, aborted = false, curRoot = '';
+    const close = st => {
+      if (st && st.n > LIMIT && st.first) {
+        const k = st.first.ev + '|' + st.first.t + '|' + st.last.ev + '|' + st.last.t, o = found.get(k);
+        if (!o || o.n < st.n) found.set(k, { n: st.n, from: st.first, to: st.last, root: curRoot });
+      }
+      return ZERO;
+    };
+    const stack = [];
+    function walk(l, st, id) {
+      let exit = null;
+      for (const c of l || []) {
+        if (aborted) break;
+        if (!c || typeof c !== 'object') continue;
+        if (++steps > 3e6) { aborted = true; break; }
+        const b = boxes(c);
+        if (b) { st = { n: st.n + b, first: st.n ? st.first : { ev: id, t: snip(c) }, last: { ev: id, t: snip(c, true) } }; continue; }
+        if (c.op === 'if') {
+          const r1 = walk(c.then, st, id), r2 = isArr(c.else) ? walk(c.else, st, id) : { cont: st, exit: null };
+          exit = max(exit, max(r1.exit, r2.exit));
+          const cont = max(r1.cont, r2.cont);
+          if (!cont) return { cont: null, exit };
+          st = cont; continue;
+        }
+        if (c.op === 'end') return { cont: null, exit: max(exit, st) };
+        if (c.op === 'call') {
+          const t = target(c);
+          if (evs[t] && stack.indexOf(t) < 0 && stack.length < 60) { stack.push(t); const r = walk(listOf(t), st, t); stack.pop(); st = max(r.cont, r.exit) || st; }
+          continue;
+        }
+        if (c.op === 'parallel') {
+          let best = null;
+          for (const l2 of subLists(c)) { const r = walk(l2, st, id); best = max(best, max(r.cont, r.exit)); }
+          st = best || st; continue;
+        }
+        if (isAction(c)) {
+          st = close(st);
+          const subs = subLists(c);
+          if (subs.length && (c.op === 'choice' || c.op === 'battle')) {
+            let cont = c.op === 'battle' || (c.opts || []).some(o => !o || !isArr(o.do)) ? ZERO : null;
+            for (const l2 of subs) { const r = walk(l2, ZERO, id); cont = max(cont, r.cont); exit = max(exit, r.exit); }
+            if (!cont) return { cont: null, exit };
+            st = cont;
+          }
+          continue;
+        }
+      }
+      return { cont: st, exit };
+    }
+    for (const id of ids) {
+      if (called.has(id) || aborted) continue;
+      curRoot = id; stack.length = 0; stack.push(id);
+      const r = walk(listOf(id), ZERO, id);
+      close(r.cont); close(r.exit);
+    }
+    const out = Array.from(found.values()).sort((a, b) => b.n - a.n);
+    out.aborted = aborted; out.roots = ids.filter(id => !called.has(id)).length;
+    return out;
   };
 
   /* ---------- 패널 ---------- */
@@ -43053,7 +43207,17 @@ MC.data.battle = {
   },
 
   "tutorials": {
-    "first":  { "flag": "bt.tut_first",  "who": "think", "t": "맞서기만 해서는 버거울 것 같다. ……[배운 것]을 떠올려 보자." },
+    /* [r3 B2] 첫 (1인) 전투 입문: 말풍선 다섯이 하나씩 짚는다(hl: 그동안 밝히는 칸 — hp·mp 줄 / attack·endure·skill 단추, battle_view drawTutHl).
+       예전 한 줄(「맞서기만 해서는 버거울 것 같다. ……[배운 것]을 떠올려 보자.」)은 다섯째로 접었다. 깃발은 그대로(이미 본 세이브엔 다시 안 나옴).
+       되돌리기: 이 블록을 예전 한 줄 { "flag": "bt.tut_first", "who": "think", "t": "맞서기만 해서는 버거울 것 같다. ……[배운 것]을 떠올려 보자." }로 */
+    "first":  { "flag": "bt.tut_first", "lines": [
+                  { "who": "sys",   "hl": "hp",     "t": "초록 줄 HP는 몸이다.\n다 닳으면 쓰러진다." },
+                  { "who": "sys",   "hl": "mp",     "t": "파란 줄 MP는 정신력이다.\n기술을 쓰면 줄어든다." },
+                  { "who": "sys",   "hl": "attack", "t": "[맞선다]는 공격이다.\n정신력이 들지 않는다." },
+                  { "who": "sys",   "hl": "endure", "t": "[버티기]는 막으면서\n정신력을 조금 되찾는다." },
+                  { "who": "think", "hl": "skill",  "t": "[배운 것]은 기술이다.\n맞서기만으론 버겁다." } ] },
+    /* [r3 B2] 첫 전투(위 first가 나온 판)에서만 [달아난다]를 처음 누르면 한 번 묻는다(MC.ui.Confirm). 되돌리기: 이 줄을 지우면 묻지 않는다 */
+    "flee":   { "flag": "bt.tut_flee", "t": "정말 달아날까?\n달아나도 잃는 것은 없다.", "yes": "달아난다", "no": "그만둔다" },
     "endure": { "flag": "bt.tut_endure", "who": "think", "t": "정신력이 바닥났다. [버티기]로 숨을 고르자." },
     "party":  { "flag": "bt.tut_party", "lines": [ { "who": "think", "t": "……이번엔 혼자가 아니다." }, { "who": "sys", "t": "[맡기기]를 켜 두면 신부님이 알아서 움직인다." } ] },
     "auto":   { "flag": "bt.tut_auto", "t": "신부님 칸을 누르면 다시 직접 청할 수 있다." }
@@ -43103,7 +43267,10 @@ MC.data.battle = {
         "2": { "act": "despair_drain", "music": [ ["tempoTo", 100, 2], ["filterTo", 2500, 2] ] },
         "3": { "act": "despair_end", "intent": "unknown", "shatter": ["item", "flee"] }
       },
-      "finale": { "line": "이제 그만 긋자.", "text": "절망이 모든 것을 덮었다……", "exp": 20, "expLabel": "견뎌낸 시간" }
+      /* [r3 B2] floorLine: 끝 차례에 당테스 HP를 바닥(minHp 1)까지 눌러 멈추고, 「일부러 지는 싸움」임을 생각 한 줄로 알린 뒤 line·text로 넘어간다(battle_core scriptFinale).
+         되돌리기: floorLine 키만 지우면 예전 그대로 */
+      "finale": { "floorLine": { "who": "think", "t": "……아직은 못 이긴다." },
+                  "line": "이제 그만 긋자.", "text": "절망이 모든 것을 덮었다……", "exp": 20, "expLabel": "견뎌낸 시간" }
     },
 
     /* 복수심(C-8 b, 계약 §C-9): 순환 [공격→되갚음 태세→공격→유혹], HP 40% 이하는 차지↔참격 번갈아(참격은 늘 당테스, ×2.2), 분노 스택 2면 2라운드 폭주.
@@ -43111,7 +43278,7 @@ MC.data.battle = {
        넷째 이름 빌포르는 등장 대사 가운데에 그의 목소리로 반드시 한 번(첫 줄 '시청은 저녁에' — s44-writer B3-8 → 1막 '그 이름은 잊으시오. 내 얼굴도'의 비틀기, fixer-s2n — 유혹 순환은 그대로).
        QA fixer-s2 sim(smart, 파리아 맡기기): Lv5 75% · Lv6 94% · Lv7 100%, Lv6 7.4라운드, 폭주 약 15%(되갚음을 치면 거의 반드시) */
     "revenge": {
-      "kind": "revenge", "shakeMax": 6,
+      "kind": "revenge", "shakeMax": 6, "keepMats": true,   // [r3 B2] 지면 문 앞에서 다시(a4d.revenge_lost) — 다시 할 때마다 재료가 녹지 않게. 되돌리기: keepMats 지움
       "intro": [
         { "who": "revenge", "t": "시청은 저녁에 가자고 했지.{p:300}\n……그 저녁은 안 와." },   // [s44-writer B3-8] 체포 때 제 말(a2.arrest)이 그대로 돌아온다 — 설명 대신 기억
         { "who": "revenge", "voice": "villefort", "t": "그 이름은 잊으라 했소.\n내 얼굴도. ……잊었소?" },
@@ -43141,7 +43308,7 @@ MC.data.battle = {
        HP 50% 이하 처음: 음악 한 마디 쉼 → '지금이 몇 년이지?'(전투 중 선택 ask) → 1825 비틀거림(기절 1 + 방어 −50% 3) / 1822·1829 당테스·파리아 혼란 2.
        '보물'·섬 이름 금지(없는 섬까지만). 1815 환영의 건배 = vars.toast(E-28). */
     "madking": {
-      "kind": "madking", "shakeMax": 5,
+      "kind": "madking", "shakeMax": 5, "keepMats": true,   // [r3 B2] 지면 문 앞에서 다시(s3d.king_lost)인데 재료 절반이 말없이 녹고 있었다. 되돌리기: keepMats 지움
       "intro": [
         { "who": "madking", "t": "왔군. 몇 년이게?" },
         { "who": "madking", "t": "맞혀 봐. 틀리면 한 해 더." },
@@ -45385,6 +45552,12 @@ MC.addEvents({
     { "op": "say", "who": "morrel", "t": "그리고 선장 자리 말일세.{p:400} 내 마음은 이미 정했네." },
     { "op": "emote", "id": "player", "kind": "exclaim", "ms": 800 },
     { "op": "say", "who": "dantes", "face": "smile", "t": "모렐 씨……!" },
+    // [r3 B1] 입항 둘째 조작(깃발 뒤 9상자째): 모렐 씨의 손을 잡는다(탭) — 원작 1장 「당테스는 눈물이 고인 채 선주의 손을 잡았다」. 다음 「들뜨지 말고」가 이 손을 받는다.
+    //   깃발과 같은 칸 탭(custom deduce tap)만 쓴다. 탭만 이어지는 최장 16 → 9. 되돌리기: 이 꼬리표 주석 두 줄과 아래 op 4줄(「아직 공식은」 앞까지)을 지운다
+    { "op": "custom", "id": "deduce", "args": { "stage": "tap", "id": "morrel", "hint": "모렐 씨의 손을 잡는다." } },
+    { "op": "sfx", "id": "cloth_slip", "gain": 0.3, "pitch": 1.1 },
+    { "op": "jump", "id": "player", "h": 1, "ms": 140 },
+    { "op": "wait", "ms": 450 },
     { "op": "say", "who": "morrel", "t": [ "아직 공식은 아니니 들뜨지 말고.", "자, 그럼. 오늘은 아버님부터 찾아뵙게.", "카탈루냐에서 누가 아침부터 부두만 보더군." ] },
     { "op": "say", "who": "dantes", "face": "smile", "t": "네!{p:200} 다녀오겠습니다!" },
     { "op": "face", "id": "player", "dir": "left" },
@@ -45660,6 +45833,12 @@ MC.addEvents({
     { "op": "sfx", "id": "swing", "pitch": 0.7 },
     { "op": "jump", "id": "fernand", "h": 1, "ms": 140 },
     { "op": "fx", "kind": "dust", "at": [6, 3], "n": 3 },
+    // [r3 B1] 허리띠가 문틀에 걸린 순간 화면이 멈추고, 플레이어가 문간의 페르낭을 누른다(탭) → 잡아 빼는 소리. 뒤 속마음 「붉은 허리띠가 문틀에 걸렸다」가 본 것을 말로 닫는다.
+    //   탭만 이어지는 최장 16 → 10. 되돌리기: 이 꼬리표 주석 두 줄과 아래 op 4줄(「wait 200」 앞까지)을 지운다
+    { "op": "custom", "id": "deduce", "args": { "stage": "tap", "id": "fernand", "hint": "문틀에 걸린 것을 본다." } },
+    { "op": "sfx", "id": "swing", "pitch": 0.6 },
+    { "op": "jump", "id": "fernand", "h": 1, "ms": 120 },
+    { "op": "wait", "ms": 250 },
     { "op": "wait", "ms": 200 },
     { "op": "show", "id": "fernand", "v": false },
     { "op": "sfx", "id": "door_wood", "pitch": 0.85 },
@@ -45763,6 +45942,9 @@ MC.addEvents({
     { "op": "say", "who": "dantes", "face": "smile", "t": "모레입니다. 여기서요!{p:200} 다들 꼭 와 주세요!" },
     { "op": "say", "who": "caderousse", "t": "가고말고! 공짜 술은 안 빠지는 게 내 신조라니까." },
     { "op": "say", "who": "danglars", "face": "smirk", "t": "선장 자리에 신부까지라.{p:300} 셈이 좀 넘치는군요." },
+    // [r3 C5] 잉크병 심기(작가 예시 3): 이 정자는 그날 저녁부터 탁자에 잉크병을 둔다(reserve.js r_inkpot — 원작 4장은 두 사람이 지나간 뒤에 시킨다). 당글라르의 「셈」을 받아 에드몽이 장부 버릇으로 넘겨 버린다
+    //   → 추리의 밤 3 「탁자에 잉크병이랑 종이가…… 왜 여태 몰랐지?」가 본 것을 다시 꺼내는 추리가 된다. 되돌리기: 이 꼬리표 주석 두 줄과 아래 say 한 줄을 지운다
+    { "op": "say", "who": "think", "t": "술잔 사이에 잉크병과 종이.\n{p:300}당글라르는 어디서나 장부다." },
     { "op": "say", "who": "dantes", "t": "페르낭, 너도 올 거지?" },
     { "op": "wait", "ms": 500 },
     { "op": "say", "who": "fernand", "t": "……내가 왜?" },
@@ -46529,6 +46711,11 @@ MC.addEvents({
     { "op": "fade", "to": 0, "ms": 700 },
     { "op": "banner", "t": "레제르브 · 약혼 파티" },
     { "op": "wait", "ms": 500 },
+    // [r3 B1] 잔칫상 앞 빈자리로 한 걸음(탭) — 해 질 녘 부두(a1e.dusk)부터 이어지던 탭 11상자를 끊는다(9 | 탭 | 2). 앉는 그림이 없어 상 앞에 서는 것으로 한다.
+    //   신부 옆(9,8)이 아니라 상 앞(8,9)이라 모렐의 「신부 옆으로 가게」와 어긋나지 않는다. 되돌리기: 이 꼬리표 주석 두 줄과 아래 op 3줄을 지운다
+    { "op": "custom", "id": "deduce", "args": { "stage": "tap", "at": [ 8, 9 ], "hint": "잔칫상 자리로 간다." } },
+    { "op": "move", "id": "player", "path": "U1", "speed": 200 },
+    { "op": "face", "id": "player", "dir": "up" },
     { "op": "sfx", "id": "glass_clink" },
     { "op": "emote", "id": "mercedes", "kind": "note", "ms": 1000, "async": true },
     { "op": "say", "who": "morrel", "t": "왔나, 신랑!{p:200} 오늘 건배는 자네 몫일세." },
@@ -46768,6 +46955,10 @@ MC.addEvents({
     { "op": "say", "who": "villefort", "face": "stiff", "t": "……이리 주시오." },
     { "op": "face", "id": "villefort", "dir": "down" },
     { "op": "move", "id": "villefort", "path": "D1", "speed": 260 },
+    // [r3 B1] 누아르티에 씨께 가는 편지를 플레이어가 제 손으로 내민다(탭) — 빌포르가 낚아챈다(아래 jump·page). 원작 7장은 편지가 이미 압수 서류 속에 있지만, 이 장면은 「이리 주시오」로 에드몽 손에서 받아 간다.
+    //   계획의 「투서에서 보나파르트 줄 짚기」는 투서(custom letter)가 선택지 앞에 있어 12상자 구간을 나누지 못하고, 줄을 짚는 기존 조작도 없어 이 자리로 바꿨다.
+    //   탭만 이어지는 최장 12 → 8. 되돌리기: 이 꼬리표 주석 세 줄과 아래 op 1줄을 지운다
+    { "op": "custom", "id": "deduce", "args": { "stage": "tap", "id": "villefort", "hint": "편지를 내민다." } },
     { "op": "jump", "id": "player", "h": 2, "ms": 160 },
     { "op": "sfx", "id": "page" },
     { "op": "wait", "ms": 300 },
@@ -47397,6 +47588,15 @@ MC.addEvents({
       ] },
       { "op": "sfx", "id": "door_iron", "cap": "철문 · 닫히는 소리" }, { "op": "shake", "p": 0.35 }, { "op": "vibrate", "p": 60 },
       { "op": "jump", "id": "player", "h": 3, "ms": 160 },
+      // [r3 B1] 닫힌 철문을 플레이어가 두드린다(탭) — 첫 「여보세요!」는 저절로 두드렸고, 이번엔 내 손으로. 대답 없이 물방울만(뒤 원래 흐름).
+      //   「여보세요!」 바로 뒤에 넣으면 1 | 12로 나뉘어 10을 넘으므로, 같은 「두드리기」를 간수가 나간 직후(10상자째)로 옮겼다. 탭만 이어지는 최장 13 → 10.
+      //   되돌리기: 이 꼬리표 주석 세 줄과 아래 op 6줄(「cam zoom 2」 앞까지)을 지운다
+      { "op": "walkto", "id": "player", "to": [ 6, 2 ], "speed": 260, "face": "up" },
+      { "op": "custom", "id": "deduce", "args": { "stage": "tap", "id": "door", "hint": "철문을 두드린다.", "other": "……" } },
+      { "op": "sfx", "id": "knock", "gain": 0.8, "cap": "철문 · 두드리는 소리", "ring": "door" }, { "op": "shake", "p": 0.1 }, { "op": "wait", "ms": 240 },
+      { "op": "sfx", "id": "knock", "gain": 0.6, "pitch": 0.95, "cap": "철문 · 두드리는 소리", "ring": "door" }, { "op": "vibrate", "p": 25 },
+      { "op": "wait", "ms": 1100 },
+      { "op": "face", "id": "player", "dir": "down" },
       { "op": "cam", "zoom": 2, "at": "player", "async": true },         // [c50-cine] 문이 닫힌 뒤 혼자 — 2배(「34번. ……34번?」까지)
       { "op": "wait", "ms": 1500 },
       { "op": "sfx", "id": "drip", "cap": "물방울 소리" },
@@ -48278,7 +48478,13 @@ MC.addEvents({
       { "op": "wait", "ms": 600 },
       { "op": "say", "who": "think", "t": "……나무?{p:400} 들보다." },
       { "op": "wait", "ms": 800 },
-      { "op": "say", "who": "dantes", "face": "sad", "t": "……하느님.{p:500}\n여기까지 와서, 막으십니까." }
+      { "op": "say", "who": "dantes", "face": "sad", "t": "……하느님.{p:500}\n여기까지 와서, 막으십니까." },
+      // [r3 B1] 막힌 들보를 주먹으로 내리친다(탭) — 그 소리에 바닥 밑 목소리가 답하고(「하느님과 절망을……」), 뒤 「그 들보는 건드리지 말게」가 이 주먹을 받는다.
+      //   탭만 이어지는 최장 11 → 9. 되돌리기: 이 꼬리표 주석 두 줄과 아래 op 4줄(TAP부터 wait 700까지)을 지운다
+      TAP("hole_w", "들보를 내리친다."),
+      { "op": "sfx", "id": "thud", "gain": 0.6, "pitch": 0.7, "cap": "들보 · 둔한 소리" },
+      { "op": "shake", "p": 0.14 }, { "op": "vibrate", "p": 40 },
+      { "op": "wait", "ms": 700 }
     ], STEP(6), [ { "op": "call", "ev": "a3w.voice" } ]),
 
     /* ───────────── C-6 바닥 밑의 목소리 ───────────── */
@@ -51182,7 +51388,25 @@ MC.addEvents({
       { "op": "wait", "ms": 500 },
       { "op": "letterbox", "on": false, "ms": 0 },
       { "op": "hud", "show": true },
-      { "op": "battle", "troop": "revenge", "boss": true, "canFlee": false, "onWin": [ { "op": "call", "ev": "a4d.after_revenge" } ] }
+      { "op": "battle", "troop": "revenge", "boss": true, "canFlee": false, "onWin": [ { "op": "call", "ev": "a4d.after_revenge" } ],
+        "onLose": [ { "op": "call", "ev": "a4d.revenge_lost" } ] }   // [r3 B2] 지면 감방에서 다시 잠들지 않고 문 앞에서 그 자리 재도전(광기의 왕 s3d.king_lost와 같은 결). 되돌리기: onLose 줄을 지우면 예전(sys.faint → 감방 → 잠들면 B2 문 앞)
+    ],
+
+    // [r3 B2] 복수심에게 졌다: 흰 페이드 → 짚 침대 1.5초 컷(글 없음) → 보스방 문 앞(b2 boss 칸 15,9)에서 HP·MP 가득 → 같은 등장 연출로 곧장 다시.
+    //   sys.faint(재료 절반 손실 · 감방 깸 · 파리아 「식은땀」)는 거치지 않는다(재료는 scripts.revenge.keepMats). 다시 하는 전투는 watch(60ms)로 — onLose 안에서 곧장 부르면 질 때마다 call이 깊어진다
+    "a4d.revenge_lost": [
+      { "op": "wait", "ms": 400 },
+      { "op": "bgm", "id": null, "fade": 300 },
+      { "op": "fade", "to": 1, "ms": 450, "color": "#e8ecf4" },
+      { "op": "hud", "show": false },
+      { "op": "letterbox", "on": true, "ms": 0 },
+      { "op": "heal" },
+      { "op": "custom", "id": "s3", "args": { "stage": "bedcut", "ms": 1500 } },
+      { "op": "fade", "to": 1, "ms": 0, "color": "#e8ecf4" },
+      { "op": "place", "at": [ 15, 9, "up" ] },
+      { "op": "light", "dark": 0.92, "r": 20, "at": "player", "color": "#ff4a2a", "ms": 0 },
+      { "op": "fade", "to": 0, "ms": 600, "color": "#e8ecf4" },
+      { "op": "watch", "id": "a4d_revenge_again", "ms": 60, "ev": "a4d.boss_room" }
     ],
 
     "a4d.after_revenge": [
@@ -51417,6 +51641,11 @@ MC.addEvents({
       ] },
       { "op": "call", "ev": "a4c.rewind" },
       { "op": "call", "ev": "a4c.hands" },
+      // [r3 C5] 페르낭 단서를 대사로 닫는다(C5 ②, 작가 예시 4 다듬음): 되감기·세 손에서 본 「구겨 버린 투서를 페르낭이 주움」을 에드몽이 말로 확정하고,
+      //   파리아가 앞의 「칼을 꽂는 사람은 편지를 안 쓰네. 쓰는 건 셈하는 사람이지.」를 두 갈래 그대로 회수한다(칼 → 종이를 쥠 · 셈하는 사람 → 버린 것도 셈).
+      //   세 손 맞추기 뒤에 두어 정답을 미리 말하지 않는다. 되돌리기: 이 꼬리표 주석 세 줄과 아래 say 두 줄을 지운다
+      { "op": "say", "who": "dantes", "face": "sad", "t": "버린 종이를……{p:300} 페르낭이 주워 갔습니다." },
+      { "op": "say", "who": "faria", "t": "칼 대신 종이를 쥐었군.{p:300}\n버린 것도 셈일세." },
       { "op": "say", "who": "dantes", "face": "shock", "t": "탁자에 잉크병이랑 종이가……{p:300} 왜 여태 몰랐지?" },
       // [10-30 사용자 「카드루스 서사」] 카드루스는 꾸미지도 넘기지도 않았다 — '장난이지?' 하고 반대했다가 속고, 체포 때 당글라르의 눈에 입을 다문 사람.
       //   빚은 동기가 아니라 사람됨(빈 찬장을 보고도 눈감은 사람). 되감기(a1b.rw_pavilion)·체포 클로즈업 세 컷(a2.arrest)이 근거
@@ -56857,7 +57086,9 @@ MC.addEvents({
         { "op": "sfx", "id": "gasp", "gain": 0.6 },
         { "op": "emote", "id": "player", "kind": "sweat" },
         // fixer-s4p1: sys 「경험치 유지 · 재료 절반 손실」 상자를 뺐다 — 빈 하루는 무음 자리(계약 §0.2, sys 안내 금지). 손실은 둘째 줄이 이미 전한다
-        { "op": "say", "who": "narr", "t": [ "자루 곁에서 눈을 떴다.", "꿈에서 쥐고 있던 것들이 반쯤 빠져나갔다." ] } ], [
+        // [r3 B2] 애도 구간에선 꿈에서 져도 재료를 잃지 않는다(battle_core finish: s4.on) — 「반쯤 빠져나갔다」 줄을 뺐다.
+        //   되돌리기: t를 [ "자루 곁에서 눈을 떴다.", "꿈에서 쥐고 있던 것들이 반쯤 빠져나갔다." ]로(코어 쪽 s4.on 조건도 함께)
+        { "op": "say", "who": "narr", "t": "자루 곁에서 눈을 떴다." } ], [
         W(600),
         { "op": "emote", "id": "player", "kind": "dots", "ms": 1100 } ]),
       { "op": "grow" },
@@ -58173,6 +58404,9 @@ MC.addEvents({
       W(500),
       { "op": "face", "id": "captain", "dir": "player" },
       W(1200),                                                           // 선장이 본다
+      // [r3 B1] 「한 모금 더」를 자동에서 탭으로 — 선장이 보는 앞에서 플레이어가 태연히 한 모금 더 마신다(속마음은 여전히 없음). 탭만 이어지는 최장 11 → 9.
+      //   되돌리기: 이 꼬리표 주석 두 줄과 아래 op 1줄(custom deduce tap)을 지운다
+      { "op": "custom", "id": "deduce", "args": { "stage": "tap", "id": "gourd", "hint": "한 모금 더 마신다." } },
       SFX("gourd", { "pitch": 0.92 }), { "op": "jump", "id": "player", "h": 1, "ms": 120 },   // 한 모금 더(당테스 쪽 속마음은 두지 않는다)
       W(900),
       SAY("captain", "……몰타 사람은 대포 소리에\n눈도 깜짝 안 하는군."),
