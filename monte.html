@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.24-paperball';
+  var VERSION = '0.7.25-shout';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -630,6 +630,17 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       try { wk = new Worker(URL.createObjectURL(new Blob(['setInterval(function(){postMessage(0)},16)'], { type: 'text/javascript' }))); wk.onmessage = beat; wk.onerror = () => { wk = null; setInterval(beat, 16); }; } catch (_) { wk = null; }
       if (!wk) setInterval(beat, 16);
     }
+    // [r3 A1] 화면 켜짐 유지 — 손대지 않고 보는 긴 장면(S4 임종 약 57초, 코믹 30초 안팎)에서 폰 화면이 꺼지지 않게.
+    // 첫 입력 때 요청하고, 화면으로 돌아오면(숨김이 풀리면 브라우저가 놓아 버린다) 다시 얻는다. 지원하지 않는 브라우저는 조용히 넘어감(앱 포장 때는 플러그인)
+    let wake = null, wakeBusy = false;
+    const wakeUp = () => {
+      if (wake || wakeBusy || document.hidden || !navigator.wakeLock || !navigator.wakeLock.request) return;
+      wakeBusy = true;
+      navigator.wakeLock.request('screen').then(l => { wake = l; l.addEventListener('release', () => { wake = null; }); }).catch(() => {}).then(() => { wakeBusy = false; });
+    };
+    window.addEventListener('pointerdown', wakeUp, true);
+    window.addEventListener('keydown', wakeUp, true);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeUp(); });
     MC.gfx.onResize(() => { needRender = true; });
     requestAnimationFrame(rafLoop);
   }
@@ -4686,6 +4697,19 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     return s;
   }
 
+  // [r3 A2] 업데이트로 맵 id가 바뀌어도 기록을 버리지 않는다. 맵 id를 바꾸면 여기에 '옛 id: 새 id' 한 줄을 더한다.
+  // 표에도 없으면 그 막의 거점(act 1 = 마르세유 항구, act 3~ = 감방)으로 옮긴다. act 2(잔치~호송, 짧은 구간)는 옮길 곳이 마땅치 않아 살리지 않는다
+  const MAP_MOVED = {};
+  function rescueMap(s, maps) {
+    const to = MAP_MOVED[s.map];
+    if (to && maps[to]) { s.map = to; return 'renamed'; }
+    const id = s.act >= 3 ? 'cell' : s.act === 1 ? 'port' : null;
+    const sp = id && maps[id] && maps[id].spawns && maps[id].spawns.default;
+    if (!sp) return null;
+    s.map = id; s.x = sp[0]; s.y = sp[1]; s.dir = sp[2] || 'down';
+    return 'moved';
+  }
+
   function validate(p) {
     if (!p || p.v !== 1 || !p.state || typeof p.state !== 'object') return null;
     const s = p.state;
@@ -4693,7 +4717,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (typeof s.flags !== 'object' || typeof s.items !== 'object' || typeof s.vars !== 'object') return null;
     if (s.map != null && typeof s.map !== 'string') return null;
     const maps = MC.data && MC.data.maps;
-    if (s.map && maps && Object.keys(maps).length && !maps[s.map]) return null;
+    if (s.map && maps && Object.keys(maps).length && !maps[s.map]) { p.rescued = rescueMap(s, maps); if (!p.rescued) return null; }
     if (!(s.x >= 0 && s.y >= 0 && s.x < 1000 && s.y < 1000)) return null;
     for (const m of s.party) { if (!(m.hp >= 0) || !(m.lv >= 1 && m.lv <= 99)) return null; }
     // 빠진 필드는 새 상태 기본값으로 채움(마이그레이션)
@@ -4718,7 +4742,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       slot = slot || 'auto';
       if (!MC.state) return false;
       let json;
-      try { json = JSON.stringify({ v: 1, savedAt: Date.now(), state: MC.state }); } catch (e) { MC.core.error(e, 'save'); return false; }
+      try { json = JSON.stringify({ v: 1, ver: MC.VERSION || '', savedAt: Date.now(), state: MC.state }); } catch (e) { MC.core.error(e, 'save'); return false; }   // ver: 어느 판에서 쓴 기록인지(r3 A2)
       if (slot === 'auto') { const prev = get(KEY.auto); if (prev) set(KEY.bak, prev); }
       const ok = set(KEY[slot] || slot, json);
       // [c43-ui B8-4] 마지막 기록 시각(닻 0.8초 표시용). 이벤트 밖(필드에서 맵을 옮길 때)의 자동 기록만 — 연출 중 기록·숨겨질 때 기록은 표시하지 않는다
@@ -4737,9 +4761,11 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         p = cands[0] || null;
       }
       if (!p) return null;
+      SV.rescued = p.rescued === 'moved';          // continueGame이 들어간 뒤 토스트 한 줄(sys.saveMoved)
       MC.state = p.state;
       return p.state;
     },
+    rescued: false,
     info(slot) {                                   // {savedAt, map, x, y, lv, dispName, playMs} | null — 타이틀 표시용
       const p = slot ? read(slot) : ['auto', 'manual', 'bak'].map(read).filter(Boolean).sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0))[0];
       if (!p) return null;
@@ -4747,7 +4773,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       return { savedAt: p.savedAt, map: s.map, x: s.x, y: s.y, lv: s.party[0].lv, dispName: s.dispName, playMs: s.playMs, year: s.year, act: s.act,
         cleared: !!(s.flags && s.flags['s4.clear']) };   // (S4 H2-4) 엔딩까지 본 세이브 → 타이틀 title.cleared「{name} · 끝」
     },
-    hasAny: () => !!(read('auto') || read('manual') || read('bak')),
+    // [r3 A2] 읽을 수 없는 기록이라도 원문이 남아 있으면 true — 「처음부터」가 확인 없이 덮어쓰지 않게(타이틀 이어하기 여부는 info()가 따로 정한다)
+    hasAny: () => !!(get(KEY.auto) || get(KEY.manual) || get(KEY.bak)),
     wipe() { del(KEY.auto); del(KEY.manual); del(KEY.bak); },   // KEY.clear(2장 인계)는 건드리지 않는다
     // (S4 계약 §F-2) 2장 인계 기록 — {v:1, at, ver, last, best}. last = 이번 것, best = 등급이 더 높거나 같으면(S>A>B) 이번 것
     writeClear(rec) {
@@ -13479,6 +13506,16 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         const li = Math.floor(B.rng() * lines.length);
         S.push({ t: 'msg', text: tx(lines[li]), style: 'think', wait: 'short' });
         if (LB) LB.set('sk.' + c.id, li + 1);
+      } else {
+        // [r3 외침] 두 번째부터는 쓸 때마다 짧은 외침 한 줄 — 바로 앞과 같은 줄은 피해서 번갈아(닳는 느낌 줄이기)
+        const sh = L(sk.shouts);
+        if (sh.length) {
+          const prev = LB ? LB.get('sh.' + c.id) - 1 : -1;
+          let si = Math.floor(B.rng() * sh.length);
+          if (sh.length > 1 && si === prev) si = (si + 1 + Math.floor(B.rng() * (sh.length - 1))) % sh.length;
+          S.push({ t: 'msg', text: tx(sh[si]), style: 'think', wait: 'short' });
+          if (LB) LB.set('sh.' + c.id, si + 1);
+        }
       }
     }
     if (sk.cureConfuse && u.st.confuse) {
@@ -42372,13 +42409,15 @@ MC.data.battle = {
       "name": "기억", "elem": "memory", "target": "one", "mp": [3, 6, 9], "power": [12, 28, 44],
       "fx": "memory", "sfx": "skill_memory", "color": "#9fd0ff",
       "desc": "지난날을 붙잡는다. 절망에 잘 듣는다.",
-      "lines": ["메르세데스는 기다린다고 했어.", "파라옹호의 돛, 소금 냄새.", "아버지가 웃으셨지. 괜찮다, 괜찮아.", "항구의 종소리가 들린다."]
+      "lines": ["메르세데스는 기다린다고 했어.", "파라옹호의 돛, 소금 냄새.", "아버지가 웃으셨지. 괜찮다, 괜찮아.", "항구의 종소리가 들린다."],
+      "shouts": ["기다린다고 했어!", "아버지, 조금만 더!", "파라옹호가 돌아온다!", "종소리가 들린다!"]   // [r3 외침] 두 번째부터 쓸 때마다 한 줄(lines는 처음 한 번)
     },
     "thought": {
       "name": "사색", "elem": "thought", "target": "one", "mp": [3, 6, 9], "power": [8, 22, 36],
       "fx": "thought", "sfx": "skill_thought", "color": "#d8b8ff", "cureConfuse": true,
       "desc": "따져 생각한다. 광기에 잘 듣고, 혼란이 풀린다.",
-      "lines": ["착오야. 이유가 있을 거야.", "생각하자. 미치지 않으려면.", "하나씩 따져 보자.", "누가, 왜? 순서대로."]
+      "lines": ["착오야. 이유가 있을 거야.", "생각하자. 미치지 않으려면.", "하나씩 따져 보자.", "누가, 왜? 순서대로."],
+      "shouts": ["하나씩 따져 보자!", "누가, 왜? 순서대로!", "생각해. 미치지 않게!", "이유가 있을 거야!"]
     },
     "endure": {
       "name": "버티기", "kind": "guard", "button": true, "target": "self", "mp": 0,
@@ -42389,31 +42428,36 @@ MC.data.battle = {
       "name": "희망", "elem": "hope", "target": "one", "mp": [4, 7, 10], "power": [15, 32, 50],
       "fx": "hope", "sfx": "skill_hope", "color": "#ffe9a0",
       "desc": "빛을 떠올린다. 분노에 잘 듣는다.",
-      "lines": ["등대는 꺼지지 않는다.", "언젠가, 반드시.", "오늘 밤을 넘길 이유가 있다."]
+      "lines": ["등대는 꺼지지 않는다.", "언젠가, 반드시.", "오늘 밤을 넘길 이유가 있다."],
+      "shouts": ["등대는 꺼지지 않아!", "언젠가, 반드시!", "오늘 밤도 넘긴다!"]
     },
     "whisper": {
       "name": "속삭임", "kind": "seal", "target": "one", "mp": [4, 4, 4], "tag": "입 막기", "priority": true,
       "fx": "whisper", "sfx": "seal", "color": "#c8b8ff",
       "desc": "먼저 움직여, 적 하나의 이번 행동을 묶는다.",
-      "lines": ["Tace. ……조용히.", "말은 칼보다 먼저 닿는다."]
+      "lines": ["Tace. ……조용히.", "말은 칼보다 먼저 닿는다."],
+      "shouts": ["Tace! 조용히!", "입을 다물어라!"]
     },
     "history": {
       "name": "역사의 교훈", "kind": "reveal", "target": "all", "mp": [2, 2, 2], "tag": "약점",
       "fx": "history", "sfx": "page", "color": "#f0d890",
       "desc": "이런 적은 전에도 있었다. 이 싸움 동안 모든 적의 약점과 노림수가 보인다.",
-      "lines": ["역사는 배신의 기록이라 하셨지.", "이런 놈은 전에도 있었다."]
+      "lines": ["역사는 배신의 기록이라 하셨지.", "이런 놈은 전에도 있었다."],
+      "shouts": ["이런 놈은 전에도 봤다!", "역사는 되풀이된다!"]
     },
     "stars": {
       "name": "별읽기", "kind": "slow", "target": "all", "mp": [5, 5, 5], "tag": "둔화", "turns": 3, "spdMul": 0.7,
       "fx": "stars", "sfx": "slow", "color": "#a8c8ff",
       "desc": "별자리를 짚는다. 적 모두의 걸음이 3라운드 느려진다.",
-      "lines": ["북극성은 저기. 흔들리지 않는다.", "별은 제자리를 지킨다."]
+      "lines": ["북극성은 저기. 흔들리지 않는다.", "별은 제자리를 지킨다."],
+      "shouts": ["북극성은 저기다!", "별은 흔들리지 않아!"]
     },
     "cold_wrath": {
       "name": "냉정한 분노", "elem": null, "target": "all", "mp": [6, 6, 6], "power": [14, 14, 14], "tag": "전체",
       "fx": "wrath", "sfx": "skill_cold_wrath", "color": "#c8c8d8",
       "desc": "모두에게 고르게 닿는다.",                              // [s44-writer B3-9] '식힌 분노' 해석은 뺀다(효과만)
-      "lines": ["차갑게. 차갑게.", "아직은. 아직은 아니다."]
+      "lines": ["차갑게. 차갑게.", "아직은. 아직은 아니다."],
+      "shouts": ["차갑게. 차갑게!", "아직은 아니다!"]
     },
     "heal_word": {
       "name": "치유의 말", "user": "faria", "kind": "heal", "target": "lead", "cd": 1, "power": 18, "wisMul": 1.0,
@@ -42439,13 +42483,15 @@ MC.data.battle = {
       "name": "드러냄", "kind": "reveal1", "target": "one", "mp": [3, 3, 3], "tag": "약점·HP",
       "fx": "unveil", "sfx": "skill_unveil", "color": "#ffb060",
       "desc": "불에 쬐듯 적 하나를 드러낸다. 약점·HP·이번 행동이 보이고, 모으던 힘은 흩어진다.",
-      "lines": ["불에 쬐면 드러난다."]
+      "lines": ["불에 쬐면 드러난다."],
+      "shouts": ["불에 쬐면 드러난다!"]
     },
     "breathe": {
       "name": "숨 고르기", "kind": "selfheal", "target": "self", "mp": [4, 4, 4], "tag": "회복", "pct": 0.3, "cure": ["confuse"], "cureConfuse": true,
       "fx": "breathe", "sfx": "skill_breathe", "color": "#a8e0d0",
       "desc": "스스로 숨을 고른다. HP 30%를 되찾고 혼란이 풀린다.",
-      "lines": ["천천히. 셋까지 세고."]
+      "lines": ["천천히. 셋까지 세고."],
+      "shouts": ["하나, 둘, 셋……", "천천히. 셋까지."]
     },
     "advice": {
       "name": "조언", "user": "faria", "kind": "advice", "target": "lead", "cd": 0, "last": true,
@@ -42480,19 +42526,19 @@ MC.data.battle = {
     "memory_pipe": {
       "name": "기억 조각", "full": "기억 조각: 아버지의 파이프 냄새", "short": "파이프 냄새", "kind": "use", "battle": true, "field": true,
       "effect": { "mp": 10, "cure": ["confuse"] }, "sfx": "mp_heal",
-      "recall": "…저녁이면 창가에서 파이프를 무셨지.",
+      "recall": "……저녁이면 창가에서 파이프를 무셨지.",
       "desc": "아버지의 파이프 냄새. 정신력 10, 혼란이 풀린다."
     },
     "memory_sea": {
       "name": "기억 조각", "full": "기억 조각: 등대 쪽 바다", "short": "등대 쪽 바다", "kind": "use", "battle": true, "field": true,
       "effect": { "mp": 15, "cure": ["confuse"] }, "sfx": "mp_heal",
-      "recall": "…등대를 오른쪽에 두고 헤엄쳤지.",
+      "recall": "……등대를 오른쪽에 두고 헤엄쳤지.",
       "desc": "등대 쪽 바다의 기억. 정신력 15, 혼란이 풀린다."
     },
     "memory_bell": {
       "name": "기억 조각", "full": "기억 조각: 정오의 종", "short": "정오의 종", "kind": "use", "battle": true, "field": true,
       "effect": { "hpPct": 0.45, "cure": ["rage"] }, "sfx": "heal",
-      "recall": "…항구의 종이 정오를 친다.",
+      "recall": "……항구의 종이 정오를 친다.",
       "desc": "정오의 종소리. HP 45%, 격앙이 풀린다."
     },
     "candle": {
@@ -42501,7 +42547,7 @@ MC.data.battle = {
     },
     "inspector_note": {
       "name": "감찰관의 약속", "kind": "key", "battle": false, "field": false,
-      "descVar": "promise", "descs": ["확인하겠다고 했다.", "확인하는 중일 것이다.", "확인했을까.", "…누가 뭘 약속했더라.", "……"],
+      "descVar": "promise", "descs": ["확인하겠다고 했다.", "확인하는 중일 것이다.", "확인했을까.", "……누가 뭘 약속했더라.", "……"],
       "desc": "확인하겠다고 했다."
     },
     "sardine": { "name": "정어리", "kind": "key", "battle": false, "field": false, "desc": "은빛 정어리 한 두름. 아버지 저녁상에." },
@@ -42516,7 +42562,7 @@ MC.data.battle = {
     "memory_scratch": {
       "name": "기억 조각", "full": "기억 조각: 벽 너머 긁는 소리", "short": "긁는 소리", "kind": "use", "battle": true, "field": true,
       "effect": { "mp": 20, "cure": ["confuse"] }, "sfx": "mp_heal",
-      "recall": "…처음 그 소리를 들은 밤.",
+      "recall": "……처음 그 소리를 들은 밤.",
       "desc": "벽 너머 긁는 소리의 기억. 정신력 20, 혼란이 풀린다."
     },
     "fish_bone": { "name": "생선 뼈", "kind": "mat", "desc": "바늘이 될 수도 있다." },
@@ -42542,31 +42588,31 @@ MC.data.battle = {
     "bite":   { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 물어뜯었다!" },
     "cower":  { "kind": "guard", "mul": 2, "msg": "{actor}{은/는} 몸을 잔뜩 움츠렸다." },
     "crush":  { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 짓눌러 온다!" },
-    "seep":   { "kind": "drain", "n": 2, "msg": "{actor} 틈으로 찬 물이 스며든다…", "none": "스며들 마음이 남아 있지 않다." },
+    "seep":   { "kind": "drain", "n": 2, "msg": "{actor} 틈으로 찬 물이 스며든다……", "none": "스며들 마음이 남아 있지 않다." },
     "harden": { "kind": "guard", "mul": 2, "msg": "{actor}{이/가} 굳게 닫혔다." },
     "mutter": { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 귓가에서 되뇐다!" },
-    "mix_up": { "kind": "confuse", "acc": 0.7, "turns": 2, "msg": "착오예요, 착오… 말이 뒤엉킨다!", "miss": "{target}{은/는} 고개를 저었다." },
+    "mix_up": { "kind": "confuse", "acc": 0.7, "turns": 2, "msg": "착오예요, 착오…… 말이 뒤엉킨다!", "miss": "{target}{은/는} 고개를 저었다." },
     "despair_crush": { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 온 무게로 짓누른다!" },
-    "despair_drain": { "kind": "drain", "all": true, "msg": "{actor}{이/가} 마음을 빨아들인다…", "none": "빨아들일 마음도 남지 않았다." },
+    "despair_drain": { "kind": "drain", "all": true, "msg": "{actor}{이/가} 마음을 빨아들인다……", "none": "빨아들일 마음도 남지 않았다." },
     "despair_end":   { "kind": "overwhelm", "msg": "" },
 
     "spark":   { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 잉크 불똥을 튀겼다!" },
-    "swell":   { "kind": "charge", "release": "burst", "mult": 2.2, "msg": "{actor}{이/가} 잉크를 머금고 부풀어 오른다…" },
+    "swell":   { "kind": "charge", "release": "burst", "mult": 2.2, "msg": "{actor}{이/가} 잉크를 머금고 부풀어 오른다……" },
     "burst":   { "kind": "atk", "power": 1, "selfDestruct": true, "releaseMsg": "{actor}{이/가} 활활 타오르며 터졌다!" },
     "scratch": { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 빗금을 긋듯 할퀸다!" },
     "count":   { "kind": "confuse", "acc": 0.7, "turns": 2, "msg": "세어 봐. 하나, 둘, 셋, 넷……", "miss": "{target}{은/는} 세지 않았다." },
     "hide":    { "kind": "guard", "mul": 2, "msg": "{actor}{이/가} 벽 틈으로 숨었다." },
     "press":   { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 무겁게 내려앉는다!" },
-    "erase":   { "kind": "drain", "n": 4, "msg": "{actor}{이/가} 이름을 지운다… 마음이 새어 나간다!", "none": "지울 마음이 남아 있지 않다." },
+    "erase":   { "kind": "drain", "n": 4, "msg": "{actor}{이/가} 이름을 지운다…… 마음이 새어 나간다!", "none": "지울 마음이 남아 있지 않다." },
     "oblivion":{ "kind": "dispel", "msg": "{actor}{이/가} 배운 것을 덮어 버렸다!" },
     "gnaw":    { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 칼날로 물어뜯었다!" },
-    "grind":   { "kind": "charge", "release": "stab", "mult": 2.0, "msg": "{actor}{이/가} 이를 간다…" },
+    "grind":   { "kind": "charge", "release": "stab", "mult": 2.0, "msg": "{actor}{이/가} 이를 간다……" },
     "stab":    { "kind": "atk", "power": 1, "releaseMsg": "{actor}{이/가} 칼을 내리꽂는다!" },
 
     "rv_slash":   { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 붉은 소매로 후려친다!" },
     "rv_counter": { "kind": "counter", "pct": 0.5, "msg": "{actor}{이/가} 되갚을 태세를 갖췄다." },
-    "rv_tempt":   { "kind": "tempt", "msg": "{actor}{이/가} 귓가에 바짝 다가선다…" },
-    "rv_charge":  { "kind": "charge", "release": "rv_crush", "mult": 2.2, "msg": "{actor}{이/가} 네 이름을 끌어모은다…" },
+    "rv_tempt":   { "kind": "tempt", "msg": "{actor}{이/가} 귓가에 바짝 다가선다……" },
+    "rv_charge":  { "kind": "charge", "release": "rv_crush", "mult": 2.2, "msg": "{actor}{이/가} 네 이름을 끌어모은다……" },
     "rv_crush":   { "kind": "atk", "power": 1, "lead": true, "releaseMsg": "{actor}{이/가} 네 이름을 한꺼번에 내리친다!" },
     "rv_rush":    { "kind": "atk", "power": 0.8, "msg": "{actor}{이/가} 한 번 더 덮쳐 온다!" },
 
@@ -42575,40 +42621,40 @@ MC.data.battle = {
     "ic_bind":    { "kind": "bind", "lead": true, "acc": 0.8, "turns": 1, "msg": "{actor}{이/가} 발목을 휘감는다!", "miss": "{target}{은/는} 사슬을 걷어찼다." },
     "ic_squeeze": { "kind": "atk", "power": 1, "lead": true, "bindMul": 2, "msg": "{actor}{이/가} 사슬을 조인다!" },
     "st_crash":   { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 덮쳐 온다!" },
-    "st_pull":    { "kind": "drain", "n": 6, "msg": "{actor}{이/가} 발목을 끌어당긴다… 마음이 가라앉는다!", "none": "끌려갈 마음이 남아 있지 않다." },
+    "st_pull":    { "kind": "drain", "n": 6, "msg": "{actor}{이/가} 발목을 끌어당긴다…… 마음이 가라앉는다!", "none": "끌려갈 마음이 남아 있지 않다." },
     "st_flood":   { "kind": "heal", "self": true, "pct": 0.15, "below": 0.85, "msg": "밀물이 들어온다. {actor}{이/가} 불어났다." },
-    "ww_whisper": { "kind": "confuse", "acc": 0.7, "turns": 2, "msg": "{actor}{이/가} 귓가에 속삭인다… 생각이 흐트러진다!", "miss": "{target}{은/는} 귀를 막았다." },
+    "ww_whisper": { "kind": "confuse", "acc": 0.7, "turns": 2, "msg": "{actor}{이/가} 귓가에 속삭인다…… 생각이 흐트러진다!", "miss": "{target}{은/는} 귀를 막았다." },
     "ww_scrape":  { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 벽을 긁어 댄다!" },
-    "ww_echo":    { "kind": "echo", "msg": "{actor}{이/가} 메아리친다… {target}{이/가} 겹쳐 보인다!" },
+    "ww_echo":    { "kind": "echo", "msg": "{actor}{이/가} 메아리친다…… {target}{이/가} 겹쳐 보인다!" },
     "rc_turn":    { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 장을 거꾸로 넘기며 덮친다!" },
-    "rc_count":   { "kind": "confuse", "acc": 0.6, "turns": 2, "msg": "어제가 오늘이야. 내일은 1819년…", "miss": "{target}{은/는} 날짜를 되짚었다." },
+    "rc_count":   { "kind": "confuse", "acc": 0.6, "turns": 2, "msg": "어제가 오늘이야. 내일은 1819년……", "miss": "{target}{은/는} 날짜를 되짚었다." },
 
     /* 광기의 왕(scripts.madking) */
     "mk_scratch": { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 빗금을 할퀴듯 내리긋는다!" },
     "mk_riddle":  { "kind": "confuse", "acc": 0.6, "turns": 2, "msg": "몇 년이게? 몇 년이게? 몇 년이게?", "miss": "{target}{은/는} 제 빗금을 떠올렸다." },
-    "mk_gather":  { "kind": "charge", "release": "mk_storm", "mult": 2.0, "msg": "{actor}{이/가} 찢긴 달력 장을 끌어모은다…" },
+    "mk_gather":  { "kind": "charge", "release": "mk_storm", "mult": 2.0, "msg": "{actor}{이/가} 찢긴 달력 장을 끌어모은다……" },
     "mk_storm":   { "kind": "atk", "power": 1, "releaseMsg": "{actor}{이/가} 날짜를 한꺼번에 쏟아붓는다!" },
 
     /* S3 B4(얕은 판) — 낭독(전체) · 불타기(자기 HP −20%, 힘 ×1.3) · 삼킨다(다음 라운드 행동 불가) · 전체 혼란 · 꺼질 듯(회피 + 다음 라운드 적 회복) */
     "bl_accuse":  { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 고발장을 들이민다!" },
-    "bl_seal":    { "kind": "charge", "release": "bl_read", "mult": 2.0, "msg": "{actor}{이/가} 편지를 봉한다…" },
+    "bl_seal":    { "kind": "charge", "release": "bl_read", "mult": 2.0, "msg": "{actor}{이/가} 편지를 봉한다……" },
     "bl_read":    { "kind": "atk", "power": 1, "all": true, "releaseMsg": "{actor}{이/가} 봉한 편지를 소리 내어 읽는다!" },
     "bl_burn":    { "kind": "burn", "pct": 0.2, "mul": 1.3, "msg": "{actor}{이/가} 제 몸에 불을 붙였다!" },
     "bs_crush":   { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 온 무게로 짓누른다!" },
-    "bs_weight":  { "kind": "drain", "n": 8, "msg": "{actor}{이/가} 무게를 얹는다… 마음이 새어 나간다!", "none": "더 얹을 무게도 남지 않았다." },
-    "bs_swallow": { "kind": "swallow", "turns": 1, "msg": "{actor}{이/가} 입을 크게 벌렸다…" },
+    "bs_weight":  { "kind": "drain", "n": 8, "msg": "{actor}{이/가} 무게를 얹는다…… 마음이 새어 나간다!", "none": "더 얹을 무게도 남지 않았다." },
+    "bs_swallow": { "kind": "swallow", "turns": 1, "msg": "{actor}{이/가} 입을 크게 벌렸다……" },
     "gc_laugh":   { "kind": "confuse", "all": true, "acc": 0.6, "turns": 2, "msg": "{actor}{이/가} 낄낄 웃는다! 불빛이 뒤엉킨다!", "miss": "{target}{은/는} 눈을 감았다." },
     "gc_spark":   { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 불똥을 튀긴다!" },
-    "gc_flicker": { "kind": "flicker", "evade": 0.5, "heal": 0.2, "msg": "{actor}{이/가} 꺼질 듯 흔들린다…" },
+    "gc_flicker": { "kind": "flicker", "evade": 0.5, "heal": 0.2, "msg": "{actor}{이/가} 꺼질 듯 흔들린다……" },
 
     /* S4 최종전 '다시, 절망'(scripts.despair2) — 1단계: 짓누름·흡수(MP 15) / 2단계: 짓누름 40·흡수(MP 10) 25·무너지는 벽(차지 ×2.5) 20·둔화(3라운드) 15 */
     "d1_crush":  { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 온 무게로 짓누른다!" },
-    "d1_drain":  { "kind": "drain", "n": 15, "msg": "{actor}{이/가} 마음을 빨아들인다…", "none": "빨아들일 마음도 남지 않았다." },
+    "d1_drain":  { "kind": "drain", "n": 15, "msg": "{actor}{이/가} 마음을 빨아들인다……", "none": "빨아들일 마음도 남지 않았다." },
     "d2_crush":  { "kind": "atk", "power": 1, "msg": "{actor}{이/가} 온 무게로 짓누른다!" },
-    "d2_drain":  { "kind": "drain", "n": 10, "msg": "{actor}{이/가} 마음을 빨아들인다…", "none": "빨아들일 마음도 남지 않았다." },
-    "d2_wall":   { "kind": "charge", "release": "d2_fall", "mult": 2.5, "msg": "{actor}{이/가} 벽을 끌어당긴다…" },
+    "d2_drain":  { "kind": "drain", "n": 10, "msg": "{actor}{이/가} 마음을 빨아들인다……", "none": "빨아들일 마음도 남지 않았다." },
+    "d2_wall":   { "kind": "charge", "release": "d2_fall", "mult": 2.5, "msg": "{actor}{이/가} 벽을 끌어당긴다……" },
     "d2_fall":   { "kind": "atk", "power": 1, "lead": true, "releaseMsg": "벽이 통째로 무너져 내린다!" },
-    "d2_slow":   { "kind": "slow", "turns": 3, "spdMul": 0.7, "msg": "{actor}{이/가} 발목에 무게를 단다…", "onMsg": "{target}의 걸음이 무거워졌다." }
+    "d2_slow":   { "kind": "slow", "turns": 3, "spdMul": 0.7, "msg": "{actor}{이/가} 발목에 무게를 단다……", "onMsg": "{target}의 걸음이 무거워졌다." }
   },
 
   "enemies": {
@@ -42617,7 +42663,7 @@ MC.data.battle = {
       "sprite": "en_shadow_rat",
       "ai": [ { "act": "bite", "w": 80 }, { "act": "cower", "w": 20 } ],
       "drops": [ { "id": "bread", "p": 0.1 } ],
-      "lines": { "appear": "찍. 빵은 하루 한 번이야.", "defeat": "찍… 내일 또 올게." }
+      "lines": { "appear": "찍. 빵은 하루 한 번이야.", "defeat": "찍…… 내일 또 올게." }
     },
     "silent_door": {
       "name": "대답 없는 문", "fam": "despair", "lv": 2, "hp": 22, "mp": 0, "str": 5, "def": 7, "spd": 2, "wis": 1, "exp": 6,
@@ -42631,7 +42677,7 @@ MC.data.battle = {
       "sprite": "en_mistake",
       "ai": [ { "act": "mutter", "w": 60 }, { "act": "mix_up", "w": 40 } ],
       "drops": [],
-      "lines": { "appear": "착오입니다, 착오예요…", "defeat": "착오…였나? 누구의?" }
+      "lines": { "appear": "착오입니다, 착오예요……", "defeat": "착오……였나? 누구의?" }
     },
     "despair1": {
       "name": "절망", "fam": "despair", "lv": 3, "hp": 60, "mp": 0, "str": 10, "def": 10, "spd": 3, "wis": 8, "exp": 20,
@@ -42647,7 +42693,7 @@ MC.data.battle = {
       "sprite": "en_left_hand",
       "ai": [ { "act": "spark", "w": 60 }, { "act": "swell", "w": 40 } ],
       "drops": [ { "id": "oil", "p": 0.35 } ],
-      "lines": { "appear": "왕실의 친구가 알립니다…", "defeat": "……잉크가 번졌다." }
+      "lines": { "appear": "왕실의 친구가 알립니다……", "defeat": "……잉크가 번졌다." }
     },
     "tally_half": {
       "name": "세다 만 빗금", "fam": "madness", "lv": 5, "hp": 28, "mp": 0, "str": 12, "def": 8, "spd": 16, "wis": 5, "exp": 11,
@@ -42785,13 +42831,13 @@ MC.data.battle = {
     "b1_rat3":      { "members": ["shadow_rat", "shadow_rat", "shadow_rat"], "floor": "b1", "appear": "그림자 쥐 떼가 몰려왔다!" },
     "b1_rat_door":  { "members": ["shadow_rat", "silent_door"], "floor": "b1", "appear": "문 앞에 그림자 쥐가 웅크리고 있다!" },
     "b1_rat2_door": { "members": ["shadow_rat", "silent_door", "shadow_rat"], "floor": "b1", "appear": "그림자 쥐들이 문을 지키고 있다!" },
-    "b1_mistake":   { "members": ["mistake"], "floor": "b1", "appear": "누군가 속삭인다. …착오라는 말이다.",
+    "b1_mistake":   { "members": ["mistake"], "floor": "b1", "appear": "누군가 속삭인다. ……착오라는 말이다.",
                       "tutorial": { "flag": "bt.tut_mistake", "who": "think", "t": "이 그림자는 절망과 다르다. [사색]을 써 보자." } },
     "despair1":     { "members": ["despair1"], "floor": "b1", "appear": "빗금 사이로 절망이 차오른다.", "boss": true, "canFlee": false, "bgm": "boss_despair", "script": "despair1", "stage": "despair" },
 
     "b2_hand":         { "members": ["left_hand"], "floor": "b2", "stage": "b2", get "appear"() { return LEFT() ? "잉크 냄새. 왼손의 글씨가 타오른다!" : "잉크 냄새. 비뚤어진 글씨가 타오른다!"; } },   // [s44-writer B3-26]
     "b2_tally":        { "members": ["tally_half"], "floor": "b2", "stage": "b2", "appear": "세다 만 빗금이 벽에서 기어 나왔다!" },
-    "b2_forgot":       { "members": ["forgotten"], "floor": "b2", "stage": "b2", "appear": "이름이 지워진 종이가 흘러내린다…" },
+    "b2_forgot":       { "members": ["forgotten"], "floor": "b2", "stage": "b2", "appear": "이름이 지워진 종이가 흘러내린다……" },
     "b2_knife":        { "members": ["catalan_knife"], "floor": "b2", "stage": "b2", "appear": "탁자에 꽂힌 칼이 몸을 일으켰다!" },
     "b2_hand2":        { "members": ["left_hand", "left_hand"], "floor": "b2", "stage": "b2", get "appear"() { return LEFT() ? "왼손의 글씨가 두 장 겹쳐 타오른다!" : "비뚤어진 글씨가 두 장 겹쳐 타오른다!"; } },
     "b2_hand_tally":   { "members": ["left_hand", "tally_half"], "floor": "b2", "stage": "b2", "appear": "빗금 사이로 잉크 불씨가 튄다!" },
@@ -42822,7 +42868,7 @@ MC.data.battle = {
   },
 
   "tutorials": {
-    "first":  { "flag": "bt.tut_first",  "who": "think", "t": "맞서기만 해서는 버거울 것 같다. …[배운 것]을 떠올려 보자." },
+    "first":  { "flag": "bt.tut_first",  "who": "think", "t": "맞서기만 해서는 버거울 것 같다. ……[배운 것]을 떠올려 보자." },
     "endure": { "flag": "bt.tut_endure", "who": "think", "t": "정신력이 바닥났다. [버티기]로 숨을 고르자." },
     "party":  { "flag": "bt.tut_party", "lines": [ { "who": "think", "t": "……이번엔 혼자가 아니다." }, { "who": "sys", "t": "[맡기기]를 켜 두면 신부님이 알아서 움직인다." } ] },
     "auto":   { "flag": "bt.tut_auto", "t": "신부님 칸을 누르면 다시 직접 청할 수 있다." }
@@ -42872,7 +42918,7 @@ MC.data.battle = {
         "2": { "act": "despair_drain", "music": [ ["tempoTo", 100, 2], ["filterTo", 2500, 2] ] },
         "3": { "act": "despair_end", "intent": "unknown", "shatter": ["item", "flee"] }
       },
-      "finale": { "line": "이제 그만 긋자.", "text": "절망이 모든 것을 덮었다…", "exp": 20, "expLabel": "견뎌낸 시간" }
+      "finale": { "line": "이제 그만 긋자.", "text": "절망이 모든 것을 덮었다……", "exp": 20, "expLabel": "견뎌낸 시간" }
     },
 
     /* 복수심(C-8 b, 계약 §C-9): 순환 [공격→되갚음 태세→공격→유혹], HP 40% 이하는 차지↔참격 번갈아(참격은 늘 당테스, ×2.2), 분노 스택 2면 2라운드 폭주.
@@ -42964,7 +43010,7 @@ MC.data.battle = {
       "react": {
         "memory":  { "dantes": ["메르세데스는 기다린다고 했다."], "byVar": "toast", "replace": true,
                      "byVal": { "A": "선장님은 내게 배를 맡기셨다.", "B": "아버지를 모시겠다고 했다." },
-                     "despair": ["셀 수도 없는 해야.\n누가 그만큼 기다려?"], "feed": 0.1, "feedLog": "기억이 절망을 먹였다…",
+                     "despair": ["셀 수도 없는 해야.\n누가 그만큼 기다려?"], "feed": 0.1, "feedLog": "기억이 절망을 먹였다……",
                      "again": { "dantes": ["……기다린다고 했다."], "despair": ["또 세는 거야?"] } },
         "breathe": { "dantes": ["천천히. 셋까지……"], "despair": ["누가 세 줘?\n이제 아무도 없어."], "healMul": 0.5,
                      "again": { "dantes": ["……"], "despair": ["세어 줄 사람은 없어."] } },
@@ -43041,7 +43087,7 @@ MC.data.battle = {
     "fleeFail": "달아날 틈이 없다!",
     "fleeNo": "달아날 곳이 없다.",
     "kill": "{target}{을/를} 물리쳤다!",
-    "lose": "{actor}{은/는} 쓰러졌다…",
+    "lose": "{actor}{은/는} 쓰러졌다……",
     "pray": "{actor}{은/는} 무릎을 꿇고 기도를 올린다.",
     "confused": "{actor}{은/는} 머릿속이 뒤엉켰다!",
     "confuseIdle": "{actor}{은/는} 멍하니 서 있다.",
@@ -43053,7 +43099,7 @@ MC.data.battle = {
     "enemyConfused": "{actor}{은/는} 제자리에서 맴돈다.",
     "surprised": "{actor}{은/는} 아직 눈치채지 못했다.",
     "release": "{actor}{이/가} 모은 힘을 터뜨린다!",
-    "charge": "{actor}{이/가} 숨을 모은다…",
+    "charge": "{actor}{이/가} 숨을 모은다……",
     "hpHeal": "HP {n} 회복",
     "mpHeal": "정신력 {n} 회복",
     "mpRecover": "마음을 추슬렀다.",
@@ -43066,7 +43112,7 @@ MC.data.battle = {
     "teachOn": "{target}의 힘과 지혜가 차오른다!",
     "healOn": "{target}의 HP가 {n} 돌아왔다.",
     "counterHit": "되갚음! {target}{이/가} {n}의 피해를 돌려받았다!",
-    "stackUp": "{actor}의 분노가 쌓인다…",
+    "stackUp": "{actor}의 분노가 쌓인다……",
     "frenzyOn": "{actor}{이/가} 폭주한다!",
     "frenzyEnd": "{actor}의 폭주가 가라앉았다.",
     "rageOn": "{actor}{은/는} 분노에 휩싸였다!",
@@ -43074,8 +43120,8 @@ MC.data.battle = {
     "rageLock": "분노가 치민다! [맞선다]나 [도구]뿐이다.",
     "defBreak": "{actor}의 방어가 무너졌다!",
     "dispel": "{target}의 가르침이 지워졌다.",
-    "dispelNone": "…덮을 것이 없었다.",
-    "temptLog": "{actor}{이/가} 귓가에 속삭인다…",
+    "dispelNone": "……덮을 것이 없었다.",
+    "temptLog": "{actor}{이/가} 귓가에 속삭인다……",
     "enrage": "동료가 쓰러지자 {actor}{이/가} 날을 세웠다!",
     "selfDestruct": "{actor}{은/는} 스스로 타 버렸다.",
     "cdWait": "아직 쓸 수 없다. {n}라운드 뒤.",
@@ -43119,7 +43165,7 @@ MC.data.battle = {
     "unveilCharge": "{target}{이/가} 모으던 힘이 불빛에 흔들린다!",
     "evadeOn": "{actor}의 불빛이 흔들린다. 맞히기 어렵다!",
     "evadeMiss": "불빛이 흔들려 빗나갔다!",
-    "rekindle": "{actor}{이/가} 다시 타오른다…",
+    "rekindle": "{actor}{이/가} 다시 타오른다……",
     "burnOn": "{actor}{이/가} 불길을 끌어올렸다!",
     "emptySlot": "……",
     "swallowRip": "{actor}{은/는} 자루를 찢고 나왔다!"
@@ -45834,7 +45880,7 @@ MC.addEvents({
       { "op": "say", "who": "dantes", "face": "smile", "t": "두 잔이요." },
       // 첫날 「딱 한 번.」을 못 들었을 때만(a1.sailor 두 번째 말)
       { "op": "if", "cond": { "not": { "var": "a1.t_sailor", "gte": 2 } }, "then": [
-        { "op": "say", "who": "sailor", "t": "나도 젊을 땐 거기까지 갔었지.{p:300}\n딱 한 번. 그러고 사흘을 앓았네." } ] },
+        { "op": "say", "who": "sailor", "t": [ "나도 젊을 땐 거기까지 갔었지.", "딱 한 번. 그러고 사흘을 앓았네." ] } ] },   // [r3 A9] 한 상자 4줄 → 둘
       { "op": "jump", "id": "luc_s", "h": 5, "ms": 220 },
       { "op": "say", "who": "boy", "t": "오른쪽이죠?{p:200} 오른쪽!" },
       { "op": "say", "who": "dantes", "t": "잘 봐 둬." },
@@ -48366,7 +48412,7 @@ MC.addEvents({
       { "op": "say", "who": "faria", "t": [ "빗금 세던 사람이 이젠 동사를 세는군.", "삼 년에 삼백 개.{p:200}\n벽이 모자라겠군." ] },
       { "op": "say", "who": "dantes", "t": "셔츠 스무 장 분량의 수업 덕분이지요." },
       { "op": "say", "who": "faria", "face": "laugh", "t": "허허.{p:200} 덕분에 내가 입을 셔츠가 없네." },
-      { "op": "say", "who": "sys", "t": "신부님과 말하면 수업·이야기.\n바닥 구멍은 땅굴, 침대는 꿈으로." },
+      { "op": "say", "who": "sys", "t": [ "신부님과 말하면 수업·이야기.", "바닥 구멍은 땅굴, 침대는 꿈으로." ] },   // [r3 A9] 한 상자 4줄 → 둘
       { "op": "set", "flag": "a4.hub_tut" },
       { "op": "save", "slot": "auto" }
     ],
@@ -51108,7 +51154,7 @@ MC.addEvents({
         "*": "그자가 날마다 쓰던 게 있지.{p:200} 숫자 말일세.",
         "letter": "그건 투서일세.{p:200} 그자가 평소에 쓴 글씨는?" }),
       { "op": "say", "who": "dantes", "t": "반듯했습니다.{p:200}\n장부 글씨는 늘." },
-      { "op": "say", "who": "faria", "face": "stern", "t": "그런데 투서는 비뚤었다." },
+      { "op": "say", "who": "faria", "face": "stern", "t": "그런데 투서는 비뚤었지." },   // [r3 A9] 파리아는 하게체
       { "op": "sfx", "id": "quill", "gain": 0.7 },
       { "op": "say", "who": "narr", "t": "신부님이 생선 뼈 펜을 왼손에 쥐었다." },
       { "op": "custom", "id": "deduce", "args": { "stage": "letter", "hold": true, "wait": "tap" } },
@@ -52470,7 +52516,7 @@ MC.addEvents({
       { "op": "fx", "kind": "dust", "at": "ladder", "n": 3 },
       { "op": "say", "who": "narr", "t": "셔츠를 꼬아 만든\n줄사다리였다." },
       { "op": "face", "id": "faria", "dir": "player" },
-      { "op": "say", "who": "faria", "t": "페네스트렐레에서 삼 년,{p:200}\n셔츠와 홑이불을 풀었네." },
+      { "op": "say", "who": "faria", "t": "여기 와서 삼 년,{p:200}\n셔츠와 홑이불을 풀었네." },   // [r3 A9] 이감 때 빼앗겼을 물건 — 원작처럼 이프 성에서 만든 것으로
       { "op": "say", "who": "faria", "t": "서른 자일세.{p:200}\n성벽 밑까지 닿지." },
       { "op": "say", "who": "think", "t": "……매듭이 헐겁다." },
       { "op": "set", "var": "knot", "v": 0 },
@@ -53640,7 +53686,7 @@ MC.addEvents({
       { "op": "say", "who": "think", "t": "……귀도는 또 누구지." },
       { "op": "say", "who": "faria", "face": "tired", "t": "얼굴이 하얗군.{p:200}\n무슨 생각인지 아네." },
       { "op": "say", "who": "faria", "t": "나는 안 미쳤네." },
-      { "op": "say", "who": "dantes", "t": "…신부님,{p:200}\n좀 누우셔야겠습니다." },
+      { "op": "say", "who": "dantes", "t": "……신부님,{p:200}\n좀 누우셔야겠습니다." },
       { "op": "set", "var": "s3tp", "v": 2 },
       { "op": "letterbox", "on": false, "ms": 300 },
       { "op": "glow", "id": "faria" }
@@ -53660,7 +53706,7 @@ MC.addEvents({
       { "op": "emote", "id": "player", "kind": "exclaim", "ms": 700 },
       { "op": "say", "who": "dantes", "t": "얘기는 내일 듣겠습니다." },
       { "op": "say", "who": "faria", "face": "stern", "t": "내일?{p:300} 내일 세 번째가 오면?" },
-      { "op": "say", "who": "faria", "t": "이 돈을 날 가둔 자들이\n영영 못 만진다는 것." },
+      { "op": "say", "who": "faria", "t": "날 가둔 자들은\n이 돈을 영영 못 만지네." },   // [r3 A9] 떠 있는 명사구 → 문장
       { "op": "say", "who": "faria", "t": "한때는 그게 내 복수였네." },
       { "op": "say", "who": "faria", "face": "smile", "t": "이젠 아닐세.{p:300} 자네가 생겼으니." },
       { "op": "face", "id": "player", "dir": "up" },
@@ -59833,6 +59879,7 @@ MC.addLang('ko', {
     "ev.saved": "기록했습니다.",
     "fmt.year": "{y}년",
     "sys.noStorage": "기록을 저장할 수 없는 환경입니다",
+    "sys.saveMoved": "저장한 자리를 찾지 못해 근처에서 이어 갑니다",
 
     "ui.cancel": "그만둔다",
     "ui.yes": "예",
@@ -60372,6 +60419,7 @@ MC.addLang('ko', {
     "ev.saved": { "w": 156, "font": "body", "lines": 2, "note": "수동 기록 토스트" },
     "fmt.year": { "w": 80, "font": "big", "note": "연도 롤 카드의 연도(한 자씩 굴러감)·메뉴 첫 쪽 오른쪽 아래 연도(small). {y}=숫자" },
     "sys.noStorage": { "w": 156, "font": "body", "lines": 2, "note": "저장 불가 환경 토스트" },
+    "sys.saveMoved": { "w": 156, "font": "body", "lines": 2, "note": "이어하기 — 업데이트로 맵이 없어져 거점으로 옮긴 기록 토스트(r3 A2)" },
 
     "ui.cancel": { "w": 64, "font": "body", "lines": 1, "note": "확인창·수업 판의 취소 단추(72×30). 이벤트 선택지 '그만둔다'(원문)와는 따로다" },
     "ui.yes": { "w": 64, "font": "body", "lines": 1, "note": "확인창 기본 '예' 단추" },
@@ -61365,13 +61413,13 @@ MC.addLang('en', {
     "기억 조각": { "t": "Memory Shard", "g": { "art": "a", "pl": "Memory Shards" } },
     "기억 조각: 아버지의 파이프 냄새": "Memory: Father’s Pipe",
     "파이프 냄새": "Pipe Smoke",
-    "…저녁이면 창가에서 파이프를 무셨지.": "...Evenings, Father would sit at the window with his pipe.",
+    "……저녁이면 창가에서 파이프를 무셨지.": "...Evenings, Father would sit at the window with his pipe.",
     "아버지의 파이프 냄새. 정신력 10, 혼란이 풀린다.": "The smell of Father’s pipe. Restores 10 Spirit; clears confusion.",
     "감찰관의 약속": { "t": "Inspector’s Promise", "g": { "art": "the", "pl": "Inspector’s Promises" } },
     "확인하겠다고 했다.": "He said he would look into it.",
     "확인하는 중일 것이다.": "He must be looking into it.",
     "확인했을까.": "Has he looked into it yet?",
-    "…누가 뭘 약속했더라.": "...Who promised what, again?",
+    "……누가 뭘 약속했더라.": "...Who promised what, again?",
     "정어리": { "t": "Sardines", "g": { "art": "some", "pl": "Sardines" } },
     "은빛 정어리 한 두름. 아버지 저녁상에.": "A string of silver sardines. For Father’s supper.",
 
@@ -61379,24 +61427,24 @@ MC.addLang('en', {
     "{actor}{이/가} 물어뜯었다!": "{actor|The} bites!",
     "{actor}{은/는} 몸을 잔뜩 움츠렸다.": "{actor|The} cowers.",
     "{actor}{이/가} 짓눌러 온다!": "{actor|The} bears down!",
-    "{actor} 틈으로 찬 물이 스며든다…": "Cold water seeps through the cracks in {actor|the}...",
+    "{actor} 틈으로 찬 물이 스며든다……": "Cold water seeps through the cracks in {actor|the}...",
     "스며들 마음이 남아 있지 않다.": "There’s no spirit left for it to seep into.",
     "{actor}{이/가} 굳게 닫혔다.": "{actor|The} shuts tight.",
     "{actor}{이/가} 귓가에서 되뇐다!": "{actor|The} murmurs in his ear, over and over!",
-    "착오예요, 착오… 말이 뒤엉킨다!": "“A mistake, a mistake...” The words tangle!",
+    "착오예요, 착오…… 말이 뒤엉킨다!": "“A mistake, a mistake...” The words tangle!",
     "{target}{은/는} 고개를 저었다.": "{target|The} shakes his head.",
     "{actor}{이/가} 온 무게로 짓누른다!": "{actor|The} presses down with all its weight!",
-    "{actor}{이/가} 마음을 빨아들인다…": "{actor|The} drains his spirit...",
+    "{actor}{이/가} 마음을 빨아들인다……": "{actor|The} drains his spirit...",
     "빨아들일 마음도 남지 않았다.": "There’s no spirit left to drain.",
 
     "그림자 쥐": { "t": "Shade Rat", "g": { "art": "a", "pl": "Shade Rats" } },
     "찍. 빵은 하루 한 번이야.": "Squeak. Bread comes once a day.",
-    "찍… 내일 또 올게.": "Squeak... Back tomorrow.",
+    "찍…… 내일 또 올게.": "Squeak... Back tomorrow.",
     "대답 없는 문": { "t": "Mute Door", "g": { "art": "a", "pl": "Mute Doors" } },
     "끼익— 아무도 없었다.": "Creeeak—no one was there.",
     "착오라는 말": { "t": "“Mistake”", "g": { "art": "-" } },
-    "착오입니다, 착오예요…": "There’s been a mistake, sir...",
-    "착오…였나? 누구의?": "Was it... a mistake? Whose?",
+    "착오입니다, 착오예요……": "There’s been a mistake, sir...",
+    "착오……였나? 누구의?": "Was it... a mistake? Whose?",
     "그림자 쥐가 튀어나왔다!": "A Shade Rat darts out!",
     "그림자 쥐 두 마리가 나타났다!": "Two Shade Rats appear!",
     "대답 없는 문이 길을 막았다.": "A Mute Door blocks the way.",
@@ -61406,10 +61454,10 @@ MC.addLang('en', {
     // [s44-writer B3-26] B2 적 이름 갈래(추리의 밤 2 전 = 비뚤어진 글씨 / 뒤 = 왼손의 글씨) — 번역 담당 검수 대상
     "비뚤어진 글씨": { "t": "Crooked Script", "g": { "art": "a", "pl": "Crooked Scripts" } },
     "왼손의 글씨": { "t": "Left-Handed Script", "g": { "art": "a", "pl": "Left-Handed Scripts" } },
-    "누군가 속삭인다. …착오라는 말이다.": "Someone is whispering.\n...“Mistake.”",
+    "누군가 속삭인다. ……착오라는 말이다.": "Someone is whispering.\n...“Mistake.”",
     "이 그림자는 절망과 다르다. [사색]을 써 보자.": "This shadow isn’t like Despair. Let me try [Reason].",
     "빗금 사이로 절망이 차오른다.": "Despair wells up between the marks.",
-    "맞서기만 해서는 버거울 것 같다. …[배운 것]을 떠올려 보자.": "Not with blows alone.\nWhat have I learned?\nMy [Skills].",
+    "맞서기만 해서는 버거울 것 같다. ……[배운 것]을 떠올려 보자.": "Not with blows alone.\nWhat have I learned?\nMy [Skills].",
     "정신력이 바닥났다. [버티기]로 숨을 고르자.": "My Spirit has run dry. I’ll [Endure] and catch my breath.",
 
     "몇 개째지?": "How many is that now?",
@@ -61430,7 +61478,7 @@ MC.addLang('en', {
     "그래, 그렇게 웅크려 있어. 오래오래.": "That’s it. Stay curled up like that. For a long, long time.",
     "하루. 이틀. 잘하고 있어.": "One day. Two days. You’re doing so well.",
     "이제 그만 긋자.": "There now. Let’s stop\nmaking the marks.",
-    "절망이 모든 것을 덮었다…": "Despair covers it all...",
+    "절망이 모든 것을 덮었다……": "Despair covers it all...",
     "견뎌낸 시간": "Time endured",
 
     "{name}{이/가} 나타났다!": "{name|A} appears!",
@@ -61447,7 +61495,7 @@ MC.addLang('en', {
     "달아날 틈이 없다!": "No chance to escape!",
     "달아날 곳이 없다.": "There’s nowhere to run.",
     "{target}{을/를} 물리쳤다!": "Defeated {target|the}!",
-    "{actor}{은/는} 쓰러졌다…": "{actor|The} collapses...",
+    "{actor}{은/는} 쓰러졌다……": "{actor|The} collapses...",
     "{actor}{은/는} 무릎을 꿇고 기도를 올린다.": "{actor|The} kneels in prayer.",
     "{actor}{은/는} 머릿속이 뒤엉켰다!": "{actor|The}’s thoughts are in a tangle!",
     "{actor}{은/는} 멍하니 서 있다.": "{actor|The} stands there, dazed.",
@@ -61459,7 +61507,7 @@ MC.addLang('en', {
     "{actor}{은/는} 제자리에서 맴돈다.": "{actor|The} spins in place.",
     "{actor}{은/는} 아직 눈치채지 못했다.": "{actor|The} hasn’t noticed yet.",
     "{actor}{이/가} 모은 힘을 터뜨린다!": "{actor|The} unleashes its gathered strength!",
-    "{actor}{이/가} 숨을 모은다…": "{actor|The} gathers itself...",
+    "{actor}{이/가} 숨을 모은다……": "{actor|The} gathers itself...",
     "HP {n} 회복": "Recovered {n} HP",
     "정신력 {n} 회복": "Recovered {n} Spirit",
     "마음을 추슬렀다.": "He steadies himself.",
@@ -61472,7 +61520,7 @@ MC.addLang('en', {
     "{target}의 힘과 지혜가 차오른다!": "{target|The}’s strength and wisdom swell!",
     "{target}의 HP가 {n} 돌아왔다.": "{target|The} recovers {n} HP.",
     "되갚음! {target}{이/가} {n}의 피해를 돌려받았다!": "Repaid in kind! {target|The} takes {n} damage in return!",
-    "{actor}의 분노가 쌓인다…": "{actor|The}’s wrath builds...",
+    "{actor}의 분노가 쌓인다……": "{actor|The}’s wrath builds...",
     "{actor}{이/가} 폭주한다!": "{actor|The} flies into a frenzy!",
     "{actor}의 폭주가 가라앉았다.": "{actor|The}’s frenzy sinks back down.",
     "{actor}{은/는} 분노에 휩싸였다!": "{actor|The} is seized by wrath!",
@@ -61480,8 +61528,8 @@ MC.addLang('en', {
     "분노가 치민다! [맞선다]나 [도구]뿐이다.": "Wrath boils over! Only [Fight] or [Items] now.",
     "{actor}의 방어가 무너졌다!": "{actor|The}’s guard is broken!",
     "{target}의 가르침이 지워졌다.": "{target|The}’s lessons are wiped away.",
-    "…덮을 것이 없었다.": "...Nothing to cover.",
-    "{actor}{이/가} 귓가에 속삭인다…": "{actor|The} whispers in his ear...",
+    "……덮을 것이 없었다.": "...Nothing to cover.",
+    "{actor}{이/가} 귓가에 속삭인다……": "{actor|The} whispers in his ear...",
     "동료가 쓰러지자 {actor}{이/가} 날을 세웠다!": "Its comrade fallen, {actor|the} hones its edge!",
     "{actor}{은/는} 스스로 타 버렸다.": "{actor|The} burns itself out.",
     "아직 쓸 수 없다. {n}라운드 뒤.": "Can’t use it yet.\n{n|plural:# more round:# more rounds}.",
@@ -76883,6 +76931,7 @@ MC.addLang('en', {
     if (spr && MC.field.setSprite) { try { MC.field.setSprite('player', spr); } catch (_) {} }
     await MC.core.waitReal(120);
     await MC.fx.fade(0, 600);
+    if (MC.save.rescued) { MC.save.rescued = false; MC.ui.toast(MC.i18n.tf('sys.saveMoved'), 3000); }   // [r3 A2] 맵을 찾지 못해 거점으로 옮긴 기록
     return true;
   };
 
