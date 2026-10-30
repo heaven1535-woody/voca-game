@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.23-caderousse';
+  var VERSION = '0.7.24-paperball';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -29720,13 +29720,19 @@ function obCrowd() {
   outline(c, 'k');
   return c;
 }
-function obPaperBall() {                          // [10-30] 구겨 던진 투서(추리의 밤 정자 되감기 — 당글라르가 구석에 버리고 페르낭이 줍는다)
+function obPaperBall() {                          // [10-30] 구겨 던진 투서(추리의 밤 정자 되감기 — 당글라르가 구석에 버리고 페르낭이 줍는다). 사용자 「둘 다」: 7×6 → 11×9(폰에서 점으로만 보여서)
   const c = new Cv(16, 16);
-  c.st(5, 9, ["..kkk..", ".kMMNk.", "kMNMXNk", "kNMMNXk", ".kXNXk.", "..kkk.."]);
+  c.st(3, 6, ["...kkkkk...", "..kMMNMMk..", ".kMMNXMNNk.", "kMNMMXNMMXk", "kMMXNMMNXNk", "kNMMNMXMNXk", ".kNXMNNXXk.", "..kXXNXXk..", "...kkkkk..."]);
+  return c;
+}
+function obPaperGlint(big) {                       // 떨어진 종이 오른쪽 위에 빛이 한 번 걸린다(큰 별 → 작은 별). 같은 칸에 겹쳐 띄운다
+  const c = new Cv(16, 16);
+  if (big) c.st(7, 1, ["....M....", "....M....", "..M.M.M..", "...MHM...", "MMMHHHMMM", "...MHM...", "..M.M.M..", "....M....", "....M...."]);
+  else c.st(9, 3, ["..M..", ".MHM.", "MHHHM", ".MHM.", "..M.."]);
   return c;
 }
 (function objTown() {
-  put('ob_paper_ball', 'tw', obPaperBall());
+  put('ob_paper_ball', 'tw', obPaperBall()); put('ob_paper_glint_0', 'tw', obPaperGlint(true)); put('ob_paper_glint_1', 'tw', obPaperGlint(false));
   put('ob_pharaon', 'tw', obPharaon()); put('ob_rowboat', 'tw', obRowboat()); put('ob_rope', 'tw', obRope());
   put('ob_board', 'tw', obBoard()); put('ob_fishstall', 'tw', obFishstall());
   put('ob_table_long', 'tw', obTableLong()); put('ob_table_round', 'tw', obTableRound()); put('ob_bench', 'tw', obBench());
@@ -46208,7 +46214,15 @@ MC.addEvents({
     { "op": "jump", "id": "rw_paper", "h": 14, "ms": 420, "async": true },
     { "op": "move", "id": "rw_paper", "path": "U2 L2", "speed": 100 },
     { "op": "sfx", "id": "paper_land" },
-    { "op": "wait", "ms": 400 },
+    { "op": "fx", "kind": "dust", "at": "rw_paper", "n": 2 },
+    { "op": "fx", "kind": "sparkle", "at": "rw_paper", "n": 4 },   // 떨어진 자리에서 한 번 반짝 — 흰 점이 아니라 '버린 종이'로 읽히게
+    { "op": "spawn", "id": "rw_glint", "sprite": "ob_paper_glint_0", "x": 4, "y": 6, "solid": false, "z": 3 },
+    { "op": "wait", "ms": 130 },
+    { "op": "despawn", "id": "rw_glint" },
+    { "op": "spawn", "id": "rw_glint", "sprite": "ob_paper_glint_1", "x": 4, "y": 6, "solid": false, "z": 3 },
+    { "op": "wait", "ms": 130 },
+    { "op": "despawn", "id": "rw_glint" },
+    { "op": "wait", "ms": 200 },
     { "op": "move", "id": "r_danglars", "path": "D1 R1", "speed": 260, "async": true },   // 당글라르가 탁자를 돌아 카드루스 곁으로 → 둘이 출구(7~8, 11)로
     { "op": "jump", "id": "r_caderousse", "h": 3, "ms": 200 },
     { "op": "move", "id": "r_caderousse", "path": "D1", "speed": 320 },
