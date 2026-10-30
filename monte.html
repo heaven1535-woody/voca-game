@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.7.26-look';
+  var VERSION = '0.7.27-resume';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -4887,6 +4887,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   let lpHz = null;           // A.lowpass 마지막 목표(재구성 때 새 그래프에 다시 건다)
   let lpQ = 0.707;           // [a43-play S1] 그 Q
   let firing = false;        // fireHooks 재진입 막기
+  let hold = false;          // [r3 audio-resume] 음악 보류(숨음·킥·재구성 ~ 시계가 가는 것을 확인할 때까지): 옛 예약은 버렸고, 확인되면 마디 처음부터 한 벌만 다시
   const hooks = [];          // 컨텍스트가 running이 될 때마다 호출(음악·환경음 보류분 시작, 재동기화)
   const warned = {};
   const noop = function () { /* */ };
@@ -5173,8 +5174,11 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   //  [제스처 없이] resume → 킥(suspend → 200ms → resume) → (시계만 멈췄으면) 재구성 → 그래도 안 되면 토스트 1회, 다음 탭에서
   //  [탭] resume → 킥 → 재구성. 타이머는 모두 제스처 처리기 안에서 바로 건다(WebKit은 1초 안의 1단계 setTimeout에 제스처를 넘겨 준다).
   //  재구성 = 옛 컨텍스트 close → 새 컨텍스트·버스 그래프 → 음악(같은 마디·레이어·템포·필터)·환경음을 보류로 돌려 running 때 다시 시작.
+  //  [r3 audio-resume] 숨음·킥·재구성 때 음악·환경음·클립을 보류(hold — 앞서 예약한 음은 버림)하고, 시계가 실제로 가는 것을 본 뒤(settle·감시)에만
+  //  같은 컨텍스트에서 마디 처음부터 한 벌만 다시 건다. 보류 중 M.play·AM.play는 보류분을 바꾸기만 한다(canPlay('mus')).
   const TM = A._T = {
     resumeMs: 700, kickGap: 200, kickMs: 700,     // 제스처 없는 사다리: resume 확인 → 킥 사이 간격 → 킥 확인
+    pollMs: 100,                                   // [r3 audio-resume] resume 확인은 이 간격으로 — 시계가 가면 곧바로 settle(보류한 음악이 0.7초를 다 기다리지 않게)
     stallMs: 900, watchMs: 250,                    // 감시: running인데 시계가 이만큼(ms) 안 가면 멈춤으로 봄 / 감시 주기
     tap1: 200, tap2: 420, tap3: 850, tap4: 1600,   // 탭 사다리: 확인·suspend → resume → 재구성 → 마지막 확인
     rebuildGap: 1500, maxTapRebuild: 3,            // 재구성 최소 간격, 탭 사다리 연속 실패 상한(넘으면 재구성 없이 resume만)
@@ -5199,12 +5203,31 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   function fireHooks() {
     // 음악·환경음의 보류분 시작/재동기화(로드 시점 상호 호출을 피하려고 여기서 찾아 부른다)
     if (firing) return;
+    if (hold) return;   // [r3 audio-resume] 보류 중: running이 됐어도 시계를 확인하기 전에는 다시 틀지 않는다(unhold가 부름)
     firing = true; R.hooks++;
     try {
       try { if (MC.music && MC.music._ready) MC.music._ready(); } catch (e) { warn('mready', '음악 재개 오류: ' + e.message); }
       try { if (MC.amb && MC.amb._ready) MC.amb._ready(); } catch (e) { warn('aready', '환경음 재개 오류: ' + e.message); }
       for (let i = 0; i < hooks.length; i++) { try { hooks[i](); } catch (e) { warn('hook' + i, 'hook 오류: ' + e.message); } }
     } finally { firing = false; }
+  }
+  /**
+   * [r3 audio-resume] 음악·환경음·클립을 보류로: 지금 자리(마디 처음·레이어·템포·필터/디튠)를 기억하고, 앞서 예약해 둔 음은 출력을 0으로 내려 버린다.
+   * 숨음·킥·재구성 때 부른다. 그대로 두면 숨기 전 선예약(음악 ≤0.3초·환경음 ≤0.4초)이 복귀·킥 순간 출력이 막 열릴 때 잘려 울리고,
+   * 시계가 멈췄다 튀면 몰려 울린다(아이폰 '복귀 뒤 끊김·지글거림·박자 어긋남'). 다시 트는 것은 시계가 실제로 가는 것을 본 뒤(unhold)뿐이다.
+   */
+  function holdMus(why) {
+    if (hold) return;
+    hold = true; rlog('hold ' + why);
+    try { if (MC.music && MC.music._park) MC.music._park(); } catch (e) { warn('mpark', '음악 보류 오류: ' + e.message); }
+    try { if (MC.amb && MC.amb._park) MC.amb._park(); } catch (e) { warn('apark', '환경음 보류 오류: ' + e.message); }
+    try { if (MC.clip && MC.clip._park) MC.clip._park(); } catch (e) { warn('cpark', '클립 보류 오류: ' + e.message); }
+  }
+  /** [r3 audio-resume] 시계 확인 뒤(settle·감시): 보류분을 지금 컨텍스트에서 한 벌만 다시(fireHooks → _ready, 마디 처음부터 500ms 페이드인) */
+  function unhold(why) {
+    if (!hold || !ctx || ctx.state !== 'running') return;
+    hold = false; rlog('unhold ' + why);
+    fireHooks();
   }
   function onState() {
     if (!ctx) return;
@@ -5250,6 +5273,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (t - R.lastRebuild < TM.rebuildGap) { rlog('rebuild skip(rate) ' + why); return false; }
     R.lastRebuild = t; R.rebuilds++;
     rlog('rebuild ' + why + (inGesture ? ' (tap)' : '') + ' old=' + (ctx ? ctx.state : '-'));
+    if (!hold) { hold = true; rlog('hold rebuild'); }   // [r3 audio-resume] 새 컨텍스트가 running이 돼도 곧바로 틀지 않는다 — settle(시계 확인)에서 한 벌만
     try { if (MC.music && MC.music._rebind) MC.music._rebind(); } catch (e) { warn('mrebind', '음악 재바인딩 오류: ' + e.message); }
     try { if (MC.amb && MC.amb._rebind) MC.amb._rebind(); } catch (e) { warn('arebind', '환경음 재바인딩 오류: ' + e.message); }
     try { if (MC.clip && MC.clip._rebind) MC.clip._rebind(); } catch (e) { warn('crebind', '클립 재바인딩 오류: ' + e.message); }   // (S4) 클립: 멈춘 자리를 기억 → A.onReady에서 그 자리부터
@@ -5273,6 +5297,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     rlog('ok ' + how + ' (' + (ctx ? ctx.state : '-') + ')');
     if (ctx) { R.clkCt = ctx.currentTime; R.clkW = pnow(); }
     onState();
+    unhold(how);   // [r3 audio-resume] 시계가 가는 것을 봤다 → 보류한 음악·환경음을 마디 처음부터
   }
   /** 제스처 없이는 더 못 함 → 다음 탭에서(토스트 1회). 시계만 멈춘 경우는 탭에서 곧바로 재구성 */
   function park(ep, why) {
@@ -5298,12 +5323,14 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     rlog('wake ' + why + ' ' + c.state);
     if (c.state === 'closed') { if (!autoRebuild(ep, 'closed')) park(ep, 'stall'); return; }   // 밖에서 닫힘: resume·킥은 소용없다 → 곧바로 재구성
     if (c.state !== 'running') tryResume(c);
-    let m = mark(c);
+    let m = mark(c), waited = 0;
     const alive = function () { return ep === R.ep && ctx === c && !document.hidden && !muteSusp; };
-    setTimeout(function () {   // 감시가 이미 '시계 멈춤'을 봤으면 곧바로 킥
+    const first = function () {   // 감시가 이미 '시계 멈춤'을 봤으면 곧바로 킥
       if (!alive()) return;
       if (moving(m)) { settle(ep, 'resume'); return; }
+      if (why !== 'stall' && (waited += TM.pollMs) < TM.resumeMs) { setTimeout(first, TM.pollMs); return; }   // [r3 audio-resume] resumeMs까지 pollMs마다 확인
       rlog('kick ' + c.state); R.lastKick = pnow();
+      holdMus('kick');                            // [r3 audio-resume] 킥 전에 음악을 보류(옛 예약이 suspend·resume에 잘려 울리지 않게)
       trySuspend(c);                              // 킥: suspend → 잠깐 뒤 resume(끝나지 않는 resume·멈춘 시계를 푼다)
       setTimeout(function () {
         if (!alive()) return;
@@ -5316,7 +5343,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
           park(ep, c.state === 'running' || c.state === 'closed' ? 'stall' : c.state);
         }, TM.kickMs);
       }, TM.kickGap);
-    }, why === 'stall' ? 0 : TM.resumeMs);
+    };
+    setTimeout(first, why === 'stall' ? 0 : TM.pollMs);
   }
   /**
    * 제스처 없는 재구성 + kickMs 뒤 확인(settle 또는 park). 전경 한 번에 maxAutoRebuild번까지 — 시계가 되풀이해 멈추는 기기에서
@@ -5345,7 +5373,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       if (!alive() || ctx !== c0) return;
       if (moving(last)) { ok('tap'); return; }
       if (fresh && c0.state === 'running') return;   // 새 컨텍스트가 출력을 여는 중 → 킥으로 끊지 않고 tap3에서 판정
-      kicked = true; R.lastKick = pnow(); trySuspend(c0);
+      kicked = true; R.lastKick = pnow(); holdMus('tap-kick'); trySuspend(c0);   // [r3 audio-resume] 킥 전에 음악 보류
     }, TM.tap1);
     setTimeout(function () {
       if (!alive() || ctx !== c0 || !kicked) return;
@@ -5395,6 +5423,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (!ctx) return;
     hidSusp = true; R.ep++; R.busy = false; R.tapFails = 0; R.autoRe = 0; R.needRebuild = false;   // 다음 복귀는 새 회차(재구성 상한도 다시, 숨기 전 판정은 버림 — 복귀 사다리가 다시 판정)
     rlog('sleep ' + why + ' ' + ctx.state);
+    holdMus(why);   // [r3 audio-resume] 숨는 동안 예약을 멈추고 이미 예약한 미래 음은 버린다 — 복귀하면 시계 확인 뒤 마디 처음부터
     trySuspend(ctx);
   }
   function onVis() {
@@ -5415,6 +5444,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (ct - R.clkCt > 0.001) {
       R.clkCt = ct; R.clkW = w;
       if (R.needTap && !R.busy) { R.needTap = false; R.needRebuild = false; rlog('self-healed'); }   // 시스템이 스스로 되살림(인터럽트 끝 등)
+      if (hold && !R.busy && !R.needTap) unhold('watch');   // [r3 audio-resume] 사다리 밖에서 시계가 감(스스로 되살림·수동 재구성) → 보류분을 건다
       return;
     }
     if (w - R.clkW > TM.stallMs && !R.busy && !R.needTap) { R.clkW = w; rlog('stall seen'); wake('stall', false); }
@@ -5459,14 +5489,17 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   };
   Object.defineProperty(A, 'ready', { get: function () { return !!ctx && ctx.state === 'running'; } });
   Object.defineProperty(A, 'ctx', { get: function () { return ctx; } });
-  /** 지금 소리를 예약해도 되는가(running이거나 방금 resume을 요청함, 또는 오프라인 렌더 중) */
-  A.canPlay = function () {
+  /** 지금 소리를 예약해도 되는가(running이거나 방금 resume을 요청함, 또는 오프라인 렌더 중). kind='mus'(곡·환경음)는 보류 중이면 false → 보류분으로 */
+  A.canPlay = function (kind) {
     if (!cur) return false;
     if (cur.off) return true;
+    if (hold && kind === 'mus') return false;   // [r3 audio-resume] 시계 확인 전에 새 곡을 걸지 않는다(unhold 때 한 벌만)
     const st = cur.c.state;
     return st === 'running' || (st === 'suspended' && !hidSusp && !muteSusp && pnow() - askedAt < 600);
   };
   A.graph = function () { return cur; };
+  /** [r3 audio-resume] 음악 보류 중인가(클립이 대기분을 언제 시작할지 판단) */
+  A.held = function () { return hold; };
   A.now = function () { return cur ? cur.c.currentTime : 0; };
   /** running 전환 때마다 부를 함수 등록(음악·환경음 모듈용) */
   A.onReady = function (fn) { hooks.push(fn); if (A.ready) { try { fn(); } catch (e) { /* */ } } };
@@ -5475,7 +5508,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     let ses = null;
     try { const as = navigator.audioSession; if (as) ses = { type: as.type, state: as.state }; } catch (e) { /* */ }
     return { state: ctx ? ctx.state : null, t: ctx ? Math.round(ctx.currentTime * 1000) / 1000 : 0, gen, rebuilds: R.rebuilds, toasts: R.toasts, ep: R.ep, busy: R.busy,
-      needTap: R.needTap, needRebuild: R.needRebuild, tapFails: R.tapFails, autoRe: R.autoRe, hidSusp, muteSusp, everRan, hooks: R.hooks, session: ses, log: R.log.slice(-24) };
+      needTap: R.needTap, needRebuild: R.needRebuild, tapFails: R.tapFails, autoRe: R.autoRe, hidSusp, muteSusp, everRan, hooks: R.hooks, hold, session: ses, log: R.log.slice(-24) };
   };
   /** 수동 복구(디버그): force=true면 곧바로 재구성, 아니면 제스처 없는 사다리 */
   A.heal = function (force) { if (!ctx) return false; if (force) { R.lastRebuild = -1e9; return rebuild('manual', false); } wake('manual', true); return true; };
@@ -6115,7 +6148,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (!d) { A.warn('amb:' + id, '없는 환경음 id: ' + id); return; }
     if (AM.current === id && (ambI || ambPend) && !o.restart) return;
     AM.current = id;
-    if (!A.canPlay()) { ambPend = { id, o }; return; }
+    if (!A.canPlay('mus')) { ambPend = { id, o }; return; }   // [r3 audio-resume] 'mus': 복귀 보류 중이면 보류분으로
     ambPend = null;
     try { startAmb(A.graph(), id, d, o); } catch (e) { A.warn('amberr', '환경음 오류: ' + e.message); }
   };
@@ -6141,6 +6174,12 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (!ambPend && ambI && !ambI.dead && AM.current === ambI.id) ambPend = { id: ambI.id, o: Object.assign({}, ambI.o, { fade: 600 }) };
     ambI = null;
     return ambPend ? ambPend.id : null;
+  };
+  /** [r3 audio-resume] (audio.js가 숨음·킥·재구성 때 호출) 같은 컨텍스트에서: _rebind처럼 보류로 돌리고 옛 인스턴스는 15ms에 내려 멈춘다(앞서 예약한 이벤트음 ≤0.4초가 복귀·킥 순간에 울리지 않게) */
+  AM._park = function () {
+    const I = ambI, id = AM._rebind();
+    if (I && !I.dead) fadeAmb(I, 0.015);
+    return id;
   };
   /** 진단(하네스·디버그) */
   AM._state = function () {
@@ -7112,7 +7151,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       // (S4 클립 연동) 곡이 오면 재생 중인 제미나이 클립을 같은 fade로 끈다(MC.clip.play는 반대로 M.stop(fade, true)) — 곡과 클립은 겹치지 않는다
       if (MC.clip && MC.clip.stop && MC.clip.current()) MC.clip.stop(msArg(o.fade, 300));
       M.current = id;
-      if (!A.canPlay()) { pending = { id, o }; return; }
+      if (!A.canPlay('mus')) { pending = { id, o }; return; }   // [r3 audio-resume] 'mus': 복귀 보류 중이면 보류분으로
       pending = null;
       startSong(s, o);
     } catch (e) { A.warn('mplay:' + id, '곡 재생 오류(' + id + '): ' + e.message); }
@@ -7309,6 +7348,25 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     if (main) { main.restReq = 0; main.restN = 0; main.flushRest(); main.flushLW(); }   // (S3) 쉬던 곡은 재구성 뒤 쉬지 않고 이어진다
     main = null; fading.length = 0;
     return pending ? pending.id : null;
+  };
+  /**
+   * [r3 audio-resume] (audio.js가 숨음·킥·재구성 때 호출) 같은 컨텍스트에서: 나오던 곡을 _rebind처럼 보류(같은 마디·레이어·템포·필터/디튠·remap)로 돌리고,
+   * 옛 플레이어(페이드 중인 것 포함)는 출력을 곧바로 0으로 내려 버린다 → 앞서 예약한 음(선예약 ≤0.3초)이 복귀·킥 순간에 울리지 않는다.
+   * 다시 트는 것은 audio.js가 시계를 확인한 뒤(unhold → _ready, 500ms 페이드인) 한 벌만.
+   */
+  M._park = function () {
+    const ps = [main].concat(fading);
+    const id = M._rebind();
+    for (let i = 0; i < ps.length; i++) {
+      const p = ps[i]; if (!p || p.disposed) continue;
+      const t = p.c.currentTime;
+      [p.out, p.rev, p.ech].forEach(function (n) {
+        const q = n.gain;
+        try { if (q.cancelAndHoldAtTime) q.cancelAndHoldAtTime(t); else q.cancelScheduledValues(t); q.setTargetAtTime(0, t, 0.004); } catch (e) { /* */ }
+      });
+      dispose(p);
+    }
+    return id;
   };
   /** 진단(하네스·디버그): 스케줄러 상태 */
   M._state = function () {
@@ -7591,7 +7649,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   function kick() {
     const p = pend;
     if (!p) return Promise.resolve(false);
-    if (!A.ready || !A.graph()) return Promise.resolve(false);              // 잠금 해제·재구성 대기(A.onReady에서 다시)
+    if (!A.ready || !A.graph() || (A.held && A.held())) return Promise.resolve(false);   // 잠금 해제·재구성·[r3 audio-resume] 복귀 보류 대기(A.onReady에서 다시)
     if (bufs[p.id]) { pend = null; return Promise.resolve(startNow(p, bufs[p.id])); }
     return C.ready(p.id).then(function (b) {
       if (pend !== p) return false;                                        // 그사이 stop·다른 play
@@ -7653,6 +7711,18 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       if (!pend) pend = { id: S.id, o: { fade: 500, at: at, loop: S.loop, gain: S.gain }, tok: ++tokN, resumed: true };
       S.dead = true; cur = null;
       setTimeout(function () { disc(S); }, 0);
+    }
+    return pend ? pend.id : null;
+  };
+  /**
+   * [r3 audio-resume] (audio.js가 숨음·킥·재구성 때 호출) 같은 컨텍스트에서: 지금 자리를 기억해 대기로 돌리고 옛 소스는 15ms에 내려 멈춘다
+   * (_rebind는 컨텍스트를 닫을 때라 곧바로 끊음). 다 끝나 가는 한 번 재생 클립은 처음부터 다시 틀지 않게 놓기만 한다.
+   */
+  C._park = function () {
+    if (cur && !cur.dead && !cur.g.off) {
+      const S = cur, now = S.c.currentTime;
+      if (!pend && (S.loop || now < S.endT - 0.1)) pend = { id: S.id, o: { fade: 500, at: posOf(S, now), loop: S.loop, gain: S.gain }, tok: ++tokN, resumed: true };
+      cur = null; release(S, 15);
     }
     return pend ? pend.id : null;
   };
