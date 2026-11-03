@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.8.0-flow';
+  var VERSION = '0.8.1-ink';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -4832,7 +4832,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       if (!p) return null;
       const s = p.state;
       return { savedAt: p.savedAt, map: s.map, x: s.x, y: s.y, lv: s.party[0].lv, dispName: s.dispName, playMs: s.playMs, year: s.year, act: s.act,
-        cleared: !!(s.flags && s.flags['s4.clear']) };   // (S4 H2-4) 엔딩까지 본 세이브 → 타이틀 title.cleared「{name} · 끝」
+        cleared: !!(s.flags && s.flags['s4.clear']),     // (S4 H2-4) 엔딩까지 본 세이브 → 타이틀 title.cleared「{name} · 끝」
+        state: s };                                      // [r3 B3] 타이틀 요약 둘째 줄(지난 이야기 — MC.ch1.recap.pick)이 깃발·vars를 읽는다. 읽기만 한다
     },
     // [r3 A2] 읽을 수 없는 기록이라도 원문이 남아 있으면 true — 「처음부터」가 확인 없이 덮어쓰지 않게(타이틀 이어하기 여부는 info()가 따로 정한다)
     hasAny: () => !!(get(KEY.auto) || get(KEY.manual) || get(KEY.bak)),
@@ -11568,6 +11569,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
   const placeTx = { key: '', text: '' };
   function drawPlace() {
     if (!hudOn || !map || map.maze || !map.def || !map.def.name) return;
+    if (map.def.banner === false) return;   // [r3 B3] 티불랑: 이름은 타이틀 요약·메뉴에만, 필드에는 예전처럼 장소 줄 없음
     const top = MC.scene.top(); if (top && top !== scene && top.blocking && top.name !== 'dialogue') return;   // 메뉴 등 덮는 화면 아래로 비치지 않게
     const g = G(), mh = map.h * TS;
     if (anchorY(mh) == null || -rcam.y - g.safe.top < PLACE_H + 2) return;
@@ -11884,7 +11886,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       else await MC.fx.trans(kind, swap);
       if (!map || map.id !== mapId) return;
       if (vsId && kind !== 'fade') await MC.vista.show(vsId);
-      if (def.name && !seenMaps.has(mapId)) { seenMaps.add(mapId); if (hudOn && !vsId) showBanner(MC.i18n.t(def.name, 'map')); }
+      if (def.name && !seenMaps.has(mapId)) { seenMaps.add(mapId); if (hudOn && !vsId && def.banner !== false) showBanner(MC.i18n.t(def.name, 'map')); }   // [r3 B3] banner:false = 이름은 있어도(타이틀 요약·메뉴 장소) 들어올 때 배너는 없음(티불랑 — S4 §D-1)
       if (def.onEnter) await runEvent(def.onEnter);
       if (opt && opt.auto) autoSave();                    // 출구로 맵 이동한 경우(이벤트의 map op는 이벤트가 저장 시점을 정함)
     } finally { entering--; }
@@ -18390,6 +18392,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     const C = CORE(), u = V.actor;
     if (V.mode === 'cmd' && V.only) { cmdTap(V.only, 'd'); return; }      // (S4) 키보드 Z: 금빛 명령
     if (V.mode === 'cmd' && V.dark) return;
+    if (V.mode === 'cmd' && !u) return;                                   // [r3 B3] 전투가 끝난 직후 Z가 들어오면 actor가 비어 있다
     if (V.mode === 'cmd') { const r = C.repeatOf(V.B, u, V.last[u.idx]); commit(r || (u.fit ? { kind: 'skill', id: 'advice' } : { kind: 'attack', target: C.firstAliveIdx(V.B) })); }   // (S3) 발작 뒤 파리아의 기본은 조언
     else if (V.mode === 'target' && V.pend) commit(Object.assign({}, V.pend, { target: C.firstAliveIdx(V.B) }));
     else if (V.mode === 'list' && V.list) {                              // [c43-ui B2-1] 키보드도 두 단계: 고른 것이 있으면 사용, 없으면 첫 쓸 수 있는 칸을 고름
@@ -19523,7 +19526,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
           if (!m.weather || typeof m.weather !== 'object') err('map tiboulen', 'weather 없음(비·등대 — S4 §C-1-1)'); else if (!m.weather.beacon) wrn('map tiboulen', 'weather에 beacon 없음(등대 쐐기)');
           if (m.onEnter !== 's4t.enter') err('map tiboulen', 'onEnter s4t.enter 아님');
           if (m.ui !== 'act5') wrn('map tiboulen', 'ui ' + m.ui + '(act5 기대)');
-          if (m.name) err('map tiboulen', 'name이 있으면 배너가 뜬다(이름 없음)');
+          if (m.name && m.banner !== false) err('map tiboulen', 'name이 있으면 banner:false(배너 없음 — S4 §D-1)');   // [r3 B3] 옛: 이름 자체를 금지(이름 없음). 이름은 타이틀 요약·메뉴 장소에만
           if (m.tileset !== 'sea5') wrn('map tiboulen', 'tileset ' + m.tileset + '(sea5 기대)');
         }
         if (maps.tartane) {
@@ -30511,6 +30514,9 @@ const EMO = {
 (function icons() {
   const mk = (w, h, rows) => { const c = new Cv(w, h); c.st(0, 0, rows); return c; };
   put('ic_next', 'ic', mk(5, 6, ["..o..", ".oOo.", "..o..", "..o..", "o.o.o", ".ooo."]));
+  // [r3 B3] 자동 기록 표시(「기록했다」 앞)의 작은 깃펜 11×11(검은 테 1px 포함). 오른쪽 위 깃 끝 → 왼쪽 아래 펜촉.
+  //   깃은 대 한쪽(왼쪽 위)에만, 위가 넓고 아래로 좁아져 맨 아래 한 칸은 맨대 → 금빛 펜촉 — 대칭 쐐기(칼날)로 읽히지 않게(F15). 흐린 색(W·S)이라 글보다 튀지 않는다
+  { const q = new Cv(11, 11); q.st(1, 1, ["......WWS", "....WWWS.", "...WWWS..", "...WWS...", "..WWS....", "..WS.....", "..S......", ".Y.......", "Y........"]); outline(q, 'k'); put('ic_quill', 'ic', q); }
   put('ic_menu', 'ic', mk(12, 12, ["............", "............", ".wwwwwwwwww.", ".wwwwwwwwwwk", "..kkkkkkkkkk", ".wwwwwwwwww.", ".wwwwwwwwwwk", "..kkkkkkkkkk", ".wwwwwwwwww.", ".wwwwwwwwwwk", "..kkkkkkkkkk", "............"]));
   const spk = ["............", "......w.....", ".....ww.....", ".wwwwww.....", ".wwwwww.....", ".wwwwww.....", ".wwwwww.....", ".wwwwww.....", ".....ww.....", "......w.....", "............", "............"];
   const on = new Cv(12, 12); on.st(0, 0, spk); [[8, 4], [8, 5], [8, 6], [9, 2], [10, 3], [11, 4], [11, 5], [11, 6], [10, 7], [9, 8]].forEach(q => on.p(q[0], q[1], 'w')); on.st(1, 7, ["kkkkkkk"]); on.p(7, 9, 'k'); on.p(7, 10, 'k');
@@ -42763,8 +42769,8 @@ MC.data.battle = {
       "guard": 0.5, "mpGain": 0.15, "mpGainMin": 2, "priority": true, "sfx": "guard",
       "desc": "받는 피해 절반, 정신력 회복. 먼저 움직인다."
     },
-    "hope": {
-      "name": "희망", "elem": "hope", "target": "one", "mp": [4, 7, 10], "power": [15, 32, 50],
+    "hope": {   // [r3 B8] 이름 「희망」→「내일」(작⑤ — 원작 마지막 낱말을 1부에서 쓰지 않는다. id·elem은 그대로라 세이브 안전). 되돌리기: name 「희망」
+      "name": "내일", "elem": "hope", "target": "one", "mp": [4, 7, 10], "power": [15, 32, 50],
       "fx": "hope", "sfx": "skill_hope", "color": "#ffe9a0",
       "desc": "빛을 떠올린다. 분노에 잘 듣는다.",
       "lines": ["등대는 꺼지지 않는다.", "언젠가, 반드시.", "오늘 밤을 넘길 이유가 있다."],
@@ -43297,8 +43303,8 @@ MC.data.battle = {
           { "who": "revenge", "voice": "caderousse", "t": "난 말렸어. 말렸다니까.{p:200} ……조금은." },
           { "who": "revenge", "voice": "revenge", "t": "나를 받아들여. 그들이 갚을 날을 셀 수 있게 해 줄게." }
         ],
-        "hint": { "who": "faria", "t": "흔들리지 말게. 희망을 붙들든지, 버티게." },
-        "ok": { "who": "revenge", "t": "……희망이라니.{p:200} 시시하군." },
+        "hint": { "who": "faria", "t": "흔들리지 말게. 내일을 붙들든지, 버티게." },   // [r3 B8] 옛 「희망을 붙들든지」
+        "ok": { "who": "revenge", "t": "……내일이라니.{p:200} 시시하군." },          // [r3 B8] 옛 「……희망이라니.」
         "fail": [ { "who": "faria", "t": "에드몽, 그것에 먹히지 말게!" }, { "who": "faria", "t": "고삐는 자네가 쥐게!" } ]
       }
     },
@@ -45218,7 +45224,7 @@ MC.addMaps({
 </script>
 <script>/* ==== data/maps/tiboulen.js ==== */
 /* data/maps/tiboulen.js — [content-s4b2] 티불랑 바위섬(12×14, sea5 — 폭풍 밤 → 새벽 다섯 시). 장면 12(S4_NARRATIVE 장면 12 · ARCHITECTURE_S4 §D-1 · S4_BUILD2 §A-8).
-   이름 없음(배너 안 뜸). 위쪽이 먼바다(이프 성 원경·등대 쐐기 [11,1]·난파선), 아래쪽 물가(6,12)가 배 쪽(타르탄선 원경은 수평선 아래 가장자리).
+   이름 「티불랑 섬」([r3 B3] — 옛: 이름 없음). 위쪽이 먼바다(이프 성 원경·등대 쐐기 [11,1]·난파선), 아래쪽 물가(6,12)가 배 쪽(타르탄선 원경은 수평선 아래 가장자리).
    흐름: 헤엄 끝 default(6,9)에 엎어짐 → 천둥 → 바위 아래 t_shelter(6,6) → 패인 바위 빗물 rain_pool(7,7) → 번개 셋(ob_wreck) → 새벽 → cap_plank(8,11) → 짧은 헤엄 → 머리채(boat 스폰).
    비·등대는 맵 weather(engine — 들어올 때 자동, 저장 안 함). 분위기는 onEnter s4t.enter → s4.amb(content-s4a2 s4.amb_tib) · 재개 s4.resume → s4t.resume · 반짝임 s4.glows → s4t.glows.
    그림이 아직 없으면 로드 시점에 대체(ob_pickup) 또는 그림 없는 탭 자리. 모든 오브젝트 cond에 s4.on(validate 8-4d). */
@@ -45233,6 +45239,10 @@ MC.addMaps({
 
   MC.addMaps({
     "tiboulen": {
+      // [r3 B3] 장소 이름이 없어 여기서 한 기록의 이어하기 요약이 「어딘가」였다(타르탄 「밀수선 갑판」 r3 A10③과 같은 고침).
+      //   장소 그림 이름표(vista.tiboulen.place)도 같은 말 「티불랑 섬」으로 바꿨다 — validate(comic 4-c)가 맵 이름과 이름표를 맞춰 본다.
+      //   S4 §D-1 「배너 없음」은 banner:false로 지킨다(field.js — 이어하기로 들어와도 배너 없음, validate 8절이 확인). 깬 뒤 자유 이동 중에는 작은 방 장소 줄(field drawPlace)에 이 이름이 보인다
+      "name": "티불랑 섬", "banner": false,
       "tileset": "sea5", "ui": "act5", "save": true,
       "weather": { "rain": 0.6, "beacon": { "at": [ 11, 1 ], "period": 8000 } },   // [c50-pixel B6-15] 4초 → 8초 한 바퀴(현대식 탐조등처럼 빠르다 — 영상 평가 s4)
       "tiles": [
@@ -48876,7 +48886,7 @@ MC.addEvents({
             "else": [ { "op": "if", "cond": { "flag": "a4d.deduced" },
               "then": [ { "op": "say", "who": "faria", "t": "문 너머가 어떻든,{p:200}\n자네 발로 걸어 나오게." } ],
               "else": [ { "op": "if", "cond": { "var": "ffB", "gte": 1 },
-                "then": [ { "op": "say", "who": "faria", "t": "붉은 것들은 대개 화일세.{p:200} 희망으로 식히게." }, { "op": "set", "var": "ffB", "v": 0 } ],
+                "then": [ { "op": "say", "who": "faria", "t": "붉은 것들은 대개 화일세.{p:200} 내일을 보여 주게." }, { "op": "set", "var": "ffB", "v": 0 } ],   // [r3 B8] 기술 「희망」→「내일」(작⑤). 옛 「…희망으로 식히게.」
                 "else": [ { "op": "say", "who": "faria", "t": "여기가 자네 마음속인가.{p:200} 생각보다 붉군." }, { "op": "set", "var": "ffB", "v": 1 } ] } ] } ] } ],
           "else": [ { "op": "say", "who": "faria", "t": "……음?{p:200} 무슨 일인가." } ] } ] }
     ],
@@ -49069,7 +49079,7 @@ MC.addEvents({
       { "op": "say", "who": "faria", "t": [ "그를 식힌 건 시골 신부의 한마디였지.", "「내일은 개겠습니다, 예하.」" ] },
       { "op": "say", "who": "dantes", "t": "……날씨 얘기로요?" },
       { "op": "say", "who": "faria", "t": "화난 사람한테는 내일을 보여 주면 되네." },
-      { "op": "say", "who": "faria", "t": [ "꿈속의 분노도 같네.", "첫 수업에 자네가 적은 그 이유.{p:200} 그게 희망일세." ] },
+      { "op": "say", "who": "faria", "t": [ "꿈속의 분노도 같네.", "첫 수업에 자네가 적은 그 이유.{p:200} 그게 자네 내일일세." ] },   // [r3 B8] 기술 「희망」→「내일」(작⑤ — 낱말 「희망」은 시리즈 끝을 위해 아낀다). 옛 「…그게 희망일세.」
       { "op": "set", "flag": "a4.talk_4" }
     ],
 
@@ -49110,7 +49120,7 @@ MC.addEvents({
           "then": [ { "op": "say", "who": "faria", "t": "땅굴에서는 간수의 등불이 비추는 곳을 밟지 말게." } ],
           "else": [ { "op": "if", "cond": { "var": "talkHint", "eq": 3 },
             "then": [ { "op": "say", "who": "faria", "t": "오래 버티려면 쉬는 것도 기술일세." } ],
-            "else": [ { "op": "say", "who": "faria", "t": [ "꿈속의 분노는 희망에 약하네.", "화를 화로 이기려 하지 말게." ] } ] } ] } ] },
+            "else": [ { "op": "say", "who": "faria", "t": [ "꿈속의 분노는 내일에 약하네.", "화를 화로 이기려 하지 말게." ] } ] } ] } ] },   // [r3 B8] 「희망에」→「내일에」
       { "op": "add", "var": "talkHint", "n": 1 },
       { "op": "if", "cond": { "var": "talkHint", "gte": 4 }, "then": [ { "op": "set", "var": "talkHint", "v": 0 } ] }
     ],
@@ -49151,7 +49161,7 @@ MC.addEvents({
     "a4.hint_boss": [
       { "op": "face", "id": "faria", "dir": "player" },
       { "op": "say", "who": "faria", "t": "그것이 속삭이거든 화로 받지 말게." },
-      { "op": "say", "who": "faria", "t": "희망이나,{p:200} 그냥 버티는 걸로 받아넘기게." },
+      { "op": "say", "who": "faria", "t": "내일을 떠올리든지,{p:200} 그냥 버티는 걸로 받아넘기게." },   // [r3 B8] 옛 「희망이나,{p:200} …」(「내일이나」는 때로 읽혀서 「떠올리든지」)
       { "op": "set", "flag": "a4.hint_boss" }
     ],
 
@@ -50666,16 +50676,19 @@ MC.addEvents({
     { "op": "sfx", "id": "dig", "pitch": 0.9 },
     { "op": "fx", "kind": "dust", "at": "face", "n": 4 },
     { "op": "wait", "ms": 450 },
-    { "op": "say", "who": "faria", "face": "smile", "t": "한 뼘 더 가까워졌네.\n{p:250}오늘은 이만하세." },
+    // [r3 B8] 시스템 상자(「땅굴이 조금 더 길어졌다. / 오늘 밤 수업이 하나 늘었다.」)를 파리아의 말로(작⑨). 추리의 밤 4가 곧 이어지면(옛 sys 생략 조건과 같은 갈래) 예전 줄 그대로.
+    //   되돌리기: 이 if를 옛 say 한 줄(「한 뼘 더 가까워졌네.\n{p:250}오늘은 이만하세.」)로, 아래 지운 sys if 되살림
+    { "op": "if", "cond": { "all": [ { "flag": "dd.n3" }, { "not": { "flag": "dd.n4" } } ] },
+      "then": [ { "op": "say", "who": "faria", "face": "smile", "t": "한 뼘 더 가까워졌네.\n{p:250}오늘은 이만하세." } ],
+      "else": [ { "op": "say", "who": "faria", "face": "smile", "t": "한 뼘 더 가까워졌네.\n{p:250}수업 하나 더 하고 자세." } ] },
     // (0.4.3b T7) 굴 안에서 주울 때 이미 위 토스트가 떴다 — 나갈 때 팡파르 대화창 두 번 대신 조용히 넣고 위 토스트 한 줄로 합친다
     { "op": "give", "item": "fish_bone", "n": 1, "quiet": true },
     { "op": "give", "item": "oil", "n": 1, "quiet": true },
     { "op": "toast", "t": "가져온 것\n생선 뼈 · 기름 찌꺼기" },
     { "op": "set", "flag": "a4t.clear1", "v": true },
     { "op": "add", "var": "lessonPts", "n": 1 },
-    // 추리의 밤 4가 곧 이어지면(검사 얘기를 미뤄 둔 채 굴을 판 경우) 알림은 생략(S2_NARRATIVE_V2 §8-1)
-    { "op": "if", "cond": { "not": { "all": [ { "flag": "dd.n3" }, { "not": { "flag": "dd.n4" } } ] } }, "then": [
-      { "op": "say", "who": "sys", "t": "땅굴이 조금 더 길어졌다.\n오늘 밤 수업이 하나 늘었다." } ] },
+    // [r3 B8] 옛 알림 지움(위 파리아 말이 대신): if not(dd.n3 && !dd.n4) → sys 「땅굴이 조금 더 길어졌다.\n오늘 밤 수업이 하나 늘었다.」
+    //   (추리의 밤 4가 곧 이어지면 생략하던 것, S2_NARRATIVE_V2 §8-1)
     { "op": "set", "var": "wt_big", "v": 0 },
     { "op": "map", "id": "cell", "at": "hole", "trans": "fade" },
     { "op": "call", "ev": "a4d.deduce_check" },
@@ -51321,10 +51334,11 @@ MC.addEvents({
           { "op": "cam", "to": "player", "ms": 400 },
           { "op": "letterbox", "on": false },
           { "op": "hud", "show": true },
-          { "op": "hint", "t": "빛기둥을 조사하면 잠에서 깬다." },   // [s44-writer B3-6] 파리아 「처음부터.」 바로 뒤 사용 설명의 낙차를 줄인다(작2-5)
+          // [r3 B8] 회색 띠를 「처음부터.」 바로 뒤가 아니라 「조금 더 둘러본다」를 고른 사람에게만(작⑨). 되돌리기: 띠를 choice 앞으로, stay의 do를 []로
           { "op": "choice", "who": "think", "t": "지금 깨어날까?", "opts": [
             { "t": "깨어난다", "v": "wake", "do": [ { "op": "call", "ev": "a4.wake" } ] },
-            { "t": "조금 더 둘러본다", "v": "stay", "cancel": true, "do": [] }
+            { "t": "조금 더 둘러본다", "v": "stay", "cancel": true, "do": [
+              { "op": "hint", "t": "빛기둥을 조사하면 잠에서 깬다." } ] }   // [s44-writer B3-6] · [r3 B8]
           ] } ] }
     ],
 
@@ -51424,19 +51438,21 @@ MC.addEvents({
       { "op": "flash", "color": "#ff3a2a", "a": 0.35, "ms": 220 },
       { "op": "vibrate", "p": [ 40, 60, 40 ] },
       { "op": "light", "dark": 0.65, "r": 56, "color": "#ff8a6a", "flicker": false, "ms": 900 },
-      { "op": "say", "who": "narr", "t": "복수심이 흩어졌다.{p:500}\n……아니, 가라앉았다.{p:300}\n에드몽 안으로." },
-      { "op": "wait", "ms": 500 },
-      { "op": "say", "who": "dantes", "t": "……버리는 게 아니다.{p:400}\n품는 거다." },   // [s44-writer B3-9] 같은 변화를 네 번 설명하던 것 중 가운데를 줄인다(작4·작2-2)
-      { "op": "learn", "skill": "cold_wrath" },
+      // [r3 B8] 해설 한 겹(작④·감#4·감 P1-4): 서술 「복수심이 흩어졌다.{p:500}\n……아니, 가라앉았다.{p:300}\n에드몽 안으로.」 + wait 500 지움 — 빛이 에드몽 한 점으로 모이는 그림이 그 말을 한다.
+      //   결심은 바뀐 얼굴(클로즈업 둘) 뒤 침묵 다음 속마음으로(원작 17장: 맹세는 속으로, 파리아는 얼굴을 읽는다). 옛: dantes 「……버리는 게 아니다.{p:400}\n품는 거다.」가 learn 앞·클로즈업 앞.
+      //   learn은 「가시죠」 뒤로. 되돌리기: 이 주석 셋 지우고 서술·wait 500·옛 dantes 줄·learn을 클로즈업 앞으로, 아래 wait 900 · think · wait 600 → wait 600
       { "op": "closeup", "who": "dantes", "ms": 900 },
       { "op": "grow", "v": 4 },
       { "op": "sfx", "id": "heartbeat", "pitch": 0.8, "gain": 0.6 },
       { "op": "closeup", "who": "dantes", "ms": 1700 },
+      { "op": "wait", "ms": 900 },
+      { "op": "say", "who": "think", "t": "버리는 게 아니다.{p:400}\n품는 거다." },   // [r3 B8] 소리 내지 않는 결심
       { "op": "wait", "ms": 600 },
       { "op": "face", "id": "follower", "dir": "player" },
       { "op": "say", "who": "faria", "face": "worry", "t": "……에드몽?" },
       { "op": "wait", "ms": 500 },
       { "op": "say", "who": "dantes", "t": "가시죠, 신부님." },
+      { "op": "learn", "skill": "cold_wrath" },   // [r3 B8] 감정 사슬(얼굴 → 결심 → 「……에드몽?」 → 「가시죠」) 밖으로 옮김
       { "op": "set", "flag": "a4d.revenge_done" },
       { "op": "set", "flag": "a4d.gate_open", "v": false },
       { "op": "letterbox", "on": false },
@@ -51554,9 +51570,11 @@ MC.addEvents({
       { "op": "set", "flag": "q.elba" },
       { "op": "set", "flag": "q.hand" },
       { "op": "sfx", "id": "page", "gain": 0.6 },
-      { "op": "hint", "t": "신부님의 물음이 메뉴 「기억」 맨 위에 적혔다." },   // [s44-writer B3-6]
       { "op": "set", "flag": "dd.n1" },
-      { "op": "save", "slot": "auto" }
+      { "op": "save", "slot": "auto" },
+      // [r3 B8] 「꿈에서 꺼내 보게.」 바로 뒤가 아니라 종이 소리 → 저장 → 0.9초 쉼 → 띠(작⑨). 되돌리기: wait 지우고 hint를 sfx page 바로 뒤로
+      { "op": "wait", "ms": 900 },
+      { "op": "hint", "t": "신부님의 물음이 메뉴 「기억」 맨 위에 적혔다." }   // [s44-writer B3-6] · [r3 B8]
     ]),
 
     /* ============================================================ D2 「글씨」 — 조각이 맞아 들어가고, 왼손 글씨가 서늘하다 */
@@ -51594,9 +51612,11 @@ MC.addEvents({
       { "op": "set", "flag": "q.hand", "v": false },
       { "op": "set", "flag": "q.love" },
       { "op": "sfx", "id": "page", "gain": 0.6 },
-      { "op": "hint", "t": "신부님의 새 물음이 「기억」에 적혔다." },   // [s44-writer B3-6]
       { "op": "set", "flag": "dd.n2" },
-      { "op": "save", "slot": "auto" }
+      { "op": "save", "slot": "auto" },
+      // [r3 B8] n1과 같은 꼴: 「꿈속의.」 바로 뒤가 아니라 저장 → 0.9초 쉼 → 띠. 되돌리기: wait 지우고 hint를 sfx page 바로 뒤로
+      { "op": "wait", "ms": 900 },
+      { "op": "hint", "t": "신부님의 새 물음이 「기억」에 적혔다." }   // [s44-writer B3-6] · [r3 B8]
     ]),
 
     /* ============================================================ D3 「정자」 — '당글라르 혼자'가 '셋'으로 무너진다 */
@@ -55757,6 +55777,13 @@ MC.addEvents({
           { "op": "face", "id": "player", "dir": "left" },
           { "op": "emote", "id": "kr1", "kind": "note", "ms": 1200 },
           { "op": "say", "who": "think", "t": "열아홉의 나.{p:300}\n잔을 들고 웃는다." },
+          // [r3 B8] 「그 밤」의 예행연습(감 P1-7, 첫 도전에만): 거울 속 열아홉이 꾄다(빼앗긴 삶 = 끝내지 못한 건배). 에드몽은 답하지 않는다 — 답은 s3f.oath 「혼자는 안 갑니다」.
+          //   파리아는 땅굴 2의 「늙은이 무릎일세」를 받아 넘긴다. 되돌리기: 아래 다섯 op(sfx mirror ~ faria say) 지움
+          { "op": "sfx", "id": "mirror", "gain": 0.35, "pitch": 1.2 },
+          { "op": "say", "who": "voice", "voice": "dantes", "t": "건배도 못 끝냈잖아.{p:300}\n혼자 가. 늙은이는 짐이야." },
+          { "op": "emote", "id": "player", "kind": "dots", "ms": 900 },
+          { "op": "face", "id": "follower", "dir": "player" },
+          { "op": "say", "who": "faria", "face": "wry", "t": "……거울도 내 무릎을 봤군." },
           { "op": "set", "flag": "s3d.king_seen" } ],
         "else": [
           { "op": "sfx", "id": "mirror", "gain": 0.5 },
@@ -56630,7 +56657,7 @@ MC.addEvents({
     "s4c.h_fc_bed": [ { "op": "face", "id": "player", "dir": "left" }, { "op": "emote", "id": "player", "kind": "dots", "ms": 1400 } ],
 
     /* ================================================================ 장면 2 — 세 번째(컷신) */
-    // 상자: 약병 앞 8 · 약병 뒤 9(+ 열둘 첫 서술 1 = 10)
+    // 상자: 약병 앞 7([r3 B8] 옛 8 — 임종 두 줄을 한 상자로) · 약병 뒤 9(+ 열둘 첫 서술 1 = 10)
     "s4c.third": [
       GLOW_OFF, WATCH_OFF,
       { "op": "letterbox", "on": true, "ms": 0 },
@@ -56659,10 +56686,11 @@ MC.addEvents({
       W(1600),
       { "op": "face", "id": "player", "dir": "left" },
       W(1200),
-      SAYF("이 방엔 곧 누가 또 오겠지.", "weak"),
-      W(1300),
-      SAYF("젊은 사람이면 좋겠군.{p:500}\n자네 짐을 나눠 질.", "tired"),
-      W(1800),
+      // [r3 B8] 두 상자 → 한 상자(작⑧·감#9 — 지우지 않고 원작 19장의 뜻으로: 이 방은 곧 다른 이가 채운다 · 젊은 이라면 자네를 도울 것 · 나는 짐이었을 뿐).
+      //   「젊은 사람」은 자루 속 에드몽(s4x 「27번. 늙고 마른 영감이라더니」)으로, 「짐」은 그 밤(s3f.arm 「이런 짐을 지면」)으로 돌아간다.
+      //   되돌리기: 옛 「이 방엔 곧 누가 또 오겠지.」(weak) · W(1300) · 「젊은 사람이면 좋겠군.{p:500}\n자네 짐을 나눠 질.」(tired) · W(1800)
+      SAYF("이 방엔 누가 또 오겠지.{p:600}\n젊은 사람이면 좋겠군.{p:500}\n나 같은 짐 말고.", "tired"),
+      W(2400),                                                             // [r3 B8] 1800 → 2400 — 대답 없는 침묵(에드몽의 대답은 침대로 가는 걸음)
       { "op": "walkto", "id": "player", "to": [ 2, 4 ], "speed": 200, "face": "left" },
       { "op": "face", "id": "player", "dir": "left" },
       ZOOM(2, TWO),                                                        // [c50-cine] 침대 곁으로 — 같은 2배, 초점만 둘 사이로
@@ -60485,7 +60513,7 @@ MC.addLang('ko', {
     "battle.candleOn": "촛불을 켰다. 주위가 밝아졌다.",
     "battle.elemMemory": "기억",
     "battle.elemThought": "사색",
-    "battle.elemHope": "희망",
+    "battle.elemHope": "내일",
     "battle.fariaMark": "파",
     "battle.cdHeal": "치유",
     "battle.cdTeach": "가르침",
@@ -60795,7 +60823,7 @@ MC.addLang('ko', {
     "vista.tunnel.place": "땅굴",
     "vista.dream.place": "꿈",
     "vista.dream.floor": "B1 · 반복되는 감방",
-    "vista.tiboulen.place": "티불랑",
+    "vista.tiboulen.place": "티불랑 섬",
     "vista.tiboulen.time": "1829년 2월 · 폭풍 치는 밤",
     "vista.tartane.place": "밀수선 갑판",
     "vista.tartane.time": "새벽",
@@ -60842,7 +60870,9 @@ MC.addLang('ko', {
     "mem.nm.fernand1": "메르세데스를 원한 사람.",
     "mem.nm.fernand": "투서를 검사에게 넘겼다.",
     "mem.nm.caderousse": "알고도 입을 다물었다.",
-    "mem.nm.villefort": "제 앞길을 위해 나를 가뒀다."
+    "mem.nm.villefort": "제 앞길을 위해 나를 가뒀다.",
+    "field.autoSaved": "기록했다",
+    "title.clearedHint": "이어하면 장부부터 다시 봅니다"
   },
   "uiInfo": {
     "dlg.nameLabel": { "w": 40, "font": "small", "note": "이름칸 연출(34번 → 에드몽) 왼쪽 위 작은 제목" },
@@ -61025,7 +61055,7 @@ MC.addLang('ko', {
     "battle.candleOn": { "w": 156, "font": "body", "lines": 2, "note": "꿈속 어둠에서 촛불을 켬" },
     "battle.elemMemory": { "w": 40, "font": "small", "note": "간파 배너의 약점·저항 계열 이름(기술 '기억'과 같은 계열)" },
     "battle.elemThought": { "w": 40, "font": "small", "note": "계열 이름(사색)" },
-    "battle.elemHope": { "w": 40, "font": "small", "note": "계열 이름(희망)" },
+    "battle.elemHope": { "w": 40, "font": "small", "note": "계열 이름(내일 — [r3 B8] 옛 희망. 키 이름은 그대로)" },
     "battle.fariaMark": { "w": 6, "font": "small", "note": "적 머리 위 예고 아이콘 옆 한 글자(파리아를 노림) — 영어 'F'처럼 한 글자" },
     "battle.cdHeal": { "w": 30, "font": "small", "note": "파리아 상태 칸 쿨다운 라벨(치유의 말) — 매우 좁다" },
     "battle.cdTeach": { "w": 36, "font": "small", "note": "파리아 상태 칸 쿨다운 라벨(가르침)" },
@@ -61335,7 +61365,7 @@ MC.addLang('ko', {
     "vista.tunnel.place": { "w": 152, "font": "body", "lines": 1, "note": "[vista] 이름표 장소(한 줄뿐) — 맵 이름 「땅굴」과 같은 말로" },
     "vista.dream.place": { "w": 152, "font": "body", "lines": 1, "note": "[vista] 이름표 장소 — 꿈(꿈 창 팔레트)" },
     "vista.dream.floor": { "w": 152, "font": "small", "lines": 1, "note": "[vista] 이름표 둘째 줄 — 맵 이름 「B1 · 반복되는 감방」과 같은 말로" },
-    "vista.tiboulen.place": { "w": 152, "font": "body", "lines": 1, "note": "[vista] 이름표 장소 — 티불랑 섬(이프 성 남쪽 무인 바위섬, 원작 고유명)" },
+    "vista.tiboulen.place": { "w": 152, "font": "body", "lines": 1, "note": "[vista] 이름표 장소 — 티불랑 섬(이프 성 남쪽 무인 바위섬, 원작 고유명). [r3 B3] 옛 「티불랑」 → 맵 tiboulen의 새 이름 「티불랑 섬」과 같은 말로(타이틀 이어하기 요약·메뉴 장소 칸에 나온다)" },
     "vista.tiboulen.time": { "w": 152, "font": "small", "lines": 1, "note": "[vista] 이름표 때 — 탈옥한 밤(원작 1829년 2월). 감옥 안에서 멎었던 날짜가 여기서 돌아온다" },
     "vista.tartane.place": { "w": 152, "font": "body", "lines": 1, "note": "[vista] 이름표 장소 — 밀수꾼들의 작은 범선(타르탄) 갑판" },
     "vista.tartane.time": { "w": 152, "font": "small", "lines": 1, "note": "[vista] 이름표 때 — 건져진 다음 새벽" },
@@ -61382,7 +61412,9 @@ MC.addLang('ko', {
     "mem.nm.fernand1": { "w": 124, "font": "small", "lines": 2, "note": "(l45-guide B8-8) '네 이름' 페르낭 — 첫 추리 뒤(메르세데스를 원한 사람)" },
     "mem.nm.fernand": { "w": 124, "font": "small", "lines": 2, "note": "(l45-guide B8-8) '네 이름' 페르낭 혐의 — 셋째 추리 뒤(되감기 속삭임 「……검사에게……」)" },
     "mem.nm.caderousse": { "w": 124, "font": "small", "lines": 2, "note": "(l45-guide B8-8) '네 이름' 카드루스 혐의 — 셋째 추리 뒤(10-30: 쓰지도 넘기지도 않고, 체포 때 당글라르의 눈에 입을 다문 사람 — 옛 '다 보고도 말리지 않았다')" },
-    "mem.nm.villefort": { "w": 124, "font": "small", "lines": 2, "note": "(l45-guide B8-8) '네 이름' 빌포르 혐의 — 넷째 추리 뒤(아버지 때문이 아니라 제 앞길 때문)" }
+    "mem.nm.villefort": { "w": 124, "font": "small", "lines": 2, "note": "(l45-guide B8-8) '네 이름' 빌포르 혐의 — 넷째 추리 뒤(아버지 때문이 아니라 제 앞길 때문)" },
+    "field.autoSaved": { "w": 64, "font": "small", "lines": 1, "note": "([r3 B3]) 자동 기록 표시 — 출구로 맵을 옮기거나 전투에서 이긴 뒤 화면 오른쪽 위(메뉴 단추 아래)에 작은 깃펜 그림과 함께 0.8초. 수동 기록 토스트 menu.saved 「기록했다.」와 같은 말(마침표 없이). 게임은 '저장' 대신 늘 '기록'이라 한다. 짧게" },
+    "title.clearedHint": { "w": 170, "font": "small", "lines": 1, "note": "([r3 B3]) 1장을 끝낸 세이브의 타이틀에서 「＿＿＿＿ · 끝」(title.cleared) 바로 아래 한 줄 — 이 세이브로 [이어하기]를 누르면 마지막 장부 장면부터 이름칸·크레딧·「끝」까지 다시 보고 타이틀로 돌아온다는 안내(새 이야기가 이어지는 것이 아님)" }
   }
 });
 })(window.MC);
@@ -61577,7 +61609,7 @@ MC.addLang('en', {
     "battle.candleOn": ["The candle is lit. The dark draws back.", "ufcv39"],
     "battle.elemMemory": ["Memory", "15d7hm6"],
     "battle.elemThought": ["Reason", "lhvvq"],
-    "battle.elemHope": ["Hope", "1rt5exu"],
+    "battle.elemHope": ["Morrow", "heq6vh"],   // [r3 B8] 한국어 「희망」→「내일」(옛 ["Hope", "1rt5exu"]). "Tomorrow"는 48px로 칸(40px)을 넘어 "Morrow"(34px)
     "battle.fariaMark": ["F", "2dj23v"],
     "battle.cdHeal": ["Heal", "kckttx"],
     "battle.cdTeach": ["Teach", "f6ko63"],
@@ -61699,6 +61731,7 @@ MC.addLang('en', {
     "검사 대리의 집무실": "Prosecutor’s Study",
     "이프 성 앞바다": "Off the Château d’If",
     "밀수선 갑판": "The Smugglers’ Deck",   // [r3 A10③] 타르탄 맵 장소 이름(새 원문 — 장소 그림 이름표 vista.tartane.place와 같은 말)
+    "티불랑 섬": "Tiboulen Island",   // [r3 B3] 티불랑 맵 장소 이름(새 원문 — 장소 그림 이름표 vista.tiboulen.place와 같은 말. 이름표 UI 키는 en에 아직 없음)
     "아버지의 골목": "Father’s Lane",
     "아버지의 집": "Father’s House",
     "이프 성 · 독방": "Château d’If · Cell",
@@ -62751,7 +62784,7 @@ MC.addLang('en', {
   /* ================================================================ 기술 습득 카드 (S2: 파리아 수업·복수심) */
   const SKILL_INFO = {
     memory: ['기억', '지난날을 붙잡는다. 절망에 잘 듣는다.'], thought: ['사색', '따져 생각한다. 광기에 잘 듣는다.'], endure: ['버티기', '웅크려 견딘다.'],
-    hope: ['희망', '빛을 떠올린다. 분노에 잘 듣는다.'], whisper: ['속삭임', '적 하나의 기를 흩어, 행동을 한 번 막는다.'],
+    hope: ['내일', '빛을 떠올린다. 분노에 잘 듣는다.'] /* [r3 B8] 옛 '희망' */, whisper: ['속삭임', '적 하나의 기를 흩어, 행동을 한 번 막는다.'],
     history: ['역사의 교훈', '싸우는 동안 모든 적의 약점이 보인다.'], stars: ['별읽기', '적 모두의 걸음을 한동안 늦춘다.'],
     cold_wrath: ['냉정한 분노', '식힌 분노. 모두에게 고르게 닿는다.'],
     heal_word: ['치유의 말', '에드몽의 상처를 말로 달랜다.'], teach: ['가르침', '에드몽의 힘과 지혜를 잠시 끌어올린다.'], scan: ['간파', '적 하나를 꿰뚫어 본다.'],
@@ -75378,6 +75411,7 @@ MC.addLang('en', {
     MC.i18n.slot('title.button', { font: 'body', w: 100, lines: 1, note: '타이틀 단추(112폭, 이어하기는 136폭)' });
     MC.i18n.slot('title.info', { font: 'small', w: 170, lines: 1, note: '저장 정보 줄 — 넘치면 짧은 판(장소까지만)' });
   }
+  const INFO2_H = 14;                           // [r3 B3] 저장 정보 아래 둘째 줄(클리어 뒤 이어하기 설명 · 지난 이야기)의 줄 간격 — 이어하기 단추가 이만큼 위로 간다(12면 「＿＿＿＿」 밑줄이 둘째 줄에 붙는다)
 
   function layout() {
     const g = G(), H = g.H;
@@ -75806,13 +75840,48 @@ MC.addLang('en', {
   // 이어하기 직후 회색 띠 두 줄(1.5초 + 들고 나는 0.3·0.4초). 필드 HUD 훅으로 그린다(입력은 받지 않음 — 걸어도 된다)
   const RC = { band: null, hooked: false };
   const BAND_IN = 300, BAND_HOLD = 1500, BAND_OUT = 400;
+  /* [r3 B3] 자동 기록 표시: 깃펜 + 「기록했다」 0.8초, 메뉴 단추 바로 아래 오른쪽 끝(옛 c43-ui B8-4 닻 자리). 기록 시각은 save.js lastWrite(이벤트 밖 기록만).
+     띄우지 않는 때: ① 손 기록(slot manual — 메뉴 「기록」이 「기록했다.」 토스트를 따로 띄운다) ② 무음 자리(quietSpot) ③ 메뉴 단추가 안 보일 때(HUD 숨김·조작 없음 —
+     컷신·대화·전투·코믹·장소 그림·메뉴 위) · 레터박스·암전 중 ④ 마지막으로 띄운 뒤 QUILL_GAP 안(문을 연달아 드나들 때 깜빡이지 않게).
+     기록 직후 조작이 돌아오기를 QUILL_LATE까지 기다린다(출구 이동은 onEnter가 끝난 뒤 기록되고, 그 순간엔 아직 조작이 잠겨 있다) */
+  const QUILL_MS = 800, QUILL_GAP = 30000, QUILL_LATE = 1500;
+  const QL = { lw: null, pend: false, t0: -1e9, txt: null };
+  // 무음 자리(ARCHITECTURE_S3·S4 §0 — sys 안내를 넣지 않는 자리 중 걸어 다니며 문을 드나드는 곳): 임종 ~ 새벽 ~ 빈 하루(S4 시작 ~ 꿈 전) · 12½ 순회 · 배 · 엔딩(s4t.boat 뒤) · S3 의심의 하루
+  function quietSpot(st) {
+    const fl = (st && st.flags) || {}, F = k => !!fl[k];
+    if (F('s4.clear') || F('s4e.end') || F('s4t.boat')) return true;
+    if ((F('s4.on') || F('s4c.open')) && !F('s4m.sit')) return true;
+    return F('s3t.paper') && !F('s3t.dusk');
+  }
+  function quillOk(g) {
+    const Fd = MC.field, I = Fd && Fd._in;
+    if (!Fd || !Fd.map || !(Fd.controls && Fd.controls()) || (I && I.hudOn && !I.hudOn())) return false;
+    if ((MC.fx.letterboxLevel && MC.fx.letterboxLevel() > 0.01) || (MC.fx.fadeLevel && MC.fx.fadeLevel() > 0.3)) return false;
+    return true;
+  }
+  function drawQuill(g, now) {
+    const lw = MC.save && MC.save.lastWrite;
+    if (lw && lw !== QL.lw) { QL.lw = lw; QL.pend = lw.slot !== 'manual'; }
+    const ok = quillOk(g);
+    if (QL.pend && ok) {
+      QL.pend = false;
+      if (now - lw.t < QUILL_LATE && now - QL.t0 >= QUILL_GAP && !quietSpot(MC.state)) { QL.t0 = now; QL.txt = tf('field.autoSaved'); }
+    }
+    const dt = now - QL.t0;
+    if (!ok || dt < 0 || dt >= QUILL_MS || !QL.txt) return;
+    const lv = dt < 120 ? dt / 120 * 16 : dt > QUILL_MS - 240 ? (QUILL_MS - dt) / 240 * 16 : 16;   // 디더로 들고 남
+    // 장소 줄(field drawPlace)과 같은 흐린 회색. 그림자 대신 1px 검은 테 — 항구 지붕·모래처럼 밝고 잔무늬 많은 바닥 위에서도 읽히게
+    const im = MC.text.bake(QL.txt, 'small', '#a8a4b4', { outline: '#000' });
+    if (!im) return;
+    const x0 = g.W - 4 - g.safe.right - im.width, y = 30 + g.safe.top;                              // 구운 판은 테 때문에 사방 1px 크다
+    U.drawDither(im, x0, y - 1, lv);
+    U.drawSpr('ic_quill', x0 - 11, y - 1, lv);                                                        // 11×11 깃펜(spr_world.js), 글 앞 1px 띄움
+  }
   function recapHook() {
     return {
       renderHud() {
         const g = G(), now = MC.time.real;
-        // 닻: 이벤트 밖 자동 기록 뒤 0.8초(메뉴 단추 아래)
-        const lw = MC.save && MC.save.lastWrite, dt = lw ? now - lw.t : 1e9;
-        if (dt >= 0 && dt < 800 && !(dt > 560 && (((dt / 80) | 0) & 1))) MC.ui.nextMark(g.W - 20 - g.safe.right, 30 + g.safe.top);
+        drawQuill(g, now);                                              // [r3 B3] 옛 닻(MC.ui.nextMark 0.8초) 대신
         const b = RC.band;
         if (!b) return;
         const q = now - b.t0, total = BAND_IN + BAND_HOLD + BAND_OUT;
@@ -76043,22 +76112,32 @@ MC.addLang('en', {
       sc.infoRev = MC.i18n.rev;
       const i = MC.save.hasAny() ? MC.save.info() : null;
       sc.cleared = !!(i && i.cleared);
+      sc.info2 = null;                                                    // [r3 B3] 요약 둘째 줄(클리어 뒤 이어하기 설명 · 지난 이야기 한 줄)
       if (!i) { sc.info = null; bNew.style = 'primary'; return; }
       bNew.style = 'normal';
       const mp = MC.data.maps && MC.data.maps[i.map], pm = Math.floor((i.playMs || 0) / 60000);
       const mname = mp && mp.name ? MC.i18n.t(mp.name, 'map') : '';
       // 1장을 끝낸 세이브(s4.clear — save.info().cleared): 「＿＿＿＿ · 끝」(이름칸 공란 그대로). 이어하기는 장부부터(S4_BUILD2 H2-4)
       // [s44-director C2③] 이 줄을 탭하면 장부 뒷면(기록 카드)이 열린다 — 아직 안 열어 본 클리어 기록이면 처음 한 번 반짝
-      if (i.cleared) { sc.info = tf('title.cleared', { name: MC.i18n.name(i.dispName || '') }); sc.recNew = !recSeen(); return; }
+      // [r3 B3] 아래에 이어하기가 하는 일 한 줄(이 세이브를 이어하면 s4.resume → s4e.ledger: 장부 → 이름칸 → 크레딧 → 「끝」 → 다시 타이틀)
+      if (i.cleared) { sc.info = tf('title.cleared', { name: MC.i18n.name(i.dispName || '') }); sc.recNew = !recSeen(); sc.info2 = tf('title.clearedHint'); fit2(); return; }
       sc.info = tf('title.info', { lv: i.lv, map: mname || tf('title.somewhere'), time: Math.floor(pm / 60) + ':' + String(pm % 60).padStart(2, '0') });
       if (MC.text.width(sc.info, 'small') > 170) sc.info = tf('title.infoShort', { lv: i.lv, map: mname });
+      // [r3 B3] 지난 이야기 한 줄 — 이어한 직후 띠(recap.p.*)와 같은 글. 일부러 비운 구간(검정 연출·장부 직전 등 pickRecap null)이면 줄 없음
+      try { const r = i.state ? pickRecap(i.state) : null; sc.info2 = r && r.p ? r.p : null; } catch (e) { MC.core.error(e, 'title.recap'); }
+      fit2();
     }
+    function fit2() { if (sc.info2 && MC.text.width(sc.info2, 'small') > g.W - 12) sc.info2 = null; }   // [r3 B3] 화면보다 넓으면 자르지 않고 뺀다(§14-2 ③)
     function lay() {
       const mt = MC.ui.minTouch(), bh = Math.max(28, mt + 6), W = g.W, cx = W >> 1;
       let y = g.H - 30 - g.safe.bottom;
       bSet.w = 112; bSet.h = bh - 2; y -= bSet.h; bSet.x = cx - (bSet.w >> 1); bSet.y = y; y -= 8;
       if (sc.info) {
-        bNew.w = 112; bNew.h = bh; y -= bNew.h; bNew.x = cx - (bNew.w >> 1); bNew.y = y; y -= 12 + 13;
+        bNew.w = 112; bNew.h = bh; y -= bNew.h; bNew.x = cx - (bNew.w >> 1); bNew.y = y;
+        // [r3 B3] 둘째 줄 자리. 둘째 줄을 넣어도 이어하기 단추 위 어두운 띠(render: 단추 22px 위부터, 수평선 아래일 때만 깐다)가 깔릴 때만 넣는다 —
+        //   낮은 화면(논리 높이 약 375 미만: 360×740·375×667·360×640 폰)에서는 빼서 단추가 수평선·성 섬 밑동에 닿지 않고 바다 띠도 예전 그대로
+        sc.two = !!sc.info2 && y - 12 - 13 - INFO2_H - (bh + 4) - 22 > layout().hz;
+        y -= 12 + 13 + (sc.two ? INFO2_H : 0);
         bCont.w = 136; bCont.h = bh + 4; y -= bCont.h; bCont.x = cx - (bCont.w >> 1); bCont.y = y;
       } else {
         bNew.w = 136; bNew.h = bh + 4; y -= bNew.h; bNew.x = cx - (bNew.w >> 1); bNew.y = y;
@@ -76214,6 +76293,9 @@ MC.addLang('en', {
           const col = k > 0.8 ? '#e8d49a' : k > 0.45 ? '#b8b090' : '#9aa8c8';   // [r3 A8] 바탕 은빛 옛 #8a98b8
           const im = MC.text.bake(sc.info, 'small', col, { shadow: '#03050b' });
           if (im) U.drawDither(im, (W - im.width) >> 1, bCont.y + bCont.h + 3, p * 16);
+          // [r3 B3] 둘째 줄 — 흐린 보조 글(A8 기준색 #9aa4c0, 반짝이지 않음). 자리가 없는 낮은 화면이면 lay()가 sc.two를 끈다
+          const im2 = sc.two && sc.info2 ? MC.text.bake(sc.info2, 'small', '#9aa4c0', { shadow: '#03050b' }) : null;
+          if (im2) U.drawDither(im2, (W - im2.width) >> 1, bCont.y + bCont.h + 3 + INFO2_H, p * 16);
         }
         bMute.render();
         const muted = MC.save.settings && MC.save.settings.mute;
