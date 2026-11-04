@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.8.3-faces';
+  var VERSION = '0.8.4-shore';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -47838,6 +47838,7 @@ MC.addEvents({
       { "op": "custom", "id": "s1", "args": { "stage": "shore", "holdSay": 5, "holdAfter": 2400 } },   // (통합) 창의 불빛이 작아지는 데까지 보이게 1400 → 2400(stage-s1 권고)
       { "op": "say", "who": "think", "t": "……레제르브." },
       { "op": "say", "who": "think", "t": "등불이 아직 켜져 있다.{p:300}\n아무도 끄지 않았구나." },   // a1.lantern 「모레는 여기가 온통 환하겠지.」의 회수
+      { "op": "custom", "id": "s1", "args": { "stage": "shore_tap", "hint": "불빛을 본다." } },   // [r3 shoretap] 흐름이 카탈루냐에 닿으면 창을 직접 누른다(빌포르 → 안뜰 탭만 16상자를 끊음 — 회귀 0.8.3, 사용자 (나))
       { "op": "say", "who": "think", "t": "카탈루냐.{p:300} 불 켜진 창이 하나." },
       { "op": "say", "who": "dantes", "face": "shock", "t": "메르——", "auto": 150 },
       { "op": "sfx", "id": "cloth_slip", "gain": 0.3, "pitch": 0.8 },                       // 호송병이 고개를 돌린다
@@ -64928,12 +64929,14 @@ MC.addLang('en', {
      쓰는 쪽: s4escape.js·s3night.js mount의 hold 옵션(still·lift·castle). 대사 셈은 MC.dialogue.sayN/saidN(dialogue.js). */
   ch1.holdSay = function (n, after) {
     const D = MC.dialogue, n0 = Math.max(1, n | 0), aft = after != null && isFinite(+after) ? Math.max(0, +after) : 1200;
-    const base = D ? D.sayN : 0, done0 = D ? D.saidN : 0, t0 = MC.time.real;
-    let doneAt = -1, idle = 0;
+    const base = D ? D.sayN : 0, done0 = D ? D.saidN : 0;
+    let t0 = MC.time.real, last = t0, doneAt = -1, idle = 0;
     return {
       // 걷을 때인가(true면 스테이지가 디더로 나간다)
       check(sc) {
         const now = MC.time.real, started = (D ? D.sayN : 0) - base, done = (D ? D.saidN : 0) - done0;
+        if (ch1.holdWait) t0 += now - last;                                   // [r3 shoretap] 화면 위 탭(shore_tap)을 기다리는 동안은 60초 상한을 세지 않는다
+        last = now;
         if (done >= n0 && doneAt < 0) doneAt = now;
         if (doneAt >= 0 && now - doneAt >= aft) return 'after';
         if (started > n0) return 'next';
@@ -73380,6 +73383,7 @@ MC.addLang('en', {
      holdSay면 ms 뒤 결과를 돌려주고 화면은 남아(대사가 그 위에) — 끝난 대사 수에 따라 steps 자리로 천천히 흐른다(0.7초 시간 상수). 대사가 다 끝나면(holdAfter 동안)
      배가 멀어져 창의 불빛이 꺼지지 않은 채 작아진다. 노 젓는 소리(_oar, 2.6초). 손 없음 · 깜빡임 없음 */
   let coastC = null;
+  let shoreLive = null;                                     // [r3 shoretap] 지금 떠 있는(남아 있는) shore 상태 — shore_tap이 창 자리를 읽는다
   function coastGeo() { const g = G(), W = g.W, H = g.H; return { W, H, hy: Math.round(H * 0.42), WW: W * 3 }; }
   const COAST_LIGHT = '#ffcf6a';
   function coastLights(Q) {                                 // 세계 좌표(가로 3배): 등불 줄 9개 · 창 하나
@@ -73415,7 +73419,8 @@ MC.addLang('en', {
     const ms = Math.max(300, num(a.ms, 2600)), steps = Array.isArray(a.steps) && a.steps.length ? a.steps.map(v => MC.clamp(+v || 0, 0, 1)) : [0.02, 0.06, 0.94, 0.97, 1];
     const turn = a.turn == null ? 4 : Math.max(0, a.turn | 0);
     if (isAuto()) return later(300, () => ({ ok: true }));
-    const S = { pan: 0, lastT: 0, k0: null, oarT: 700, oarN: 0, turnT: -1, recT: -1 };
+    const S = { pan: 0, lastT: 0, k0: null, oarT: 700, oarN: 0, turnT: -1, recT: -1, win: null, settled: false, tapT: -1, sc: null };
+    shoreLive = S;
     dbgS('shore', S);
     return mount({
       name: 'mg_s1_shore', opaque: true, hold: a.holdSay, holdAfter: a.holdAfter,
@@ -73428,6 +73433,7 @@ MC.addLang('en', {
         if (sc.heldT != null && Dg) { if (S.k0 == null) S.k0 = Dg.saidN || 0; k = (Dg.saidN || 0) - S.k0; }
         const target = sc.heldT == null ? steps[0] * MC.clamp(t / ms, 0, 1) : steps[Math.min(k, steps.length - 1)];
         S.pan += (target - S.pan) * (1 - Math.exp(-dt / 700));
+        S.sc = sc; S.settled = sc.heldT != null && Math.abs(target - S.pan) < 0.006;   // [r3 shoretap] 흐름이 멈췄는가(창을 누를 수 있는가)
         if (sc.heldT != null && k >= steps.length && S.recT < 0) S.recT = t;
         if (k >= turn && S.turnT < 0 && sc.heldT != null) S.turnT = t;
         const rec = S.recT >= 0 ? MC.clamp((t - S.recT) / 2600, 0, 1) : 0;
@@ -73460,9 +73466,11 @@ MC.addLang('en', {
           }
           win = [L.win[0] - camX, L.win[1] + Math.round(rec * 4)];
         }
+        S.win = win && win[0] > -12 && win[0] < Q.W + 12 ? win : null;
         if (win && win[0] > -12 && win[0] < Q.W + 12) {      // 카탈루냐의 창 하나: 멀어질수록 작아질 뿐 꺼지지 않는다
           const r = Math.max(2, Math.round(8 - rec * 5)), sz = rec > 0.6 ? 1 : rec > 0.25 ? 2 : 3;
           U.drawDither(U.glow(r, COAST_LIGHT, 9), win[0] - r, win[1] - r, 14);
+          if (S.tapT >= 0 && t - S.tapT < 900) { const q = (t - S.tapT) / 900, r2 = r + 3 + Math.round(q * 4); U.drawDither(U.glow(r2, COAST_LIGHT, 9), win[0] - r2, win[1] - r2, Math.round(10 * (1 - q))); }   // [r3 shoretap] 누른 순간 창빛이 한 번 번진다
           if (!cs || rec > 0) g.rect(win[0] - (sz >> 1), win[1] - (sz >> 1), sz, sz, rec > 0 ? COAST_LIGHT : '#fff0b8');
           for (let i = 0; i < 6; i++) { const wy = hy + 3 + i * 6, ww = Math.max(1, 4 - (i >> 1) - Math.round(rec * 2)), jx = ((i + ((t / 500) | 0)) % 3) - 1; g.ditherRect(win[0] - (ww >> 1) + jx, wy, ww, 2, COAST_LIGHT, Math.max(1, 7 - i)); }   // 물 위 긴 빛 띠
         }
@@ -73477,6 +73485,52 @@ MC.addLang('en', {
         if (a.guard !== false) drawGuard(g.X0 + 4, gy, turned ? 1 : mid ? 0 : -1);
         U.drawVig(3, '#000000');
       }
+    });
+  };
+  /* [r3 shoretap] shore_tap — 남아 있는 해안(holdSay) 위에서 카탈루냐의 불 켜진 창을 한 번 누를 때까지 기다린다(회귀 0.8.3: 빌포르 → 안뜰 탭만 16상자를 끊음).
+     인자 {hint}. 흐름이 창에서 멈춘 뒤 창 둘레가 한 번 반짝이고 손가락이 뜬다. 판정은 창 둘레 사방 26px, 다른 곳은 「……」. 키(Z·Enter)는 바로 넘어감.
+     해안이 없거나 이미 걷혔으면 그냥 넘어간다. 기다리는 동안 holdSay 60초 상한을 멈춘다(ch1.holdWait). 막지 않는 씬(불투명 아님) — 해안을 걷지 않는다 */
+  ST.shore_tap = function (a) {
+    if (isAuto()) return later(300, () => ({ ok: true }));
+    const S = shoreLive;
+    if (!S || !S.sc || MC.scene.stack.indexOf(S.sc) < 0) return { ok: true, skipped: true };
+    return new Promise(resolve => {
+      const g = G(), hint = a.hint != null ? String(a.hint) : '';
+      const gd = hint ? U.guide({ text: hint, icon: 'tap', delay: 0 }) : null;
+      const sc = { name: 'mg_s1_shore_tap', opaque: false, blocking: false, t: 0, done: false, readyT: -1 };   // 막지 않음 — 아래 해안이 계속 흘러 창에 닿아야 한다(입력은 맨 위만 받음)
+      ch1.holdWait = (ch1.holdWait | 0) + 1;
+      function finish() {
+        if (sc.done) return; sc.done = true;
+        ch1.holdWait = Math.max(0, (ch1.holdWait | 0) - 1);
+        if (gd) gd.end();
+        S.tapT = S.lastT;
+        MC.scene.remove(sc);
+        if (MC.input && MC.input.lock) MC.input.lock(300);
+        resolve({ ok: true });
+      }
+      sc.update = dt => {
+        sc.t += dt;
+        if (MC.scene.stack.indexOf(S.sc) < 0) { finish(); return; }          // 해안이 걷혔다(검정·덮임) — 기다리지 않는다
+        if (sc.readyT < 0 && S.settled && S.win) sc.readyT = sc.t;
+      };
+      sc.onInput = ev => {
+        if (sc.done || ev.type !== 'tap') return true;
+        if (ev.key) { if (sc.t > 400) finish(); return true; }
+        if (sc.readyT < 0) return true;                                       // 흐름이 창에 닿기 전에는 받지 않는다
+        const w = S.win;
+        if (w && Math.abs(ev.x - w[0]) <= 26 && Math.abs(ev.y - w[1]) <= 26) { U.vibrate(10); finish(); }
+        else if (MC.fx.floatText) MC.fx.floatText('……', ev.x, ev.y - 8, { color: '#9a98a8', font: 'small', rise: 8, ms: 700 });
+        return true;
+      };
+      sc.onBack = () => {};
+      sc.render = () => {
+        if (sc.readyT < 0 || !S.win) return;
+        const w = S.win, e = sc.t - sc.readyT, bob = ((MC.time.real / 300) | 0) % 2;
+        if (e < 450) { const q = e / 450; g.ring(w[0], w[1], 6 + Math.round(q * 12), q < 0.5 ? '#fff6d0' : '#a89a70'); }   // 누를 곳이 한 번 반짝(deduce tap과 같은 고리)
+        if (e > 250) { if (!U.drawSpr('ic_hand_tap', w[0] - 2, w[1] + 6 + bob)) g.rect(w[0], w[1] + 8 + bob, 4, 4, '#ffcf4a'); }
+        if (gd && e > 250) gd.render({ bg: '#000000' });
+      };
+      MC.scene.push(sc);
     });
   };
   // 호송병(왼쪽 아래 앞, 뱃전 위로 어깨부터 — 실루엣 #020309 + 오른쪽 위 달빛 테 #1c2440). x = 어깨 왼쪽, gy = 뱃전 줄.
