@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.9.0-uw2';
+  var VERSION = '0.9.1-plot';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -45923,7 +45923,8 @@ MC.addMaps({
     },
     "objects": [
       { "id": "table_round", "type": "thing", "x": 7, "y": 8, "w": 2, "h": 1, "sprite": "ob_table_round", "cond": { "any": [ { "not": { "flag": "a2.feast" } }, { "flag": "rw.on" } ] } },
-      // S2N(story-clues) E-2: 저녁 정자 탁자 위 잉크병(대사 없음) — 추리의 밤 3 '탁자에 잉크병이랑 종이가…… 왜 여태 몰랐지?'의 근거
+      // S2N(story-clues) E-2: 저녁 정자 탁자 위 잉크병(대사 없음) — [a1-plot 11-06] 1막 a1.hands 투서(당글라르가 이 잉크병으로 씀) · 되감기 a1b.rw_pavilion ① 「……장부가 아니었다.」의 근거
+      //   (예전 주석: 추리의 밤 3 '탁자에 잉크병이랑 종이가…… 왜 여태 몰랐지?'의 근거. 되돌리기: 이 두 줄을 예전 한 줄로) — 맵 글·자리는 고치지 않음
       { "id": "r_inkpot", "type": "thing", "x": 8, "y": 8, "sprite": "ob_inkpot", "solid": false, "z": 1, "cond": { "any": [ { "not": { "flag": "a2.feast" } }, { "flag": "rw.on" } ] } },
       { "id": "r_danglars",  "type": "npc", "x": 6, "y": 8, "sprite": "ch_danglars",   "dir": "right", "event": "a1.r_danglars",   "cond": { "any": [ { "not": { "flag": "a2.feast" } }, { "flag": "rw.on" } ] } },
       { "id": "r_caderousse","type": "npc", "x": 9, "y": 8, "sprite": "ch_caderousse", "dir": "left",  "event": "a1.r_caderousse", "cond": { "any": [ { "not": { "flag": "a2.feast" } }, { "flag": "rw.on" } ] } },
@@ -48005,7 +48006,9 @@ MC.addEvents({
     { "op": "say", "who": "caderousse", "t": "가고말고! 공짜 술은 안 빠지는 게 내 신조라니까." },
     { "op": "say", "who": "danglars", "face": "smirk", "t": "선장 자리에 신부까지라.{p:300} 셈이 좀 넘치는군요." },
     // [r3 C5] 잉크병 심기(작가 예시 3): 이 정자는 그날 저녁부터 탁자에 잉크병을 둔다(reserve.js r_inkpot — 원작 4장은 두 사람이 지나간 뒤에 시킨다). 당글라르의 「셈」을 받아 에드몽이 장부 버릇으로 넘겨 버린다
-    //   → 추리의 밤 3 「탁자에 잉크병이랑 종이가…… 왜 여태 몰랐지?」가 본 것을 다시 꺼내는 추리가 된다. 되돌리기: 이 꼬리표 주석 두 줄과 아래 say 한 줄을 지운다
+    //   [a1-plot 11-06] → 같은 저녁 a1.hands에서 당글라르가 이 잉크병으로 투서를 쓰고, 추리의 밤 되감기(a1b.rw_pavilion ①)의 「술잔 사이에 잉크병과 종이. / ……장부가 아니었다.」가
+    //   이 줄의 앞 줄을 글자 그대로 받아 뒤집는다(아래 say 앞 줄 글자를 바꾸면 메아리가 깨진다). 예전 주석: 「→ 추리의 밤 3 '탁자에 잉크병이랑 종이가…… 왜 여태 몰랐지?'가 본 것을 다시 꺼내는 추리가 된다」.
+    //   되돌리기: 이 꼬리표 주석 세 줄과 아래 say 한 줄을 지운다 · [a1-plot 11-06]만 되돌리려면 docs/art_wip/a1_plot/backup/events_a1.js의 이 자리 주석으로
     { "op": "say", "who": "think", "t": "술잔 사이에 잉크병과 종이.\n{p:300}당글라르는 어디서나 장부다." },
     { "op": "say", "who": "dantes", "t": "페르낭, 너도 올 거지?" },
     { "op": "wait", "ms": 500 },
@@ -48036,29 +48039,140 @@ MC.addEvents({
     { "op": "say", "who": "think", "t": "레제르브 등불.{p:200} 모레는 여기가 온통 환하겠지." }
   ],
 
-  /* 1-7 끝: 당테스가 떠난 뒤 탁자 위 세 손 → 화면 정지 → 정적 → (막 표시 없이) 암전 */
+  /* [a1-plot 11-06] 1-7 끝(11-06 사용자 선택 ①): 원작 4장 「음모」를 1막에서 그대로 보여 준다. 플레이어는 알고 에드몽만 모르는 극적 아이러니(원작과 같음).
+     순서: 잔 → 장부에 없는 짐 → 칼/펜 → 왼손 → 카드루스가 말림 → 「장난일세」·구겨 던짐 → 에드몽을 위해 → 가세(카드루스를 끼고 나감) → 돌아보는 당글라르
+       → [탭] 페르낭이 주워 품에 넣음 → 마르세유 쪽 어둠으로 → 겹쳐 보이지? → 저 혼자 굴러가겠군 → 세 손(끝 그림) → 정지 → 암전
+     잉크·종이는 종업원에게 청하지 않고 인사 때 심어 둔 r_inkpot을 쓴다(원작과 다른 점: 인사 때 에드몽이 본 잉크병이 추리의 밤 되감기 ①의 단서여야 함, r3 C5).
+     1막이라 먹구름(emote cloud)은 쓰지 않는다. 상자: 탭 앞 10, 탭 뒤 4 + a1e.start 6 = 10(MC.dbg.tapRuns 한도에 꼭 맞음 — 줄여야 하면 13번 상자를 emote dots로). 약 73초.
+     카드루스 「칼보다 펜이 무섭다」(원작)는 상자 한도 때문에 당글라르의 칼/펜 줄(③)이 대신 맡는다.
+     되돌리기: 이 블록(주석부터 "a1.hands" 끝 ]까지)을 docs/art_wip/a1_plot/backup/events_a1.js의 "a1.hands" 블록(옛 25초판: 잔 → 장부 → 그래서? → 세 손)으로 통째 바꾼다. 스위치 없음 */
   "a1.hands": [
+    // ⓪ 에드몽이 떠난다 [a1-plot 11-06: 쉼 700 → 600]
     { "op": "move", "id": "player", "path": "R1", "speed": 240 },
     { "op": "show", "id": "player", "v": false },
     { "op": "letterbox", "on": true, "ms": 500, "async": true },
     { "op": "bgm", "id": "plot", "fade": 1500 },                          // [10-29 사용자] 예전 filterTo(600)는 폰에서 음악이 없는 것처럼 들렸다 → 음모 곡(마르세유 주제를 단조로)
     { "op": "light", "dark": 0.45, "r": 72, "at": [7, 8], "color": "#ffb060", "flicker": true, "ms": 1800, "async": true },
     { "op": "cam", "to": [7, 8], "ms": 1800 },
-    { "op": "wait", "ms": 700 },
+    { "op": "wait", "ms": 600 },
+    // ① 잔을 채운다 — [10-30 사용자 「카드루스 서사」] 당글라르가 잔을 채워 주고(원작: 일부러 계속 따른다), 취한 카드루스가 시기와 정을 함께 흘린다 — 인사의 「선장 자리에 신부까지라」를 되받는 말
+    //   [a1-plot 11-06] 두 대사 사이에 한 번 더 따르는 소리(pour 1.1)를 넣었다
     { "op": "face", "id": "r_danglars", "dir": "right" },
     { "op": "face", "id": "r_fernand", "dir": "down" },
-    // [10-30 사용자 「카드루스 서사」] 당글라르가 잔을 채워 주고(원작: 일부러 계속 따른다), 취한 카드루스가 시기와 정을 함께 흘린다 — 인사의 「선장 자리에 신부까지라」를 되받는 말. 편지 이야기는 여기서 하지 않는다
     { "op": "sfx", "id": "pour", "gain": 0.6 },
     { "op": "wait", "ms": 600 },
     { "op": "jump", "id": "r_caderousse", "h": 2, "ms": 180 },
     { "op": "say", "who": "caderousse", "t": "선장에, 신부에……{p:200}\n거참, 누구는 복도 많아.", "pos": "top" },
+    { "op": "sfx", "id": "pour", "gain": 0.5, "pitch": 1.1 },             // 잔이 비기도 전에 또 따른다
+    { "op": "wait", "ms": 400 },
     { "op": "say", "who": "caderousse", "t": "……그래도 좋은 녀석이야.{p:200}\n에드몽은.", "pos": "top" },
-    { "op": "say", "who": "danglars", "t": "장부에 없는 짐은{p:200} 꼭 탈이 나.", "pos": "top" },   // [s44-writer B3-2] '엘바에서 편지…' 삭제 — 추리의 밤이 풀 것을 먼저 말하지 않는다
+    // ② 장부에 없는 짐 — [s44-writer B3-2] '엘바에서 편지…' 삭제: 추리의 밤이 풀 것을 먼저 말하지 않는다. [a1-plot 11-06] 당글라르가 페르낭 쪽(up)을 보고, 줄바꿈 \n을 넣었다
+    { "op": "face", "id": "r_danglars", "dir": "up" },
+    { "op": "wait", "ms": 300 },
+    { "op": "say", "who": "danglars", "t": "장부에 없는 짐은{p:200}\n꼭 탈이 나.", "pos": "top" },
     { "op": "wait", "ms": 400 },
     { "op": "say", "who": "fernand", "t": "……그래서?", "pos": "top" },
-    { "op": "sfx", "id": "glass_clink", "pan": -0.2 },
+    // ③ [a1-plot 11-06] 칼 대신 펜 — 원작 「죽일 것 없다, 떨어뜨려 놓으면 된다」. 주먹 소리는 카탈루냐 칼 소리(thud)와 같다(칼은 카탈루냐 탁자에 꽂힌 채)
+    { "op": "sfx", "id": "thud", "gain": 0.7 },
+    { "op": "shake", "p": 0.15 },
+    { "op": "jump", "id": "r_fernand", "h": 1, "ms": 120, "async": true },
+    { "op": "emote", "id": "r_caderousse", "kind": "sweat", "ms": 900, "async": true },
     { "op": "wait", "ms": 500 },
-    { "op": "custom", "id": "hands", "args": { "whisper": true } },
+    { "op": "say", "who": "danglars", "t": "칼 들면 자네가 끌려가.{p:300}\n펜이면 그 녀석만 사라져.", "pos": "top" },   // ↔ 추리 3 「칼을 꽂는 사람은 편지를 안 쓰네」 · 추리 1 「자네가 사라져 득 본 사람은?」
+    // ④ [a1-plot 11-06] 왼손 — 탁자(7~8,8) 쪽(right)을 보고 쓴다. 이 잉크병은 인사 때 에드몽이 본 r_inkpot
+    { "op": "face", "id": "r_danglars", "dir": "right" },
+    { "op": "sfx", "id": "pen", "gain": 0.5 },
+    { "op": "wait", "ms": 300 },
+    { "op": "say", "who": "danglars", "t": "내 글씨는 장부가 알아.{p:200}\n왼손으로 쓰면……", "pos": "top" },   // 끝 반쪽 = story.handInk = 추리 2 파리아가 끝맺음(M34, D-0006)
+    { "op": "sfx", "id": "quill", "gain": 0.8 },
+    { "op": "wait", "ms": 330 },
+    { "op": "sfx", "id": "quill", "gain": 0.7, "pitch": 0.95 },
+    { "op": "wait", "ms": 330 },
+    { "op": "sfx", "id": "quill", "gain": 0.8, "pitch": 1.05 },
+    { "op": "wait", "ms": 450 },
+    // ⑤ [a1-plot 11-06] 카드루스가 말린다 — 골무로 탁자를 톡톡(a1b.caderousse 문틀 톡톡과 같은 소리, 빚 얘기 때의 그 버릇)
+    { "op": "emote", "id": "r_caderousse", "kind": "exclaim", "ms": 700 },
+    { "op": "jump", "id": "r_caderousse", "h": 3, "ms": 200 },
+    { "op": "sfx", "id": "card_tick", "pitch": 1.5, "gain": 0.6 },
+    { "op": "wait", "ms": 140 },
+    { "op": "sfx", "id": "card_tick", "pitch": 1.5, "gain": 0.6 },
+    { "op": "say", "who": "caderousse", "t": "어이, 에드몽은 친구야.{p:200}\n해코지는 안 된다니까.", "pos": "top" },   // ↔ 복수심 「난 말렸어. 말렸다니까.」(M38)
+    // ⑥ [a1-plot 11-06] 「장난일세」 — 구겨서 정자 구석 (4,6)으로. smirk는 여기 한 번, cold는 체포 때 처음
+    //   [10-30 사용자 「카드루스 서사」 — a1b.rw_pavilion에서 옮김] 원작 4장: 당글라르가 「장난」이라며 투서를 구겨 정자 구석에 던지고, 취한 카드루스를 데리고 나가다 돌아보면 페르낭이 그것을 줍는다.
+    //   카드루스는 속은 사람이라 먹구름을 띄우지 않는다. 종이 뭉치 ob_paper_ball은 6행 왼쪽 기둥 곁(4,6)에 떨어진다
+    { "op": "sfx", "id": "paper_crumple" },
+    { "op": "wait", "ms": 250 },
+    { "op": "say", "who": "danglars", "face": "smirk", "t": "누가 해코지래?{p:200}\n장난일세, 장난.", "pos": "top" },
+    { "op": "face", "id": "r_danglars", "dir": "up" },
+    { "op": "spawn", "id": "hd_paper", "sprite": "ob_paper_ball", "x": 6, "y": 8, "solid": false, "z": 2 },
+    { "op": "sfx", "id": "swing", "pitch": 1.4, "gain": 0.5 },
+    { "op": "jump", "id": "hd_paper", "h": 14, "ms": 420, "async": true },
+    { "op": "move", "id": "hd_paper", "path": "U2 L2", "speed": 100 },    // → (4,6) 왼쪽 위 기둥 곁
+    { "op": "sfx", "id": "paper_land" },
+    { "op": "fx", "kind": "dust", "at": "hd_paper", "n": 2 },
+    { "op": "fx", "kind": "sparkle", "at": "hd_paper", "n": 4 },          // 떨어진 자리에서 한 번 반짝 — 흰 점이 아니라 '버린 종이'로 읽히게
+    { "op": "spawn", "id": "hd_glint", "sprite": "ob_paper_glint_0", "x": 4, "y": 6, "solid": false, "z": 3 },
+    { "op": "wait", "ms": 130 },
+    { "op": "despawn", "id": "hd_glint" },
+    { "op": "spawn", "id": "hd_glint", "sprite": "ob_paper_glint_1", "x": 4, "y": 6, "solid": false, "z": 3 },
+    { "op": "wait", "ms": 130 },
+    { "op": "despawn", "id": "hd_glint" },
+    { "op": "wait", "ms": 250 },
+    // ⑦ [a1-plot 11-06] 믿고 싶은 사람
+    { "op": "jump", "id": "r_caderousse", "h": 2, "ms": 180 },
+    { "op": "say", "who": "caderousse", "face": "nervous", "t": "……장난이지? 장난이지……{p:300}\n그럼, 에드몽을 위해!", "pos": "top" },   // 첫 줄 = story.handThimble 글자 그대로
+    { "op": "sfx", "id": "glass_clink", "pan": 0.2 },
+    { "op": "wait", "ms": 400 },
+    // ⑧ [a1-plot 11-06] 가세 — 페르낭을 한 번 보고, 카드루스의 팔을 끼고 나간다(원작). 카드루스를 먼저 당글라르 곁 (8,9)로 붙인 뒤 둘이 나란히 문 7·8열을 지난다(9열 12행은 울타리)
+    { "op": "face", "id": "r_danglars", "dir": "right" },
+    { "op": "say", "who": "danglars", "t": "많이 마셨네.{p:200}\n가세, 바래다주지.", "pos": "top" },   // 원작 「너무 마셨어, 이 술꾼아」
+    { "op": "move", "id": "r_danglars", "path": "D1 R1", "speed": 260 },  // → (7,9) 탁자 아래
+    { "op": "face", "id": "r_danglars", "dir": "up" },                     // 탁자 너머 페르낭을 한 번 본다
+    { "op": "face", "id": "r_fernand", "dir": "left" },                    // 페르낭의 눈은 구석의 종이로
+    { "op": "emote", "id": "r_fernand", "kind": "dots", "ms": 1400, "async": true },
+    { "op": "wait", "ms": 600 },
+    { "op": "light", "dark": 0.45, "r": 112, "at": [7, 10], "ms": 900, "async": true },   // at은 트윈 없이 바뀜 — 카메라 목표와 같게. 구석 종이 80px·길의 두 사람 72~80px
+    { "op": "cam", "to": [7, 10], "ms": 900, "async": true },
+    { "op": "jump", "id": "r_caderousse", "h": 3, "ms": 200 },            // 일어서다 휘청
+    { "op": "move", "id": "r_caderousse", "path": "D1 L1", "speed": 300 },   // → (8,9) 당글라르 곁
+    { "op": "jump", "id": "r_caderousse", "h": 2, "ms": 220, "async": true },
+    { "op": "move", "id": "r_danglars,r_caderousse", "path": "D5 R2", "speed": 320 },   // 나란히 문 7·8열을 지나 길로 → 당글라르 (9,14) · 카드루스 (10,14)
+    { "op": "jump", "id": "r_caderousse", "h": 2, "ms": 200 },
+    { "op": "face", "id": "r_danglars", "dir": "up" },                     // 몇 걸음 가다 돌아본다(원작 「스무 걸음」)
+    { "op": "wait", "ms": 500 },
+    // ⑨ [a1-plot 11-06] [탭] 플레이어만 본다 — 에드몽은 이미 없다. keepCam: 줌을 풀 때 카메라가 숨긴 에드몽(15,·)에게 붙지 않게(field.js zoomTo)
+    { "op": "custom", "id": "deduce", "args": { "stage": "tap", "at": [4, 6], "hint": "구석에 버려진 종이.", "other": "……" } },
+    { "op": "cam", "zoom": 2, "at": [5, 7], "ms": 280, "keepCam": true },
+    { "op": "move", "id": "r_fernand", "path": "L3", "speed": 300 },      // (7,7) → (4,7)
+    { "op": "face", "id": "r_fernand", "dir": "up" },
+    { "op": "wait", "ms": 400 },
+    { "op": "sfx", "id": "page", "gain": 0.7 },
+    { "op": "despawn", "id": "hd_paper" },
+    { "op": "wait", "ms": 300 },
+    { "op": "face", "id": "r_fernand", "dir": "down" },
+    { "op": "sfx", "id": "cloth_slip", "gain": 0.6 },                      // 품에 넣는다
+    { "op": "wait", "ms": 700 },
+    { "op": "cam", "zoom": 1, "ms": 400 },
+    { "op": "emote", "id": "r_danglars", "kind": "dots", "ms": 900 },      // 길 위의 당글라르는 다 보았다(원작: 돌아보며 확인)
+    // ⑩ [a1-plot 11-06] 마르세유 쪽으로 — 페르낭은 끝까지 말이 없다. (4,9)→(7,9)→문→모래톱 (7,16)→동쪽 (14,16) 어둠. 두 사람과 두 칸 떨어져 지나고, 숨긴 에드몽 칸(15,·)은 밟지 않는다
+    { "op": "move", "id": "r_fernand", "path": "D2 R3 D7 R7", "speed": 220, "async": true },
+    { "op": "wait", "ms": 1600 },                                          // 문을 나와 동쪽으로 꺾는 순간
+    { "op": "face", "id": "r_caderousse", "dir": "down" },
+    { "op": "emote", "id": "r_caderousse", "kind": "question", "ms": 700 },
+    { "op": "say", "who": "caderousse", "t": "어, 페르낭?{p:200}\n카탈루냐는 저쪽인데……", "pos": "top" },   // 원작 「카탈루냐 간다더니 시내로 가잖아」
+    { "op": "face", "id": "r_danglars", "dir": "right" },                  // 카드루스 쪽
+    { "op": "say", "who": "danglars", "t": "취했구먼, 자네.{p:200}\n길이 겹쳐 보이지?", "pos": "top" },   // 원작 「네 눈이 흐린 거야」. 체포 때 「카드루스를 본다」의 첫 그림
+    { "op": "show", "id": "r_fernand", "v": false },
+    { "op": "jump", "id": "r_caderousse", "h": 1, "ms": 160 },
+    { "op": "say", "who": "caderousse", "face": "nervous", "t": "……그런가?{p:300}\n술이 원수로군.", "pos": "top" },   // 원작 「술은 배신자야」
+    { "op": "face", "id": "r_danglars", "dir": "up" },                     // 빈 탁자 쪽 — 이 시선을 따라 카메라가 탁자로
+    { "op": "wait", "ms": 500 },
+    { "op": "say", "who": "danglars", "t": "……이제 저 혼자{p:200}\n굴러가겠군.", "pos": "top" },   // 원작 「이제 저 혼자 굴러가게 두면 된다」
+    // ⑪ [a1-plot 11-06] 빈 탁자 → 세 손(끝 그림, 그대로) → 정지
+    { "op": "light", "dark": 0.5, "r": 60, "at": [7, 8], "ms": 900, "async": true },   // 잔과 잉크병만 남은 탁자
+    { "op": "cam", "to": [7, 8], "ms": 900 },
+    { "op": "wait", "ms": 300 },
+    { "op": "custom", "id": "hands", "args": { "whisper": true } },        // 약 7.6초. 앞의 두 속삭임은 방금 들은 말의 메아리, 「……검사에게……」는 페르낭의 행선지를 처음 밝힌다
     { "op": "freeze", "on": true },
     { "op": "bgmcut" },
     { "op": "amb", "id": null, "fade": 0 },
@@ -48635,7 +48749,9 @@ MC.addEvents({
   /* ───────────── 4-7 되감기 장면(a4d.dd_rewind가 rw.on·흑백·덮개를 켠 뒤 차례로 부름) ─────────────
      규칙: 첫 명령은 map … at "rw" trans "cut"(그 맵 onEnter는 rw.on이면 곧바로 끝), 당테스는 젊은 모습(ch_dantes)으로 바꾸고 되돌리지 않음(호출자가 grow로 복구),
      who:"dantes" 대사 금지(지금 얼굴 d3 초상이 나옴) — 당테스는 지금의 속마음(think)만. 먹구름(emote cloud)은 여기서 처음 나온다. 장면마다 20초 안팎.
-     정자 장면은 끝에 조명을 완전히 닫는다(호출자가 rw.on을 끄는 순간 잔치 배치로 바뀌는 것이 보이지 않게). */
+     정자 장면은 끝에 조명을 완전히 닫는다(호출자가 rw.on을 끄는 순간 잔치 배치로 바뀌는 것이 보이지 않게).
+     [a1-plot 11-06] 정자는 11-06부터 속삭임(whisper) 없이 에드몽이 맞추는 속마음 5상자(1막 a1.hands가 원작 4장을 보여 줌). 에드몽은 첫 상자 동안 보이고 ②에서 퇴장.
+       되돌리기: 이 줄 두 줄을 지우고 rw_pavilion을 docs/art_wip/a1_plot/backup/events_a1b.js의 것으로 */
   "a1b.rw_elba": [
     { "op": "map", "id": "port", "at": "rw", "trans": "cut" },
     { "op": "sprite", "id": "player", "sprite": "ch_dantes" },
@@ -48680,56 +48796,65 @@ MC.addEvents({
     { "op": "wait", "ms": 300 }
   ],
 
+  /* [a1-plot 11-06] 되감기 정자: 1막(a1.hands)에서 같은 저녁을 다 보여 주었으므로 속삭임 네 줄을 모두 뺐다. 대신 에드몽이 지금 아는 조각
+     (1막 인사 때 본 잉크병 · 추리 2의 숨긴 글씨(왼손) · 골무 · 붉은 허리띠)을 차례로 맞추는 속마음 5상자. 되감기 전체 10상자(엘바 2 + 카탈루냐 3 + 정자 5), 약 18초 그대로.
+     규칙 그대로: who:"dantes" 없음(속마음만) · 먹구름은 당글라르·페르낭만 · 끝에 조명을 완전히 닫음. 종이 뭉치·반짝임은 0.7.24 사용자 결정대로 남김.
+     잉크병 깨달음이 결론(a4c.n3) 앞 ①로 와서 점검 2번(n3 놀라는 줄 순서)이 풀린다.
+     되돌리기: 이 블록(주석부터 "a1b.rw_pavilion" 끝 ]까지)을 docs/art_wip/a1_plot/backup/events_a1b.js의 "a1b.rw_pavilion" 블록(속삭임 넷)으로 통째 바꾼다. 스위치 없음 */
   "a1b.rw_pavilion": [
-    { "op": "map", "id": "reserve", "at": "rw", "trans": "cut" },
+    { "op": "map", "id": "reserve", "at": "rw", "trans": "cut" },          // 스폰 rw (8,11)
     { "op": "sprite", "id": "player", "sprite": "ch_dantes" },
-    { "op": "show", "id": "player", "v": false },
-    { "op": "light", "dark": 0.4, "r": 84, "at": [7, 9], "color": "#ffb060", "flicker": true, "ms": 0 },   // [10-30 카드루스] 출구(7,12)까지 보이게 한 칸 아래·넓게
+    { "op": "face", "id": "player", "dir": "up" },                          // 그날 저녁의 에드몽(기억) — 이번엔 보인다
+    { "op": "light", "dark": 0.4, "r": 84, "at": [7, 9], "color": "#ffb060", "flicker": true, "ms": 0 },   // [10-30 카드루스] 출구(7~8,11)까지 보이게 한 칸 아래·넓게
     { "op": "cam", "to": [7, 9], "ms": 0 },
     { "op": "wait", "ms": 500 },
-    { "op": "say", "who": "think", "t": "……내가 떠난 뒤,\n{p:300}그 탁자에서는." },
-    { "op": "face", "id": "r_danglars", "dir": "down" },
+    // ① 본 것 — 1막 인사 속마음(a1.reserve_greet)의 앞 줄을 글자 그대로 두고, 뒷줄이 뒤집힌다
+    { "op": "fx", "kind": "sparkle", "at": "r_inkpot", "n": 3 },
+    { "op": "sfx", "id": "heartbeat", "gain": 0.5 },
+    { "op": "wait", "ms": 300 },
+    { "op": "say", "who": "think", "t": "술잔 사이에 잉크병과 종이.\n{p:300}……장부가 아니었다.", "pos": "top" },
+    // ② 내가 떠난 뒤 — 에드몽이 빠지고 빛이 탁자로 좁아진다(여기부터는 맞춰 본 그림)
+    { "op": "face", "id": "player", "dir": "down" },
+    { "op": "move", "id": "player", "path": "D2 R4", "speed": 200 },       // → (12,13) 집 쪽
+    { "op": "show", "id": "player", "v": false },
+    { "op": "light", "dark": 0.55, "r": 64, "at": [7, 8], "ms": 500, "async": true },
+    { "op": "face", "id": "r_danglars", "dir": "right" },                   // 탁자 쪽(1막과 같은 자세)
     { "op": "sfx", "id": "quill" },
-    { "op": "say", "who": "whisper", "t": "……왼손으로 쓰면……", "pos": "top" },
+    { "op": "wait", "ms": 260 },
+    { "op": "sfx", "id": "quill", "pitch": 0.95 },
+    { "op": "emote", "id": "r_danglars", "kind": "cloud", "ms": 1200, "async": true },
+    { "op": "say", "who": "think", "t": "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠다.", "pos": "top" },   // M34 「왼손」. 추리 2 「제 글씨를 숨기려는 사람의 글씨」를 이 탁자에 놓는다
+    // ③ 골무 — 먹구름 없음(카드루스는 휩쓸린 사람). 물음으로 남겨 n3에서 푼다(플레이어는 1막에서 말리는 것을 봤다 — 아이러니)
     { "op": "jump", "id": "r_caderousse", "h": 2, "ms": 180 },
     { "op": "sfx", "id": "glass_clink" },
-    { "op": "say", "who": "whisper", "t": "……에드몽은 친구라니까……{p:200} 장난이지?", "pos": "top" },   // 원작의 반대 말(1막 끝 세 손 속삭임 「장난이지? 장난이지」의 앞부분)
-    // [10-30 사용자 「카드루스 서사」] 원작 4장: 당글라르가 「장난」이라며 투서를 구겨 정자 구석에 던지고, 취한 카드루스를 데리고 나가다 돌아보면 페르낭이 그것을 줍는다.
-    //   카드루스는 속은 사람이라 먹구름을 띄우지 않는다(당글라르·페르낭만). 종이 뭉치 ob_paper_ball은 6행 왼쪽 기둥 곁(4,6)에 떨어진다
-    { "op": "face", "id": "r_danglars", "dir": "right" },
-    { "op": "sfx", "id": "paper_crumple" },
-    { "op": "say", "who": "whisper", "t": "……장난이고말고. 버리세……", "pos": "top" },
+    { "op": "say", "who": "think", "t": "골무 낀 손은 잔을 들었다.{p:300}\n……말리기는 했을까.", "pos": "top" },
+    // ④ 종이 뭉치(짧게) — 구겨져 구석 (4,6)으로, 둘은 나란히 문으로
     { "op": "face", "id": "r_danglars", "dir": "up" },
+    { "op": "sfx", "id": "paper_crumple", "gain": 0.7 },
     { "op": "spawn", "id": "rw_paper", "sprite": "ob_paper_ball", "x": 6, "y": 8, "solid": false, "z": 2 },
-    { "op": "sfx", "id": "swing", "pitch": 1.4, "gain": 0.5 },
     { "op": "jump", "id": "rw_paper", "h": 14, "ms": 420, "async": true },
-    { "op": "move", "id": "rw_paper", "path": "U2 L2", "speed": 100 },
+    { "op": "move", "id": "rw_paper", "path": "U2 L2", "speed": 100 },     // → (4,6)
     { "op": "sfx", "id": "paper_land" },
-    { "op": "fx", "kind": "dust", "at": "rw_paper", "n": 2 },
-    { "op": "fx", "kind": "sparkle", "at": "rw_paper", "n": 4 },   // 떨어진 자리에서 한 번 반짝 — 흰 점이 아니라 '버린 종이'로 읽히게
+    { "op": "fx", "kind": "sparkle", "at": "rw_paper", "n": 4 },
     { "op": "spawn", "id": "rw_glint", "sprite": "ob_paper_glint_0", "x": 4, "y": 6, "solid": false, "z": 3 },
     { "op": "wait", "ms": 130 },
     { "op": "despawn", "id": "rw_glint" },
     { "op": "spawn", "id": "rw_glint", "sprite": "ob_paper_glint_1", "x": 4, "y": 6, "solid": false, "z": 3 },
     { "op": "wait", "ms": 130 },
     { "op": "despawn", "id": "rw_glint" },
-    { "op": "wait", "ms": 200 },
-    { "op": "move", "id": "r_danglars", "path": "D1 R1", "speed": 260, "async": true },   // 당글라르가 탁자를 돌아 카드루스 곁으로 → 둘이 출구(7~8, 11)로
-    { "op": "jump", "id": "r_caderousse", "h": 3, "ms": 200 },
-    { "op": "move", "id": "r_caderousse", "path": "D1", "speed": 320 },
-    { "op": "move", "id": "r_danglars", "path": "D2", "speed": 300, "async": true },
-    { "op": "move", "id": "r_caderousse", "path": "L1 D2", "speed": 340, "async": true },
-    { "op": "jump", "id": "r_caderousse", "h": 2, "ms": 220, "async": true },
-    { "op": "emote", "id": "r_fernand", "kind": "dots", "ms": 1200 },
-    { "op": "move", "id": "r_fernand", "path": "L3", "speed": 260, "face": "up" },
-    { "op": "face", "id": "r_fernand", "dir": "up" },
+    { "op": "light", "dark": 0.45, "r": 84, "at": [7, 9], "ms": 400, "async": true },
+    { "op": "move", "id": "r_danglars", "path": "D1 R1 D2", "speed": 220, "async": true },   // → 문 (7,11)
+    { "op": "jump", "id": "r_caderousse", "h": 3, "ms": 200, "async": true },
+    { "op": "move", "id": "r_caderousse", "path": "D1 L1 D2", "speed": 240 },               // → (8,11) 당글라르와 나란히
+    { "op": "say", "who": "think", "t": "검사에게 간 건{p:200}\n쓴 손이 아니었다.", "pos": "top" },   // 쓴 사람과 넘긴 사람이 다르다 — 종이를 따라간다
+    // ⑤ 줍는 손 · 돌아보는 당글라르
+    { "op": "move", "id": "r_fernand", "path": "L3", "speed": 240, "face": "up" },
     { "op": "sfx", "id": "page" },
     { "op": "despawn", "id": "rw_paper" },
-    { "op": "say", "who": "whisper", "t": "……검사에게……", "pos": "top" },
-    { "op": "face", "id": "r_danglars", "dir": "up" },
-    { "op": "wait", "ms": 300 },
+    { "op": "face", "id": "r_danglars", "dir": "up" },                      // 문에서 돌아본다(같은 화면 안)
     { "op": "sfx", "id": "heartbeat" },
-    { "op": "emote", "id": "r_danglars,r_fernand", "kind": "cloud", "ms": 1800 },
+    { "op": "emote", "id": "r_danglars,r_fernand", "kind": "cloud", "ms": 1600, "async": true },
+    { "op": "say", "who": "think", "t": "……붉은 허리띠.", "pos": "top" },  // 되감기 카탈루냐 「붉은 허리띠가 문틀에 걸렸었다」와 이어짐 → 곧바로 세 손 맞추기(a4c.hands)
     { "op": "light", "dark": 1, "r": 0, "at": [7, 9], "ms": 700 },
     { "op": "show", "id": "player", "v": true }
   ]
@@ -53546,7 +53671,8 @@ MC.addEvents({
 /* data/events_a4c.js — [story-clues] 기억과 추리(설계: docs/S2_NARRATIVE_V2.md §5·§9). 파리아가 묻고, 플레이어가 '기억' 카드로 답한다(custom deduce ask).
    흐름: 1817 둘째 밤 a4c.n2_clues(이야기한 것 7장 + 연습 물음) → 1820 깰 때마다 a4c.check(한 번에 큰 장면 하나)
      D1 a4c.n1 「이득」(당글라르 → 물음 q.elba·q.hand) → [꿈속 부두 두 조각] → D2 a4c.n2 「글씨」(편지를 본 눈·투서·평소 글씨 → 왼손 1탭 → 물음 q.love)
-     → [꿈속 카탈루냐 칼] → D3 a4c.n3 「정자」(칼은 편지가 아님 → 잔치 전 며칠을 되짚어 정자를 고름 → 떠오름 → 되감기 → 세 손 → 카드루스('장난이지?' → 빚은 사람됨 → 누가 그를 보고 있었나: 당글라르) → '셋.' → 검사는 미룸)
+     → [꿈속 카탈루냐 칼] → D3 a4c.n3 「정자」(칼은 편지가 아님 → 잔치 전 며칠을 되짚어 정자를 고름 → 떠오름 → 되감기(잉크병·숨긴 왼손·골무·붉은 허리띠) → 세 손 → 카드루스(말렸을 것 → '장난일세' 짐작 → 빚은 사람됨 → 누가 그를 보고 있었나: 당글라르) → '셋.' → 검사는 미룸)
+       [a1-plot 11-06 — 예전: 되감기 → 세 손 → 카드루스('장난이지?' → 빚은 사람됨 → …). 되돌리기: 이 줄을 지우고 윗줄 괄호를 예전 글로]
      → (굴 1구간까지 판 뒤) a4c.y2 '이 년' 조각(별 얘기로 돌림·겨울 기침·'봄에 하세') → a4c.card22 '2년 후' → D4 a4c.n4 「검사」('봄입니다' → 신부의 방: 네 물음 → '아버지일세' → 네 초상 붉은 줄 → '알고 계셨군요')
      → a4c.dark 어둠 속의 하루(벽에 네 이름 → 간수 → 세 번 두드림 → 구멍 탭) → a4c.dark_open 일요일 저녁(흰 빵 반씩, '괜한 걸 가르쳤군').
    flags(소유): q.elba q.hand q.love(열린 물음 — 켜고 끄는 곳 모두 여기) · dd.n1~dd.n4(추리의 밤 끝) · a4d.deduced(벽에 이름을 새긴 순간) · a4.y1822(카드) · rw.on(되감기 동안만)
@@ -53735,19 +53861,25 @@ MC.addEvents({
       ] },
       { "op": "call", "ev": "a4c.rewind" },
       { "op": "call", "ev": "a4c.hands" },
-      // [r3 C5] 페르낭 단서를 대사로 닫는다(C5 ②, 작가 예시 4 다듬음): 되감기·세 손에서 본 「구겨 버린 투서를 페르낭이 주움」을 에드몽이 말로 확정하고,
+      // [r3 C5] 페르낭 단서를 대사로 닫는다(C5 ②, 작가 예시 4 다듬음): [a1-plot 11-06] 되감기에서 맞춘(예전: 되감기·세 손에서 본) 「구겨 버린 투서를 페르낭이 주움」을 에드몽이 말로 확정하고,
       //   파리아가 앞의 「칼을 꽂는 사람은 편지를 안 쓰네. 쓰는 건 셈하는 사람이지.」를 두 갈래 그대로 회수한다(칼 → 종이를 쥠 · 셈하는 사람 → 버린 것도 셈).
       //   세 손 맞추기 뒤에 두어 정답을 미리 말하지 않는다. 되돌리기: 이 꼬리표 주석 세 줄과 아래 say 두 줄을 지운다
       { "op": "say", "who": "dantes", "face": "sad", "t": "버린 종이를……{p:300} 페르낭이 주워 갔습니다." },
       { "op": "say", "who": "faria", "t": "칼 대신 종이를 쥐었군.{p:300}\n버린 것도 셈일세." },
-      { "op": "say", "who": "dantes", "face": "shock", "t": "탁자에 잉크병이랑 종이가……{p:300} 왜 여태 몰랐지?" },
+      // [a1-plot 11-06] 잉크병 단서는 되감기 ①(「……장부가 아니었다.」)로 옮겼고 여기에는 반응만 남긴다(점검 2번 (가) 원안). 끊김(cutIf)은 그대로 이 줄 바로 뒤.
+      //   되돌리기: 아래 t를 "탁자에 잉크병이랑 종이가……{p:300} 왜 여태 몰랐지?"로
+      { "op": "say", "who": "dantes", "face": "shock", "t": "……다 제 눈앞에 있었는데.{p:300}\n왜 여태 몰랐지?" },
       // [r3 B7] 세 손 동기 귀환의 끝(11-04 사용자 「추천대로」): a4c.hands에서 들어온 plot을 이 깨달음 대사 바로 뒤에서 1막처럼 뚝 끊는다 — plot이 지금 곡일 때만(music.cutIf).
       //   되돌리기: 이 주석과 아래 한 줄, a4c.hands의 [r3 B7] 주석 두 줄과 bgm 한 줄 삭제
       { "op": "music", "fn": "cutIf", "args": [ "plot" ] },
-      // [10-30 사용자 「카드루스 서사」] 카드루스는 꾸미지도 넘기지도 않았다 — '장난이지?' 하고 반대했다가 속고, 체포 때 당글라르의 눈에 입을 다문 사람.
-      //   빚은 동기가 아니라 사람됨(빈 찬장을 보고도 눈감은 사람). 되감기(a1b.rw_pavilion)·체포 클로즈업 세 컷(a2.arrest)이 근거
-      { "op": "say", "who": "dantes", "t": "카드루스는 '장난이지?' 하고 물었습니다.{p:200} 말리려던 거겠죠." },
-      { "op": "say", "who": "faria", "t": "그러고는 '장난'이란 말을 믿었지.{p:200} 믿고 싶었을 걸세." },
+      // [10-30 사용자 「카드루스 서사」] 카드루스는 꾸미지도 넘기지도 않았다 — [a1-plot 11-06] 1막에서 말렸다가 '장난일세'에 넘어가고(에드몽은 '정 있는 사람이니 말렸을 것'으로만 안다),
+      //   체포 때 당글라르의 눈에 입을 다문 사람. 빚은 동기가 아니라 사람됨(빈 찬장을 보고도 눈감은 사람). 1막 a1.hands·되감기 ③ 물음·체포 클로즈업 세 컷(a2.arrest)이 근거
+      //   [a1-plot 11-06] 에드몽은 되감기 ③의 물음(「……말리기는 했을까.」)에 스스로 답하고(그 말을 들은 적은 없다), 파리아는 1막에서 플레이어가 들은 「장난일세, 장난.」을
+      //   모른 채 짐작으로 맞힌다(아이러니) → 「자네를 아꼈으니까」('아꼈다'는 여기서 처음). 이 밤의 격언은 여전히 「손을 보탠 걸세」 하나.
+      //   되돌리기: 아래 say 세 줄을 예전 두 줄 — dantes "카드루스는 '장난이지?' 하고 물었습니다.{p:200} 말리려던 거겠죠." · faria "그러고는 '장난'이란 말을 믿었지.{p:200} 믿고 싶었을 걸세." — 로
+      { "op": "say", "who": "dantes", "t": "카드루스는 말렸을 겁니다.{p:200}\n정은 있는 사람이니까요." },
+      { "op": "say", "who": "faria", "t": "당글라르라면 그럴 때{p:200}\n'장난일세' 하고 웃었겠지." },
+      { "op": "say", "who": "faria", "t": "믿고 싶었을 걸세.{p:300}\n자네를 아꼈으니까." },
       // (fixer-s2n) 빚을 이미 떠올렸으면(이야기 ③·꿈속 빈 찬장) 물음으로 답하고, 아직이면 신부님이 짚어 준 자리에서 처음 떠오른다 — 방금 쥐여 준 카드를 곧바로 고르게 하지 않는다
       { "op": "if", "cond": { "flag": "mem.debt" },
         "then": [
@@ -53792,7 +53924,8 @@ MC.addEvents({
       { "op": "save", "slot": "auto" }
     ]),
 
-    /* 되감기(옛 4-7 절차 그대로): 흑백·덮개 → 1-2 항구 · 1-6 카탈루냐 · 1-7 정자 → 감방 복귀. 되감기 장면(a1b.rw_*)은 고치지 않는다(10-30 사용자 「카드루스 서사」로 정자만 보강 — 구겨 버린 투서·페르낭이 주움, 엘바는 한 상자로 줄여 전체 10상자) */
+    /* 되감기(옛 4-7 절차 그대로): 흑백·덮개 → 1-2 항구 · 1-6 카탈루냐 · 1-7 정자 → 감방 복귀. 되감기 장면(a1b.rw_*)은 고치지 않는다(10-30 사용자 「카드루스 서사」로 정자만 보강 — 구겨 버린 투서·페르낭이 주움, 엘바는 한 상자로 줄여 전체 10상자)
+       [a1-plot 11-06] 정자를 다시 씀: 속삭임 없이 에드몽이 맞추는 속마음 5상자, 전체 10상자 그대로(되돌리기: 이 줄 삭제 + a1b.rw_pavilion을 backup으로) */
     "a4c.rewind": [
       { "op": "set", "flag": "rw.on" },
       { "op": "hud", "show": false },
@@ -64809,7 +64942,10 @@ MC.addLang('ko', {
    Polish round 1 (tr-editor, 2026-09-30): five-lens review applied — per-finding log and before/after table in docs/i18n/polish_log_r1.md, decisions in monte/i18n/work/en/decisions.md.
    Polish round 2 (tr-editor, 2026-09-30): five-lens review applied — docs/i18n/polish_log_r2.md, decisions D-0012~ in the same decisions.md.
    Polish round 3 (tr-editor, 2026-09-30): five-lens review applied — docs/i18n/polish_log_r3.md, decisions D-0022~ in the same decisions.md.
-   Finish (tr-finisher, 2026-09-30): stage-4 key lines by three-judge vote (frozen in monte/i18n/work/en/keylines.json) + read-through + screen check — decisions D-0032~, before/after docs/i18n/pilot_before_after.md. */
+   Finish (tr-finisher, 2026-09-30): stage-4 key lines by three-judge vote (frozen in monte/i18n/work/en/keylines.json) + read-through + screen check — decisions D-0032~, before/after docs/i18n/pilot_before_after.md.
+   [a1-plot 11-06] strings 끝 24항목(“A captaincy, a bride...”부터 끝까지) = 1막 a1.hands 14상자 + 탭 안내 · 되감기 a1b.rw_pavilion 속마음 5 · 추리의 밤 3 a4c.n3 바뀐 4줄.
+     메아리: a1.hands 6번 끝 = ui story.handInk “...Write left-handed...”(D-0006) · 9번 첫 줄 = story.handThimble · 8번과 n3 파리아 = “It’s a joke” · 7번 “I tell you”(M66) · 5번 vanish(n1 「사라져」도 vanish로).
+     되돌리기: 그 24항목을 지운다(docs/art_wip/a1_plot/backup/en.js). */
 (function (MC) { 'use strict';
 MC.addLang('en', {
   "meta": { "name": "English", "native": "English", "status": "pilot", "wrap": "word", "typeMul": 0.6, "blipEvery": 2,
@@ -65417,7 +65553,31 @@ MC.addLang('en', {
     "맡기기": "Auto",
     "간파": "Insight",
     "가르침": "Teach",
-    "치유의 말": "Heal"
+    "치유의 말": "Heal",
+    "선장에, 신부에……{p:200}\n거참, 누구는 복도 많아.": "A captaincy, a bride...{p:200}\nSome men have all the luck.",
+    "……그래도 좋은 녀석이야.{p:200}\n에드몽은.": "...Still, he’s a good lad.{p:200}\nEdmond is.",
+    "장부에 없는 짐은{p:200}\n꼭 탈이 나.": "Cargo that isn’t in the ledger{p:200}\nalways brings trouble.",
+    "……그래서?": "...So?",
+    "칼 들면 자네가 끌려가.{p:300}\n펜이면 그 녀석만 사라져.": "Knife? They’d take you.{p:300}\nPen? Only he vanishes.",
+    "내 글씨는 장부가 알아.{p:200}\n왼손으로 쓰면……": "Ledgers know my hand.{p:200}\nWrite left-handed...",
+    "어이, 에드몽은 친구야.{p:200}\n해코지는 안 된다니까.": "Hey, Edmond’s a friend.{p:200}\nNo harm, I tell you.",
+    "누가 해코지래?{p:200}\n장난일세, 장난.": "Harm? Who said harm?{p:200}\nIt’s a joke. Only a joke.",
+    "……장난이지? 장난이지……{p:300}\n그럼, 에드몽을 위해!": "...It’s a joke, right? A joke...{p:300}\nWell then—to Edmond!",
+    "많이 마셨네.{p:200}\n가세, 바래다주지.": "You’ve had plenty.{p:200}\nCome, I’ll see you home.",
+    "구석에 버려진 종이.": "The paper in the corner.",
+    "어, 페르낭?{p:200}\n카탈루냐는 저쪽인데……": "Eh? Fernand?{p:200}\nThe Catalans are that way...",
+    "취했구먼, 자네.{p:200}\n길이 겹쳐 보이지?": "You’re drunk, my friend.{p:200}\nSeeing double, are you?",
+    "……그런가?{p:300}\n술이 원수로군.": "...Am I?{p:300}\nWine’s a traitor.",
+    "……이제 저 혼자{p:200}\n굴러가겠군.": "...Now it’ll roll on{p:200}\nall by itself.",
+    "술잔 사이에 잉크병과 종이.\n{p:300}……장부가 아니었다.": "Ink and paper among the glasses.\n{p:300}...It was no ledger.",
+    "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠다.": "A left hand, hiding its writing,{p:200}\nfilled that page.",
+    "골무 낀 손은 잔을 들었다.{p:300}\n……말리기는 했을까.": "His thimbled hand drank.{p:300}\n...Did he even try to stop them?",
+    "검사에게 간 건{p:200}\n쓴 손이 아니었다.": "The hand that wrote it{p:200}\nnever went to the prosecutor.",
+    "……붉은 허리띠.": "...A red sash.",
+    "……다 제 눈앞에 있었는데.{p:300}\n왜 여태 몰랐지?": "...It was all right in front of me.{p:300}\nHow did I never see it?",
+    "카드루스는 말렸을 겁니다.{p:200}\n정은 있는 사람이니까요.": "Caderousse would have tried to stop them.{p:200}\nHe has a heart, at least.",
+    "당글라르라면 그럴 때{p:200}\n'장난일세' 하고 웃었겠지.": "Danglars would have laughed{p:200}\nand said, ‘It’s a joke.’",
+    "믿고 싶었을 걸세.{p:300}\n자네를 아꼈으니까.": "He wanted to believe it.{p:300}\nHe was fond of you."
   }
 });
 })(window.MC);
