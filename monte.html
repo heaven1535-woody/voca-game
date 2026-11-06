@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.9.2-ptfix';
+  var VERSION = '0.9.3-burnface';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -1487,6 +1487,18 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     else if (cols) g.gradV(x, y, 64, 64, cols);
     g.ctx.drawImage(r.s64, x | 0, y | 0);
     return true;
+  };
+  /* [pt-fix4 11-06] 큰 인서트가 직접 그리는 얼굴(빌포르 편지 태우기 반쪽 얼굴 — custom.js C.burn): 옛 손 도트 32칸 스프라이트를 키우지 않고
+     디코드된 pt-c 판 중 가장 큰 것을 준다(c128 → s64 → C → 48 대체판). → {img, size} | {pending:true}(덜 풀림·실패 — 부르는 쪽은 얼굴을 그리지 않음) | null(pt-c 없음 · ?ptc=0).
+     논리 버퍼에 직접 그리는 자리라 기기 해상도 얹기(ptcPut)는 쓰지 않는다(위에 그리는 불빛·그늘 효과가 덮이지 않게). 되돌리기: 부르는 쪽 ?uw2off=PT4 */
+  g.ptcArt = function (name) {
+    if (!g.ptcOn()) return null;
+    const k = ptKey(name); if (!k) return null;
+    const r = ptcGet(k);
+    if (!r || !r.ok) { if (!PT.kicked) ptcKick(); return { pending: true }; }
+    const img = r.c128 || r.s64 || r.C || r.fb;
+    if (!img) return { pending: true };
+    return { img, size: img.naturalWidth || img.width };
   };
 
   /* ---------- [people-il] 인물 기록 선 그림 — 같은 촘촘한 패스(present 뒤 기기 해상도에 얹기 · 빠른 길 검사 · 밝기 곡선)를 큰 자리에 쓴다 ----------
@@ -67636,7 +67648,12 @@ MC.addLang('en', {
     if (S4.isAuto()) return S4.later(300, () => ({ ok: true, auto: true }));
     const g = G(), MS = Math.max(800, S4.num(args.ms, 2000)), PAPER = MC.clamp(S4.num(args.paper, 1200), 300, MS - 300), CUT = 220;
     const ptName = MC.dialogue && MC.dialogue.portraitOf ? MC.dialogue.portraitOf(args.who || 'villefort', args.face || 'stiff') : null;
-    const pt = ptName ? U.spr(ptName) : null;
+    const ptOld = ptName ? U.spr(ptName) : null;
+    // [pt-fix4 11-06] 반쪽 얼굴도 대화 초상과 같은 pt-c 얼굴로(사용자 11-06 「빌포르가 종이를 태우는 장면에서 예전 초상」). 옛: 손 도트 32칸 스프라이트를 4배로(U.spr).
+    //   pt-c가 있으면 gfx.ptcArt(c128 → s64 → C)를 같은 공식(정수 배율)으로 — 크기는 옛과 같은 128칸. 덜 풀렸으면 얼굴 없이 불빛만. 되돌리기: ?uw2off=PT4 또는 이 세 줄을 지우고 ptOld를 pt로
+    const usePtc = !!(ptName && MC.uw2 && MC.uw2('PT4') && g.ptcArt && g.ptcHas && g.ptcHas(ptName));
+    const pt = usePtc || ptOld ? true : null;
+    const faceImg = () => { if (!usePtc) return ptOld; const a = g.ptcArt(ptName); return a && a.img ? a.img : null; };
     const B = burnPrep();
     const sparks = [];
     for (let i = 0; i < 18; i++) sparks.push({ x: U.hash(i, 1, 44), d: U.hash(i, 2, 44) * 900, v: 18 + U.hash(i, 3, 44) * 26, s: U.hash(i, 4, 44) });
@@ -67683,10 +67700,12 @@ MC.addLang('en', {
     function drawFace(t) {
       const W = g.W, H = g.H, cx = W >> 1;
       g.clear('#050302');
-      if (!pt) return;
-      const s = Math.max(1, Math.min(4, Math.floor((W * 0.72) / pt.width), Math.floor((H * 0.5) / pt.height)));
-      const w = pt.width * s, h = pt.height * s, x = cx - (w >> 1), y = Math.round(H * 0.42 - h / 2);
-      g.ctx.imageSmoothingEnabled = false; g.ctx.drawImage(pt, x, y, w, h);
+      const fi = faceImg();                                            // [pt-fix4 11-06] 옛: pt(손 도트 32칸)
+      if (!fi) return;
+      const fw = fi.naturalWidth || fi.width, fh = fi.naturalHeight || fi.height;
+      const s = Math.max(1, Math.min(4, Math.floor((W * 0.72) / fw), Math.floor((H * 0.5) / fh)));
+      const w = fw * s, h = fh * s, x = cx - (w >> 1), y = Math.round(H * 0.42 - h / 2);
+      g.ctx.imageSmoothingEnabled = false; g.ctx.drawImage(fi, x, y, w, h);
       const fl = 0.75 + 0.25 * Math.sin(t * 0.029) * Math.sin(t * 0.013 + 2);
       { const c0 = g.ctx; c0.save(); c0.beginPath(); c0.rect(x, y, w, h); c0.clip(); c0.globalCompositeOperation = 'multiply'; c0.fillStyle = '#ffa860'; c0.fillRect(x, y, w, h); c0.restore(); }   // 불빛 색(따뜻하게)
       g.ditherRect(x, y, w >> 1, h, '#050302', 12);                    // 왼쪽 반은 그늘(반쪽 얼굴)
