@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.9.1-plot';
+  var VERSION = '0.9.2-ptfix';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -261,6 +261,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
         if (!tested) tested = test();
         var o = { v: VERSION, dpr: window.devicePixelRatio, iw: innerWidth, ih: innerHeight };
         try { var g = MC.gfx; if (g) { o.S = g.S; o.W = g.W; o.H = g.H; o.scr = g.screen ? g.screen.width + 'x' + g.screen.height : null; } } catch (_) {}
+        // [pt-fix 11-06] 초상 pt-c 디코드 상태(폰 확인용): ok · fail · 아직(pend) · 다시 푼 수 · 예외 · 바탕만 그린 프레임 · 파리아 두 얼굴. 되돌리기: 이 줄을 지운다
+        try { if (MC.gfx && MC.gfx.ptcInfo) { var pi = MC.gfx.ptcInfo(), pd = pi.decoded.filter(function (x) { return x.n.indexOf('il:') !== 0; }), pc = pi.counts || {}, pf = function (n) { var e = pd.filter(function (x) { return x.n === n; })[0]; return e ? (e.ok ? 'ok' : e.fail ? 'FAIL' : 'pend') + '/' + e.ms : '-'; }; o.pt = { ok: pd.filter(function (x) { return x.ok; }).length, fail: pd.filter(function (x) { return x.fail; }).length, pend: pd.filter(function (x) { return !x.ok && !x.fail; }).length, re: pc.retry, err: pc.err, part: pc.part, wait: pc.wait, fa: pf('pt_faria') + ' ' + pf('pt_faria_smile'), pt1: !!(MC.uw2 && MC.uw2('PT1')) }; } } catch (e) { o.pterr = e.message; }
         try { if (MC.comic) { var i = MC.comic.info(); o.c = { pl: i.playing, st: i.style, ph: i.phase, nHi: i.nHi, k: i.vista && i.vista.k, vy: i.vista && i.vista.vy, vh: i.vista && i.vista.vh, dec: (i.decoded || []).map(function (d) { return d.key.slice(0, 16) + ':' + (d.ok ? 1 : 0) + '/' + d.ms + '/' + d.luma + '/' + d.offPal; }) }; } } catch (e) { o.cerr = e.message; }
         pre.textContent = navigator.userAgent.replace(/^Mozilla\/5\.0 /, '').slice(0, 110) + '\n' + JSON.stringify(o) + '\n' + logs.join('\n');
       }, 1000);
@@ -989,6 +991,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const lv = brightLevel();
     if (!(lv > 0 && presentGamma(s, lv))) s.drawImage(g.canvas, 0, 0, g.W * g.S, g.H * g.S);
     if (!PT.kicked) ptcKick();                           // [pt-c] ?ptc=1이면 첫 프레임(타이틀)부터 초상 C를 미리 디코드
+    else if (PT.wait.length) ptcPump();                  // [pt-fix 11-06] 줄 세운 일괄 디코드를 이어 간다(PT1 — 꺼져 있으면 줄이 비어 있다)
     if (PT.q.length) ptcPresent(lv);                     // [pt-c] 이 프레임에 적힌 초상 자리 → 기기 해상도 96칸 C
   };
 
@@ -1079,6 +1082,23 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
      밝기 보정(설정 15·30)은 얹을 그림을 present와 같은 곡선(감마 표 · screen 방식이면 그 근사)으로 미리 바꿔 둔다. 흔들림·미끄럼은 그린 자리(변환 포함)를 그대로 쓴다. */
   const PT = { force: null, kicked: false, q: [], dec: new Map(), hi: new Map(), exp: new Map(), tmp: null, mask: null, mid: null, slut: {},
     n: { fast: 0, masked: 0, fb: 0, hidden: 0, il: 0, ilfb: 0, ilcov: 0, half: 0, ilhalf: 0 }, ms: new Float32Array(240), mi: 0 };   // [r5 RES2] half · ilhalf = 반 칸(k = S/2)으로 얹은 수
+  /* [pt-fix 11-06] PT1 — 폰에서 초상 디코드가 늦거나 · 실패하거나 · then 안 예외로 멈춰도 pt-c 얼굴이 옛 32칸 만화 얼굴로 떨어지지 않게(사용자 신고 11-06 「수업 때 파리아 초상이 예전 초상」).
+       ① 자리(ptcSlot · ptc32 · ptc32img · ptc64): pt-c가 있는 얼굴이 아직 덜 풀렸거나 실패면 바탕만 그리고 true(ptc32의 '덜 풀림' 가드와 같은 문법) — 부르는 쪽의 옛 g.sprite 갈래에 닿지 않는다.
+       ② 디코드(ptcDecode · ptcGet): then 안 예외를 잡아 실패로 · 실패는 0.4 → 1.5 → 4초 뒤 다시(최대 3번) · 8초 넘게 끝나지 않으면 새로 한 번 더(먼저 끝난 판을 쓴다) ·
+          C만 실패면 s48을 C 자리에 · s32만 실패면 C를 3×3으로 줄여 · 48 판 캔버스를 못 만들면(아이폰 캔버스 메모리 상한) s48 판 그대로 → 모자란 판(partial)은 뒤에서 다시 풀어 온전한 판으로 바꾼다.
+       ③ 타이틀 일괄 디코드(ptcKick): 60얼굴 × 5장을 한꺼번에가 아니라 줄 세워 동시 PT_N얼굴씩 — 화면이 부른 얼굴은 줄을 건너 바로 푼다.
+     되돌리기: 주소 ?uw2off=PT1(또는 MC.UW2_OFF에 'PT1') → 옛 동작 그대로. 코드를 걷으려면 [pt-fix 11-06] 줄·갈래를 지운다(백업 docs/art_wip/pt_fix/backup/gfx.js). */
+  PT.wait = []; PT.seq = 0; Object.assign(PT.n, { wait: 0, retry: 0, swap: 0, err: 0, part: 0, tmo: 0 });   // [pt-fix 11-06] wait = 바탕만 그린 프레임 수 · retry = 다시 푼 수 · swap = 다시 푼 판으로 바꾼 수 · err = then 안 예외 · part = 모자란 판 · tmo = 선택 판 기다림 한도 넘김
+  const pt1On = () => !!(MC.uw2 && MC.uw2('PT1'));        // [pt-fix 11-06]
+  const PT_N = 4, PT_TRIES = 3, PT_BACK = [400, 1500, 4000], PT_HANG = 8000, PT_OPT_MS = 6000;   // [pt-fix 11-06] 동시 얼굴 수 · 다시 풀기 최대 · 실패 뒤 기다림(ms) · 안 끝남으로 보는 시간(ms, 회차마다 늘림) · 선택 판 기다림 한도(ms)
+  /* [pt-fix2 11-06] 독립 검증 지적 다섯 가지(PT1 안 — ?uw2off=PT1이면 옛 그대로. 백업 docs/art_wip/pt_fix/backup2/gfx.js):
+       ① ptc64: s64만 없으면(실패 · 한도) 64 바탕 + 가운데 48(ptcSlot bg — menu.js 큰 초상과 같은 길)으로 true(옛: false → ptc 없는 클로즈업은 옛 2배 32칸).
+       ② C · s48에도 기다림 한도 PT_C_MS(ptcEarly): 넘으면 먼저 온 판으로(C만 없으면 s48을 C 자리에 — 모자란 판 · 둘 다 없으면 실패 → 바탕만). 늦게 오면 ptcLate가 그 판을 고친다.
+       ③ 다시 풀기 PT_TRIES번 뒤에도 드물게(ptcRare — 장면이 바뀌면 PT_RARE_MIN 뒤 · 아니면 PT_RARE 간격, 얼굴마다 PT_RARE_N번 · 동시 PT_N얼굴 아래일 때만).
+       ④ 진 판 · 바뀐 옛 판의 캔버스를 놓는다(ptcFree — width 0 · close, 그 판으로 구운 PT.exp · PT.hi · PT.q도 지움).
+       ⑤ present의 기기 해상도 판(ptcHi · 작업 판 · ilLut)이 getContext null이면 그 자리는 논리판만 · 자리 하나의 예외가 present를 멈추지 않게. */
+  const PT_C_MS = 6000, PT_RARE = [20000, 30000, 60000], PT_RARE_MIN = 5000, PT_RARE_N = 16;   // [pt-fix2 11-06] C·s48 기다림 한도(ms) · 3번 뒤 드문 다시 풀기 간격(ms, 회차마다 늘림 — 끝 값 반복) · 장면이 바뀌었으면 이만큼만 지나도 · 드문 다시 풀기 최대(얼굴마다)
+  Object.assign(PT.n, { ctmo: 0, late: 0, rare: 0, free: 0, hiNull: 0, pxErr: 0 }); PT.scEp = 0; PT.scTop = null;   // [pt-fix2 11-06] ctmo = C·s48 한도 넘김 · late = 늦게 온 C·s48로 고친 판 · rare = 드문 다시 풀기 · free = 놓아 준 판 · hiNull = 기기 해상도 판을 못 만든 자리 · pxErr = 얹기 예외 · scEp = 장면이 바뀐 수(ptcRare가 맨 위 씬을 볼 때 센다)
   // [r5 RES2] RES1을 거쳐도 홀수 배율(3 이상)인 기기 — 폴드 겉화면 5@3 · 125·150% 노트북 3@1.25~1.5(또는 ?uw2off=RES1) — 에서는 논리판으로 내려가던 자리
   //   (pt-c 48 · 32 자리 c64 · 클로즈업 64 자리 c128 · 인물 기록 il)에 C(칸 2z)를 k = S/2(반 칸)배 최근접으로 자리(z·S 기기 px)에 꽉 채워 얹는다.
   //   칸 폭이 floor/ceil(S/2) 기기 px로 번갈아 생기지만(1.5 = 2·1 · 2.5 = 3·2) 논리판(S px 칸)보다 곱고, 크기·자리는 논리판과 같다. 덮개 검사·밝기 곡선은 옛 길 그대로.
@@ -1107,8 +1127,150 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (!g.ptcOn()) return;
     PT.kicked = true;
     const d = ptData();
+    if (d && pt1On()) { PT.wait = Object.keys(d); ptcPump(); return; }   // [pt-fix 11-06] 줄 세워 동시 PT_N얼굴씩(옛: 아래 줄 — 한꺼번에). 되돌리기: ?uw2off=PT1 또는 이 줄을 지운다
     if (d) for (const k in d) ptcDecode(k);
   }
+  // [pt-fix 11-06] 줄(PT.wait)에서 다음 얼굴을 푼다 — 지금 풀리는 얼굴(덜 끝났고 PT_HANG 안)이 PT_N보다 적을 때만. 디코드가 끝날 때마다 · present마다 부른다
+  function ptcPump() {
+    const w = PT.wait;
+    if (!w || !w.length) return;
+    const now = performance.now();
+    let busy = 0;
+    for (const r of PT.dec.values()) if (!r.il && !r.ok && !r.fail && now - r.t0 < PT_HANG) busy++;
+    while (w.length && busy < PT_N) { const k = w.shift(); if (PT.dec.has(k)) continue; if (ptcDecode(k)) busy++; }
+  }
+  // [pt-fix 11-06] 자리들이 부르는 디코드: PT1이면 실패(PT_BACK 뒤) · 안 끝남(PT_HANG 넘음) · 모자란 판(partial)을 다시 푼다(얼굴마다 최대 PT_TRIES번).
+  //   실패·안 끝남이면 새 판이 자리를 넘겨받고(옛 판이 나중에 끝나면 ptcSettle이 먼저 끝난 쪽을 쓴다), 모자란 판은 그대로 쓰면서 뒤에서 온전한 판을 푼다. PT1이 꺼져 있으면 ptcDecode 그대로
+  function ptcGet(k) {
+    const r = ptcDecode(k);
+    if (!r || !pt1On()) return r;
+    const t = r.tries | 0, now = performance.now();
+    if (r.up) return r;                                    // [pt-fix2 11-06] 옛(pt-fix): if (t >= PT_TRIES || r.up) return r — 3번 뒤 그 세션 내내 다시 안 풂
+    if (t >= PT_TRIES) { if (!ptcRare(r, now)) return r; } // [pt-fix2 11-06] 3번 뒤: 드물게(ptcRare)
+    else if (r.live && (r.ok || r.fail) && now - r.t0 < PT_HANG * (t + 1)) return r;   // [pt-fix2 11-06] 한도로 먼저 끝낸 판(C·s48이 아직 오는 중 — 느린 기기면 늦게 와 ptcLate가 고친다): 안 끝남과 같은 간격으로
+    else if (r.fail) { if (now - (r.t1 || r.t0) < PT_BACK[t]) return r; }
+    else if (!r.ok) { if (now - r.t0 < PT_HANG * (t + 1)) return r; }
+    else if (!r.partial || now - (r.t1 || r.t0) < PT_BACK[t]) return r;
+    const n = ptcDecode(k, false, t + 1);
+    if (!n) return r;
+    PT.n.retry++;
+    r.tries = t + 1;
+    r.ra = now; r.ep = PT.scEp;                            // [pt-fix2 11-06] 마지막으로 다시 푼 때 · 그때의 장면 수(ptcRare)
+    if (r.ok) { r.up = n; n.of = r; return r; }            // 모자란 판: 지금 판을 쓰면서 뒤에서
+    PT.dec.set(k, n);
+    if (!r.live) ptcFree(r, n);                            // [pt-fix2 11-06] 자리를 넘긴 실패 판을 놓는다(아직 오는 중인 판은 늦게 오면 ptcSettle이 고르고 놓는다)
+    return n;
+  }
+  // [pt-fix2 11-06] PT_TRIES번 뒤(실패 · 모자람 · 안 끝남): 장면이 바뀌었으면 마지막 시도에서 PT_RARE_MIN 뒤, 아니면 PT_RARE(회차마다 늘림) 뒤에 한 번 더.
+  //   얼굴마다 PT_RARE_N번까지 · 지금 풀리는 얼굴이 PT_N보다 적을 때만(폭주 없게). 메모리 압박이 늦게 풀린 기기에서 빈 액자로 남지 않게
+  function ptcRare(r, now) {
+    if (r.ok && !r.partial) return false;
+    const i = (r.tries | 0) - PT_TRIES;
+    if (i >= (r.ok ? (r.noC ? 3 : 1) : PT_RARE_N)) return false;   // [pt-fix3 11-06] 이미 새 얼굴(모자란 판)이면 드물게도 덜 — C 자리에 s48이면 3번 · 선택 판만 빠졌으면 1번(느린 폰이 같은 얼굴을 되풀어 데워지지 않게). 옛(pt-fix2): if (i >= PT_RARE_N)
+    const tp = MC.scene && typeof MC.scene.top === 'function' ? MC.scene.top() : null;
+    if (tp !== PT.scTop) { PT.scTop = tp; PT.scEp++; }
+    const dt = now - Math.max(r.t1 || r.t0, r.ra || 0);
+    if (dt < PT_RARE[Math.min(i, PT_RARE.length - 1)] && !(!r.ok && r.ep !== PT.scEp && dt >= PT_RARE_MIN)) return false;   // [pt-fix3 11-06] 장면이 바뀌었을 때 일찍 다시 푸는 건 빈 액자(덜 풀림·실패)일 때만. 옛(pt-fix2): !(r.ep !== PT.scEp && …)
+    let busy = 0;
+    for (const o of PT.dec.values()) if (!o.il && !o.ok && !o.fail && now - o.t0 < PT_HANG) busy++;
+    if (busy >= PT_N) return false;
+    PT.n.rare++;
+    return true;
+  }
+  // [pt-fix 11-06] 다시 푼 판(또는 자리를 넘긴 옛 판)이 끝났을 때: 지금 자리의 판보다 나으면(덜 끝남·실패 → 끝남, 모자란 판 → 온전한 판) 바꾼다
+  function ptcSettle(key, r) {
+    if (r.of) { if (r.of.up === r) r.of.up = null; }
+    const cur = PT.dec.get(key);
+    if (cur === r) return;                                 // [pt-fix2 11-06] 옛(pt-fix): if (cur === r || !r.ok) return
+    if (!r.ok) { if (!r.live || r.of) ptcFree(r, cur); return; }   // [pt-fix2 11-06] 진 실패 판을 놓는다(아직 C·s48이 오는 중이면 늦게 와 다시 고를 수 있게 둔다 — 실패 판은 선택 판도 이미 놓았다)
+    if (!cur || !cur.ok || (cur.partial && !r.partial)) { PT.dec.set(key, r); PT.n.swap++; if (cur && (!cur.live || !r.partial)) ptcFree(cur, r); return; }   // [pt-fix2 11-06] + 바뀐 옛 판을 놓는다(옛 판이 아직 오는 중이고 새 판이 모자라면 둔다)
+    if (!r.live || r.of || !cur.partial) ptcFree(r, cur);  // [pt-fix2 11-06] 진 판(지금 판이 같거나 낫다)을 놓는다
+  }
+  // [pt-fix2 11-06] 진 판 · 바뀐 옛 판의 캔버스를 놓는다(아이폰 캔버스 메모리 — width 0 · ImageBitmap이면 close). keep(남는 판)과 같이 쓰는 캔버스는 두고,
+  //   그 판으로 구운 캐시(PT.exp · PT.hi — 모자란 판 키 '|p' + id)와 이 프레임 줄(PT.q)의 그 자리도 지운다. 지금 자리의 판은 놓지 않는다
+  function ptcFree(r, keep) {
+    if (!r || r.freed || r.il || PT.dec.get(r.key) === r) return;
+    r.freed = true; r.ok = false; PT.n.free++;
+    for (let i = PT.q.length - 1; i >= 0; i--) if (PT.q[i].r === r) PT.q.splice(i, 1);
+    ptcDrop(r);
+    const ks = keep ? [keep.C, keep.fb, keep.s64, keep.s32, keep.c64, keep.c128] : [];
+    for (const f of ['C', 'fb', 's64', 's32', 'c64', 'c128']) { const c = r[f]; r[f] = null; if (c && ks.indexOf(c) < 0) ptcRel(c); }
+  }
+  function ptcRel(c) { if (!c || c === ptBlank) return; try { if (typeof c.close === 'function') c.close(); else if (c.getContext) c.width = c.height = 0; } catch (_) {} }   // [pt-fix2 11-06] 캔버스 한 장 놓기
+  function ptcDrop(r) {                                   // [pt-fix2 11-06] 모자란 판 r로 구운 PT.exp · PT.hi를 지운다(키 끝 '|p' + id — 온전한 판 키에는 id가 없다)
+    if (!r.id) return;
+    const tag = '|p' + r.id;
+    for (const [k, e] of PT.exp) {
+      if (!k.endsWith(tag)) continue;
+      PT.exp.delete(k);
+      for (const [hk, h] of PT.hi) if (hk.indexOf(k + '|') === 0) { PT.hi.delete(hk); h.width = h.height = 0; }
+      if (e && e.c) e.c.width = e.c.height = 0;
+    }
+  }
+  // [pt-fix2 11-06] C · s48 기다림 한도: PT_C_MS 안에 둘 중 하나라도 안 오면 먼저 온 판으로 본문(done)을 한 번 돌린다(선택 판은 제 한도 PT_OPT_MS로 이미 끝났다).
+  //   r.live = 아직 오는 판이 있다. 늦게 다 오면 ptcLate가 그 판을 고친다 · 아주 안 오면(멈춘 디코드) 그대로 두고 ptcGet · ptcRare가 새로 푼다
+  function ptcEarly(key, r, ps, done) {
+    const got = [];
+    ps.forEach((p, i) => p.then(v => { got[i] = v; }));
+    r.live = true;
+    const tm = setTimeout(() => {
+      if (!r.live || r.freed || r.dead) return;           // 다 왔다(clearTimeout 전에 온 경우) · 놓은 판
+      const a0 = [0, 1, 2, 3, 4, 5].map(i => got[i] === undefined ? null : got[i]);
+      r.early = a0.slice(); PT.n.ctmo++;
+      warnOnce('ptct:' + key, '초상 C·s48 기다림 한도(' + PT_C_MS + 'ms) — 먼저 온 판으로: ' + key);
+      done(a0);
+    }, PT_C_MS);
+    Promise.all(ps).then(a => {
+      r.live = false; clearTimeout(tm);
+      if (r.freed && !r.early) { for (const c of a) ptcRel(c); return; }   // 끝나기 전에 놓은 판
+      if (!r.early) { done(a); return; }
+      ptcLate(key, r, a, done);
+    });
+  }
+  // [pt-fix2 11-06] 한도로 먼저 끝낸 판에 C · s48이 늦게 왔다: s48을 C 자리에 쓰던 판이면 진짜 C로 · 실패였으면 온 판으로 본문을 다시 돌린다(같은 판 — 선택 판은 지금 것 그대로).
+  //   쓸 데 없으면 놓고, 판을 다시 골라(ptcSettle) 진 판이면 놓는다
+  function ptcLate(key, r, a, done) {
+    const e0 = r.early, fresh = i => (a[i] && a[i] !== e0[i] ? a[i] : null), C2 = fresh(0), S2 = fresh(1);
+    for (let i = 2; i < 6; i++) ptcRel(fresh(i));
+    if (r.freed || r.dead) { ptcRel(C2); ptcRel(S2); return; }
+    if (!(r.fail ? (C2 || S2) : (r.ok && r.noC && C2))) { ptcRel(C2); ptcRel(S2); ptcSettle(key, r); return; }
+    const old = [r.C, r.fb, e0[1], S2];
+    ptcDrop(r);
+    r.ok = r.fail = r.partial = r.noC = r.optMiss = false; r.early = null;
+    done([C2, S2 || e0[1], r.s64, r.s32, r.c64, r.c128]);
+    const ks = [r.C, r.fb, r.s64, r.s32, r.c64, r.c128];
+    for (const c of old) if (c && ks.indexOf(c) < 0) ptcRel(c);
+    if (r.ok) PT.n.late++;
+  }
+  // [pt-fix 11-06] s32가 없거나 실패했을 때만: C(96칸 — C도 실패해 s48이 대신이면 최근접 2배로 96칸)를 3×3 칸씩 32칸으로(ptcHalve와 같은 규칙 — 불투명이 반 미만이면 투명 · 먹선이 3칸 이상이면 가장 어두운 색 · 아니면 가장 많은 색)
+  function ptcShrink3(src) {
+    const W = 96, W2 = 32, c = mk(W, W), x = c.getContext('2d', { willReadFrequently: true });
+    x.imageSmoothingEnabled = false;
+    x.drawImage(src, 0, 0, W, W);
+    const d = x.getImageData(0, 0, W, W).data, out = mk(W2, W2), ox = out.getContext('2d'), o = ox.createImageData(W2, W2), od = o.data;
+    const lum = i => d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114, same = (i, j) => d[i] === d[j] && d[i + 1] === d[j + 1] && d[i + 2] === d[j + 2];
+    for (let y = 0; y < W2; y++) for (let xx = 0; xx < W2; xx++) {
+      const ids = [];
+      for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) { const i = ((y * 3 + dy) * W + xx * 3 + dx) * 4; if (d[i + 3] > 127) ids.push(i); }
+      if (ids.length < 5) continue;
+      const ink = ids.filter(i => lum(i) < 80);
+      let pick = ids[0];
+      if (ink.length >= 3) pick = ink.reduce((a, b) => lum(a) <= lum(b) ? a : b);
+      else { let best = -1; for (const i of ids) { const n = ids.filter(j => same(i, j)).length; if (n > best) { best = n; pick = i; } } }
+      const q = (y * W2 + xx) * 4; od[q] = d[pick]; od[q + 1] = d[pick + 1]; od[q + 2] = d[pick + 2]; od[q + 3] = 255;
+    }
+    ox.putImageData(o, 0, 0);
+    c.width = c.height = 0;
+    return out;
+  }
+  // [pt-fix 11-06] 자리 바탕만(논리 버퍼) — ptc32 · ptc64의 바탕 줄과 같다(bg = [w, h, ox, oy]면 더 큰 칸의 그 자리)
+  function ptcBgOnly(x, y, z, cols, bg) {
+    if (!cols) return;
+    if (bg) g.ctx.drawImage(gradCanvas(bg[0], bg[1], cols), bg[2], bg[3], z, z, x | 0, y | 0, z, z);
+    else g.gradV(x, y, z, z, cols);
+    PT.n.wait++;
+  }
+  let ptBlank = null;                                     // [pt-fix 11-06] ptc32img의 '아직' 판(투명 32칸 — 종이 카드에 옛 얼굴 대신 빈 자리)
   // [ios-c] 불러온 그림 → 캔버스(한 번 그려 둠). 아이폰 사파리에서 C 그림을 그린 칸이 통째로 비는 일이 있었다(10-29 ?diag=1: 장소 그림 11장 중 8장이 luma 0·전부 팔레트 밖).
   //   그린 뒤 칸을 한 번 읽어 모두 투명이면 40ms 뒤 다시 그리고, 6번 넘게 비면 Image 그대로 쓴다(그릴 때마다 Image에서)
   function imgCanvas(im, done, n) {
@@ -1125,45 +1287,72 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     done(c || im);
   }
   g.imgCanvas = imgCanvas;
-  function ptcImg(uri) {                                  // data URI → 캔버스(한 번 그려 둠) | Image | null
-    return new Promise(res => {
+  function ptcImg(uri, ms) {                              // data URI → 캔버스(한 번 그려 둠) | Image | null
+    return new Promise(res0 => {
+      let fin = false;                                    // [pt-fix 11-06] 한 번만 끝낸다(아래 기다림 한도와 겹치지 않게) — 옛: res0 그대로
+      const res = v => { if (!fin) { fin = true; res0(v); } };
       const im = new Image();
       im.onload = () => imgCanvas(im, res);               // [ios-c] ImageBitmap(premultiplyAlpha none)은 아이폰 사파리에서 검게 그려졌다 — onload 뒤 캔버스로
       im.onerror = () => res(null);
+      // [pt-fix 11-06] ms = 기다리는 한도(PT1 · 선택 판 s64 · s32 · c64 · c128만): 넘으면 없음(null)으로 — 선택 판 한 장이 끝나지 않아 48 얼굴까지 막히지 않게(모자란 판 → 뒤에서 다시 풀기)
+      if (ms) setTimeout(() => { if (fin || (im.complete && im.naturalWidth)) return; im.onload = im.onerror = null; PT.n.tmo++; res(null); }, ms);
       im.src = uri;
     });
   }
   // il = [people-il] 인물 기록 선 그림(MC.data.ilC — 대체 그림은 e.s 180×240, 최근 IL_MAX장만 붙들고 나머지는 놓는다)
   const IL_MAX = 6;
-  function ptcDecode(name, il) {
+  function ptcDecode(name, il, tries) {                  // [pt-fix 11-06] tries = 다시 푸는 회차(ptcGet만 넘긴다 — 새 판을 만들기만 하고 PT.dec에는 ptcGet이 넣는다)
     const key = il ? 'il:' + name : name;
-    let r = PT.dec.get(key);
+    let r = tries ? null : PT.dec.get(key);                // [pt-fix 11-06] 옛: PT.dec.get(key)
     if (r) { if (il) { PT.dec.delete(key); PT.dec.set(key, r); } return r; }   // il: 최근 쓴 순서(LRU)
     const e = ((il ? ilData() : ptData()) || {})[name];
     if (!e) return null;
     r = { ok: false, fail: false, C: null, fb: null, ms: 0, t0: performance.now(), il: !!il, dead: false };
-    PT.dec.set(key, r);
+    const fix = !il && pt1On();                           // [pt-fix 11-06] 이 판을 PT1로 푼다(예외 잡기 · 대신할 판 · 끝나면 ptcSettle · 줄 펌프)
+    if (fix) { r.tries = tries | 0; r.id = ++PT.seq; r.key = key; r.ep = PT.scEp; }   // [pt-fix2 11-06] + key(ptcFree) · ep(ptcRare — 만든 때의 장면 수)
+    if (!tries) PT.dec.set(key, r);                       // [pt-fix 11-06] 옛: PT.dec.set(key, r)
     if (il) ilTrim();
     const fw = (e.w || 96) >> 1, fh = (e.h || 96) >> 1, fbSrc = il ? e.s : e.s48;
     const s64 = !il && e.s64 ? e.s64 : null;              // [r3 ptsize] 클로즈업 64칸 판(있는 얼굴만) — 되돌리기: 이 줄과 Promise.all의 셋째 칸 · 아래 r.s64 줄을 지운다
     // [r5 A1·A2] 32 자리 판 s32(논리) · c64(기기 2px — s64 얼굴은 s64가 곧 c64라 다시 풀지 않음) · 64 자리 c128. 되돌리기: 이 줄과 Promise.all의 넷째~여섯째 칸 · 아래 [r5 A1] 줄을 지운다
     const r5 = !il && MC.uw2 && (MC.uw2('A1') || MC.uw2('A2')), s32 = r5 && e.s32 ? e.s32 : null, c64 = r5 && e.c64 ? e.c64 : null, c128 = r5 && e.c128 ? e.c128 : null;
-    const NIL = Promise.resolve(null);
-    Promise.all([ptcImg(e.C), fbSrc ? ptcImg(fbSrc) : NIL, s64 ? ptcImg(s64) : NIL, s32 ? ptcImg(s32) : NIL, c64 ? ptcImg(c64) : NIL, c128 ? ptcImg(c128) : NIL]).then(a => {
+    const NIL = Promise.resolve(null), om = fix ? PT_OPT_MS : 0;   // [pt-fix 11-06] om = 선택 판 기다림 한도(PT1만 — 옛: 한도 없음)
+    const ps = [ptcImg(e.C), fbSrc ? ptcImg(fbSrc) : NIL, s64 ? ptcImg(s64, om) : NIL, s32 ? ptcImg(s32, om) : NIL, c64 ? ptcImg(c64, om) : NIL, c128 ? ptcImg(c128, om) : NIL];   // [pt-fix2 11-06] 옛: Promise.all([…]).then(a => { 본문 }) — 판 목록 · 본문(done)은 그대로, PT1이면 ptcEarly가 C·s48 한도를 둔다
+    const done = a => {                                   // [pt-fix2 11-06] (본문 — 옛 then 그대로)
+      try {                                               // [pt-fix 11-06] then 안 예외를 잡는다(옛: 예외면 ok·fail 둘 다 false로 멈춤 — 그 얼굴은 세션 내내 옛 32칸). PT1이 꺼져 있으면 다시 던진다(옛 그대로)
       if (a[2] && !r.dead) r.s64 = a[2];                  // [r3 ptsize]
       if (r5 && !r.dead) { r.s32 = a[3]; r.c64 = a[4] || (s64 && !c64 ? a[2] : null); r.c128 = a[5];   // [r5 A1·A2]
         for (const [c, n] of [[r.c64, 64], [r.c128, 128]]) if (c && ((c.naturalWidth || c.width) !== n)) warnOnce('ptc' + n + ':' + key, '초상 c' + n + ' 크기가 ' + n + '칸이 아님: ' + name); }
       r.ms = Math.round(performance.now() - r.t0);
       if (r.dead) { for (const b of a) if (b && typeof b.close === 'function') { try { b.close(); } catch (_) {} } return; }
+      if (fix) {                                          // [pt-fix 11-06] 모자란 판: C만 실패 → s48을 C 자리에(ptcHi가 2k배 최근접 — 같은 새 얼굴, 칸만 거칠다) · 선택 판(s64 · s32 · c128) 실패 → 표시(뒤에서 다시 풀기)
+        r.t1 = performance.now();
+        if (!a[0] && a[1]) { a[0] = a[1]; r.partial = true; r.noC = true; }   // [pt-fix2 11-06] + noC(C 자리에 s48 — 늦게 온 C로 바꿀 판, ptcLate)
+        if ((s64 && !a[2]) || (s32 && !a[3]) || (c64 && !a[4]) || (c128 && !a[5])) r.partial = r.optMiss = true;   // [pt-fix2 11-06] + optMiss(선택 판이 빠짐)
+      }
+      if (!a[0] && fix) { for (const f of ['s64', 's32', 'c64', 'c128']) { ptcRel(r[f]); r[f] = null; } r.optMiss = true; }   // [pt-fix2 11-06] C·s48 둘 다 없는 실패 판: 선택 판은 쓸 데가 없으니 바로 놓는다(바탕만 그린다)
       if (!a[0]) { r.fail = true; warnOnce('ptc:' + key, (il ? '인물 그림' : '초상') + ' C 디코드 실패: ' + name); return; }
       r.C = a[0];
       r.fb = mk(fw, fh);
       const x = r.fb.getContext('2d');
+      if (!x && fix && a[1]) r.fb = a[1];                 // [pt-fix 11-06] 48 판 캔버스를 못 만들면(아이폰 캔버스 메모리 상한 — getContext null) s48 판 그대로
+      else {                                              // (옛 세 줄 그대로)
       x.imageSmoothingEnabled = false;
       if (a[1]) x.drawImage(a[1], 0, 0); else ptcHalve(r.C, x, fw, fh);
       if (a[1] && typeof a[1].close === 'function') { try { a[1].close(); } catch (_) {} }
+      }
+      if (fix && r5 && !r.s32 && r.C) { try { r.s32 = ptcShrink3(r.C); } catch (_) { r.s32 = null; } }   // [pt-fix 11-06] s32가 없거나 실패 → C를 3×3으로 줄인 32칸
+      if (fix && r.partial) PT.n.part++;
       r.ok = true;
-    });
+      } catch (err) {                                     // [pt-fix 11-06]
+        if (!fix) throw err;
+        r.ok = false; r.fail = true; r.t1 = performance.now(); PT.n.err++;
+        warnOnce('ptcx:' + key, '초상 디코드 중 예외(다시 풀기로 넘김): ' + name + ' — ' + ((err && err.message) || err));
+      } finally {
+        if (fix) { ptcSettle(key, r); ptcPump(); }        // [pt-fix 11-06] 실패로 끝나도(위 return) 줄의 다음 얼굴을 푼다
+      }
+    };                                                    // [pt-fix2 11-06] (본문 끝)
+    if (fix) ptcEarly(key, r, ps, done); else Promise.all(ps).then(done);   // [pt-fix2 11-06] 옛: Promise.all(ps).then(본문) 하나
     return r;
   }
   function ilTrim() {                                     // [people-il] 디코드한 선 그림은 IL_MAX장까지(한 장 C 약 0.7MB)
@@ -1203,7 +1392,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   }
   function ptcExp(name, r, cols, z, fb, bg) {
     z = z || 48;
-    const key = name + '|' + cols.join(',') + (z !== 48 ? '|z' + z : '') + (bg ? '|b' + bg.join(',') : '');
+    const key = name + '|' + cols.join(',') + (z !== 48 ? '|z' + z : '') + (bg ? '|b' + bg.join(',') : '') + (r && r.partial ? '|p' + r.id : '');   // [pt-fix 11-06] 모자란 판은 판마다 따로(온전한 판으로 바뀌면 새로 굽는다)
     let e = PT.exp.get(key);
     if (e) return e;
     const c = mk(z, z), x = c.getContext('2d', { willReadFrequently: true });
@@ -1218,8 +1407,16 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (!g.ptcOn()) return false;
     name = ptKey(name);                                   // [r3 B4] 없는 표정은 PTC_ALIAS로 · 아예 없으면 false(옛 32칸)
     if (!name) return false;
-    const r = ptcDecode(name);
-    if (!r || !r.ok) { if (!PT.kicked) ptcKick(); return false; }
+    const r = ptcGet(name);                               // [pt-fix 11-06] 옛: ptcDecode(name) — PT1이 꺼져 있으면 같다
+    if (!r || !r.ok) {
+      if (!PT.kicked) ptcKick();
+      if (r && pt1On()) { ptcBgOnly(x, y, 48, cols, bg); return true; }   // [pt-fix 11-06] 덜 풀림·실패: 바탕만(옛: return false → 부르는 쪽이 옛 32칸). 되돌리기: ?uw2off=PT1 또는 이 줄을 지운다
+      return false;
+    }
+    if (pt1On()) {                                        // [pt-fix 11-06] 굽다가 캔버스를 못 만들면(메모리 상한) 바탕 + 48 판을 논리 버퍼에만(새 얼굴 · 화면 얹기 없음)
+      try { return ptcPut(name, r, x, y, cols, sc, 48, r.fb, r.C, bg || null); }
+      catch (err) { warnOnce('ptcput:' + name, '초상 자리 굽기 실패(논리판으로): ' + name + ' — ' + ((err && err.message) || err)); ptcBgOnly(x, y, 48, cols, bg); if (r.fb) g.ctx.drawImage(r.fb, x | 0, y | 0); return true; }
+    }
     return ptcPut(name, r, x, y, cols, sc, 48, r.fb, r.C, bg || null);   // [r5 A1] 옛 본문을 ptcPut으로 옮김(48 · r.fb · r.C면 옛과 같다)
   };
   // [r5 A1·A2] 자리 하나: 논리 버퍼에 대체 그림(바탕 + fb)을 그리고, 기본 화면이면 이 프레임 줄(PT.q)에 적는다 — present 뒤 기기 해상도로 src(칸 2z)를 얹는다
@@ -1244,15 +1441,20 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   g.ptc32img = function (name) {
     if (!a1On()) return null;
     const k = ptKey(name); if (!k) return null;
-    const r = ptcDecode(k);
-    if (!r || !r.ok || !r.s32) { if (!PT.kicked) ptcKick(); return null; }
+    const r = ptcGet(k);                                  // [pt-fix 11-06] 옛: ptcDecode(k)
+    if (!r || !r.ok || !r.s32) {
+      if (!PT.kicked) ptcKick();
+      if (r && pt1On()) return ptBlank || (ptBlank = mk(32, 32));   // [pt-fix 11-06] 덜 풀림·실패: 투명 32칸(옛: null → 부르는 쪽이 옛 32칸). 되돌리기: ?uw2off=PT1 또는 이 줄을 지운다
+      return null;
+    }
     return r.s32;
   };
   g.ptc32 = function (name, x, y, o) {
     if (!a1On()) return false;
     const k = ptKey(name); if (!k) return false;
     o = o || {};
-    const r = ptcDecode(k);
+    const r = ptcGet(k);                                  // [pt-fix 11-06] 옛: ptcDecode(k)
+    if (r && pt1On() && (r.fail || (r.ok && !r.s32))) { ptcBgOnly(x, y, 32, o.cols, o.bg); return true; }   // [pt-fix 11-06] 실패 · s32 없음: 바탕만(옛: 아래 두 줄의 return false → 옛 32칸). 되돌리기: ?uw2off=PT1 또는 이 줄을 지운다
     if (!r || r.fail) return false;
     if (!r.ok) { if (!PT.kicked) ptcKick(); if (o.cols) g.gradV(x, y, 32, 32, o.cols); return true; }   // 덜 풀림: 바탕만
     if (!r.s32) return false;
@@ -1268,8 +1470,17 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   g.ptc64 = function (name, x, y, cols, sc, bg) {        // [r5 A2] sc = 씬(빠른 길 검사 — 없으면 덮개 검사 길) · [r5 A3] bg = [w, h, ox, oy](바탕이 더 큰 칸의 일부 — 상태 창 66)
     if (!g.ptcHas64(name)) return false;
     name = ptKey(name);
-    const r = ptcDecode(name);
-    if (!r || !r.ok || !r.s64) { if (!PT.kicked) ptcKick(); return false; }
+    const r = ptcGet(name);                               // [pt-fix 11-06] 옛: ptcDecode(name)
+    if (!r || !r.ok || !r.s64) {
+      if (!PT.kicked) ptcKick();
+      if (r && !r.ok && cols && pt1On()) { ptcBgOnly(x, y, 64, cols, bg); return true; }   // [pt-fix 11-06] 덜 풀림·실패: 64 바탕만(옛: false → 48 길 또는 옛 2배). s64만 없으면 옛처럼 false(부르는 쪽 48 길 — 새 얼굴). 되돌리기: ?uw2off=PT1 또는 이 줄을 지운다
+      if (r && r.ok && cols && pt1On()) {                 // [pt-fix2 11-06] s64만 없음(실패 · PT_OPT_MS 한도): 64 바탕 + 가운데 48(ptcSlot bg로 둘레와 이음매 없이 — menu.js 큰 초상과 같은 길) → true.
+        if (bg) g.ctx.drawImage(gradCanvas(bg[0], bg[1], cols), bg[2], bg[3], 64, 64, x | 0, y | 0, 64, 64); else g.gradV(x, y, 64, 64, cols);   // [pt-fix2 11-06]   옛(pt-fix): false → ptc 없는 클로즈업(cards.js closeup)은 옛 2배 32칸. 되돌리기: ?uw2off=PT1 또는 이 갈래를 지운다
+        g.ptcSlot(name, (x | 0) + 8, (y | 0) + 8, cols, sc, bg ? [bg[0], bg[1], bg[2] + 8, bg[3] + 8] : [64, 64, 8, 8]);   // [pt-fix2 11-06]
+        return true;                                      // [pt-fix2 11-06]
+      }                                                   // [pt-fix2 11-06]
+      return false;
+    }
     // [r5 A2] c128이 있으면 화면엔 128칸을 기기 2px로(짝수 배율 · 덮개 검사는 48 길과 같다), 논리 버퍼엔 지금처럼 바탕 + s64. 되돌리기: ?uw2off=A2 또는 이 줄을 지운다
     if (cols && r.c128 && MC.uw2 && MC.uw2('A2')) return ptcPut(name, r, x, y, cols, sc, 64, r.s64, r.c128, bg || null);
     if (cols && bg) g.ctx.drawImage(gradCanvas(bg[0], bg[1], cols), bg[2], bg[3], 64, 64, x | 0, y | 0, 64, 64);   // [r5 A3]
@@ -1333,6 +1544,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const key = lv + GM.mode;
     if (m[key]) return m[key];
     const c = mk(src.width, src.height), x = c.getContext('2d', { willReadFrequently: true });
+    if (!x && pt1On()) { c.width = c.height = 0; PT.n.hiNull++; return src; }   // [pt-fix2 11-06] 판을 못 만들면 이 프레임은 밝기 보정 없이(옛: 아래 줄에서 예외 — ilPresent의 save 뒤라 화면 자르기가 남는다)
     x.drawImage(src, 0, 0);
     const id = x.getImageData(0, 0, c.width, c.height), d = id.data, t = ptcLut(lv);
     for (let i = 0; i < d.length; i += 4) { d[i] = t[d[i]]; d[i + 1] = t[d[i + 1]]; d[i + 2] = t[d[i + 2]]; }
@@ -1383,6 +1595,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const z = it.z || 48, N = 2 * z, D = z * S, o = (D - N * k) >> 1;   // [r5 A1·A2] 자리 z(32 · 48 · 64) — 칸 N = 2z를 k배(옛: 48 · 96 고정)
     c = mk(D, D);
     const x = c.getContext('2d', lv ? { willReadFrequently: true } : undefined);
+    if (!x && pt1On()) { c.width = c.height = 0; PT.n.hiNull++; return null; }   // [pt-fix2 11-06] 기기 해상도 판을 못 만들면(아이폰 캔버스 메모리 상한 — getContext null) 이 프레임 그 자리는 논리판만(옛: 아래 줄에서 예외 → present가 멈춤)
     x.imageSmoothingEnabled = false;
     ptcBg(x, it.cols, z, it.bg, S);                       // [r5] 옛: x.drawImage(gradCanvas(48, 48, it.cols), 0, 0, D, D)
     x.drawImage(it.src || it.r.C, o, o, N * k, N * k);
@@ -1420,6 +1633,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   function ptcMaskGpu(it, hi, s, D, dx, dy) {
     const z = it.z || 48, w = ptcWork(z, D);
     const x1 = w.w1.getContext('2d'), x2 = w.w2.getContext('2d'), x3 = w.w3.getContext('2d');
+    if (pt1On() && (!x1 || !x2 || !x3 || !w.tmp.getContext('2d'))) return null;   // [pt-fix2 11-06] 작업 판을 못 만들면 화면 합성 전에 그만(그 자리는 논리판 — ptcPresent)
     x1.globalCompositeOperation = 'copy'; x1.drawImage(g.canvas, it.x, it.y, z, z, 0, 0, z, z);
     x1.globalCompositeOperation = 'difference'; x1.drawImage(it.e.c, 0, 0);
     x1.globalCompositeOperation = 'color-dodge'; x1.fillStyle = '#fff'; x1.fillRect(0, 0, z, z);
@@ -1450,6 +1664,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       const it = q[i];
       if (it.f !== g.renderId) continue;
       if (it.il) { ilPresent(it, lv); continue; }          // [people-il]
+      try {                                                // [pt-fix2 11-06] 자리 하나의 예외(캔버스 메모리 상한 등)가 present를 멈추지 않게 — 그 자리는 논리판 그대로. PT1이 꺼져 있으면 다시 던진다(옛 그대로)
       const z = it.z || 48, D = z * S, ZZ = z * z;         // [r5 A1·A2] 자리 크기(옛: 48 고정)
       let kk = k;                                          // [r5 RES2] 이 자리의 배율(옛: k 하나)
       if (k < 1 || 96 * k < 48 * S * 0.85 || (z !== 48 && (S & 1))) {   // [r5] 32 · 64 자리는 짝수 배율만(홀수는 논리판 그대로)
@@ -1457,8 +1672,9 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
         kk = S / 2; PT.n.half++;                           // [r5 RES2] 홀수 배율: 반 칸으로 자리에 꽉(옛: 위 줄에서 PT.n.fb++; continue)
       }
       const hi = ptcHi(it, S, kk, lv), dx = it.x * S, dy = it.y * S;   // [r5 RES2] 옛: ptcHi(it, S, k, lv)
+      if (!hi) { PT.n.fb++; continue; }                    // [pt-fix2 11-06] 판을 못 만듦(PT1 — ptcHi null): 논리판 그대로
       if (ptcClear(it)) { s.drawImage(hi, dx, dy); PT.n.fast++; continue; }
-      if (ptcGpu() && ptcMaskGpu(it, hi, s, D, dx, dy)) { PT.n.masked++; continue; }
+      if (ptcGpu()) { const mg = ptcMaskGpu(it, hi, s, D, dx, dy); if (mg) { PT.n.masked++; continue; } if (mg === null) { PT.n.hiNull++; continue; } }   // [pt-fix2 11-06] null = 작업 판 없음(PT1) → 논리판. 옛: if (ptcGpu() && ptcMaskGpu(…)) { PT.n.masked++; continue; }
       const a = new Uint32Array(g._main.getImageData(it.x, it.y, z, z).data.buffer), ex = it.e.px;   // (합성 모드가 없는 브라우저만) 논리 버퍼 읽기 — 느림(크롬 실측 4~7ms)
       const w = ptcWork(z, D);
       if (!w.mask) { w.mask = mk(z, z); w.mid = w.mask.getContext('2d').createImageData(z, z); }
@@ -1475,6 +1691,11 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       tx.globalCompositeOperation = 'destination-in'; tx.drawImage(w.mask, 0, 0, D, D);
       tx.globalCompositeOperation = 'source-over';
       s.drawImage(w.tmp, dx, dy);
+      } catch (err) {                                      // [pt-fix2 11-06]
+        if (!pt1On()) throw err;
+        s.globalCompositeOperation = 'source-over'; s.globalAlpha = 1; PT.n.pxErr++;
+        warnOnce('ptcpx', '초상 얹기 예외(그 자리는 논리판으로): ' + ((err && err.message) || err));
+      }
     }
     q.length = 0;
     PT.ms[PT.mi++ % PT.ms.length] = performance.now() - t0;
@@ -1485,7 +1706,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const S = g.S, k = Math.floor(48 * S / 96);
     return { on: g.ptcOn(), S, k, hiRes: k >= 1 && 96 * k >= 48 * S * 0.85, ilHi: S >= 2 && !(S & 1), m32: m32(), a1: a1On(), keys: Object.keys(ptData() || {}),   // [r5 A1] m32 · a1
       res2: res2On(S), dpr: g.dpr,                         // [r5 RES2] 홀수 배율 반 칸 길이 켜졌는지(hiRes · ilHi는 옛 뜻 그대로 — 짝수·k 정수 길)
-      decoded: Array.from(PT.dec.entries()).map(([n, r]) => ({ n, ok: r.ok, fail: r.fail, ms: r.ms })), counts: Object.assign({}, PT.n), passMs: { n: a.length, p50: p(0.5), p95: p(0.95), max: p(1) } };
+      decoded: Array.from(PT.dec.entries()).map(([n, r]) => Object.assign({ n, ok: r.ok, fail: r.fail, ms: r.ms }, pt1On() && !r.il ? { p: r.partial ? (r.noC ? 'C' : 1) : 0, tr: r.tries | 0, live: !!r.live } : null)), counts: Object.assign({}, PT.n), passMs: { n: a.length, p50: p(0.5), p95: p(0.95), max: p(1) } };   // [pt-fix2 11-06] + p(모자란 판 — 'C'면 C 자리에 s48) · tr(다시 푼 수) · live(C·s48이 아직 오는 중)
   };
   // 데이터 검사(validate 4-e): 96×96 · ≤48색 · pal = #rrggbb · C/s48/s32 PNG data URI · 키가 지금 초상 스프라이트 이름인지
   g.ptcCheck = function () {
