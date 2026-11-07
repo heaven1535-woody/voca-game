@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.9.3-burnface';
+  var VERSION = '0.9.4-harbor';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -10232,6 +10232,9 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     return (n >>> 0) / 4294967296;
   }
   const uw2 = id => !!(MC.uw2 && MC.uw2(id));             // [r5] 5차 개선 스위치(core.js) — ?uw2off=<id>면 그 항목만 예전 길. 되돌리기: 이 줄과 [r5 …] 갈래 삭제
+  // [r5 street] F4 행인 · F5 큰 무늬 · F6 물·불 움직임 — 맵을 읽을 때(buildMap) 한 번 읽어 둔다(주소·UW2_OFF는 실행 중 바뀌지 않음, 칸마다 uw2를 부르지 않게). 되돌리기: 이 두 줄과 SW 쓰는 곳 삭제
+  const SW = { F4: false, F5: false, F6: false };
+  function swRead() { SW.F4 = uw2('F4'); SW.F5 = uw2('F5'); SW.F6 = uw2('F6'); }
   function moveMs() { const s = MC.save && MC.save.settings, v = s ? +s.moveMs : 200; return v >= 80 && v <= 600 ? v : 200; }
   function check(cond) { try { return MC.game.check(cond); } catch (e) { MC.core.error(e, 'field.cond'); return false; } }
 
@@ -10337,12 +10340,46 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     return best;
   }
   function tileSpr(td, x, y) {
+    if (SW.F5 && td.f5 && !(td.anim > 0)) { const mn = macroName(td.f5, x, y, 0); if (mn) return mn; }   // [r5 F5] 정적 바닥의 큰 무늬 조각(광장 돌·티불랑 바위). 되돌리기: 이 줄 삭제
     if (td.var && td.var.length) return td.var[Math.floor(hash2(x, y) * td.var.length) % td.var.length];
     return Array.isArray(td.spr) ? td.spr[0] : td.spr;
+  }
+  /* [r5 F5] 큰 무늬(tilesets f5 = {macro: n, sets}) — n×n칸 덩이마다 덩이 좌표 해시로 변형 한 벌(animVar)을 고르고, 칸 자리 조각 이름 = 이름 + '_m' + (x%n + (y%n)*n).
+     덩이 안의 칸은 같은 변형·같은 박자를 쓴다(조각이 맞물리게). 그림이 없으면 null(예전 길). 되돌리기: 이 세 함수와 부르는 곳 삭제 — 또는 ?uw2off=F5 */
+  function macroSet(f5, x, y) {
+    const n = f5.macro | 0; if (n < 2 || !f5.sets || !f5.sets.length) return null;
+    return f5.sets[Math.floor(hash2(Math.floor(x / n) * 7 + 11, Math.floor(y / n) * 13 + 5) * f5.sets.length) % f5.sets.length];
+  }
+  function macroIdx(f5, x, y) { const n = f5.macro | 0; return (x % n) + (y % n) * n; }
+  function macroName(f5, x, y, k) {
+    const set = macroSet(f5, x, y); if (!set || !set.length) return null;
+    const nm = set[k % set.length] + '_m' + macroIdx(f5, x, y);
+    return G().hasSprite(nm) ? nm : null;
+  }
+  /* [r5 F5·F6] 애니 타일 칸마다 프레임 묶음을 정해 둔다(buildMap 한 번): f6 = 물 4프레임·불 3프레임(seq 깜빡임 순서), f5 = 큰 물결 조각(덩이 해시로 변형·박자).
+     a.fr(이름들) · a.ms(프레임 ms) · a.seq · a.ph(박자 0~1) · a.ph0(예전 비스듬한 박자 — 땅 쪽 거품 줄은 예전 박자 그대로). 없으면 a.fr 없음 = drawAnimTiles 예전 길 */
+  function animSetup(a) {
+    const td = a.td, g = G(); if (!td) return;
+    const x = a.x, y = a.y, ok = l => l.every(n => g.hasSprite(n));
+    a.ph0 = ((x * 3 + y * 5) & 7) / 8;
+    let fr = null, ms = 0, seq = null, ph = a.ph0;
+    const f6 = SW.F6 && td.f6 && Array.isArray(td.f6.spr) && td.f6.spr.length > 1 && ok(td.f6.spr) ? td.f6 : null;
+    if (f6) { fr = f6.spr; ms = +f6.anim > 0 ? +f6.anim : td.anim; seq = Array.isArray(f6.seq) && f6.seq.length ? f6.seq : null; }
+    const f5 = SW.F5 ? td.f5 : null;
+    if (f5 && (f5.macro | 0) > 1) {
+      const set = macroSet(f5, x, y);
+      if (set && set.length > 1) {
+        const n = f5.macro | 0, idx = macroIdx(f5, x, y), base = f6 ? set : [set[0], set[Math.min(2, set.length - 1)]];   // F6이 꺼지면 두 프레임(0·2)만 예전 박자로
+        const names = base.map(s => s + '_m' + idx);
+        if (ok(names)) { fr = names; ms = f6 ? (+f5.anim > 0 ? +f5.anim : ms) : td.anim; seq = f6 ? seq : null; ph = hash2(Math.floor(x / n) * 31 + 7, Math.floor(y / n) * 17 + 3); }
+      }
+    }
+    if (fr) { a.fr = fr; a.ms = Math.max(40, ms || 400); a.seq = seq; a.ph = ph; }
   }
 
   function buildMap(id, def) {
     const g = G();
+    swRead();                                              // [r5 street]
     const ts = MC.data.tilesets && MC.data.tilesets[def.tileset];
     if (!ts) warn('ts:' + def.tileset, '없는 타일셋: ' + def.tileset + ' (맵 ' + id + ')');
     const tiles = (ts && ts.tiles) || {};
@@ -10385,6 +10422,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const tsw = (ts && ts.wetSw) || 'F2';
     m.edge = (uw2('F2') || uw2(tsw)) ? { spill: uw2('F2'), wet: uw2(tsw) } : null;
     if (m.edge && m.edge.wet) edgeFoam(m);
+    if (SW.F5 || SW.F6) for (const a of m.anim) animSetup(a);   // [r5 F5·F6] 물 4프레임·불 3프레임·큰 물결 조각. 되돌리기: 이 줄 삭제
     // 정적 타일 캐시(애니 타일은 첫 프레임을 깔아 둔다) — [r5 F1] 맵 톤(저녁·밤) 팔레트로 다시 구울 수 있게 bakeCache로 뺐다(빈 칸 무늬 voidPat도 거기서)
     bakeCache(m);
     m.fblock = new Uint8Array(w * h); m.hasFBlock = false;   // S3 C-1-3: 동행자가 들어가지 않는 칸
@@ -10401,6 +10439,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       if (!m.byId.has(d.id)) m.byId.set(d.id, o);
       if (o.sprite && o.sprite.indexOf('ob_lighthouse') === 0) m.beams.push(o);
     }
+    m.hasWalker = SW.F4 && m.objs.some(o => o.type === 'walker');   // [r5 F4] 행인이 있는 맵만 칸 표(들어가지 않는 칸·쉬지 않는 칸)를 만든다
+    if (m.hasWalker) wkCells(m);
     return m;
   }
   // 정적 타일 캐시 굽기(맵 진입 · [r5 F1] 맵 톤이 바뀔 때). 새 캔버스에 다 그린 뒤 바꿔 끼워 한 프레임도 비지 않는다
@@ -10505,10 +10545,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     return null;
   }
   function toneOn() { return !!(map && tonePalName(map) && MC.artgen && MC.artgen.tone && MC.artgen.tone.defs[TONE.name]); }
-  function toneSprite(name, flip) {                                             // 스프라이트 캔버스를 한 번 복사해 색마다 톤 표로(불투명 그대로 — 알파·망사 없음)
-    const g = G(), src = g.getSprite(name, flip ? { flip: true } : null), TN = MC.artgen.tone, def = TN.defs[TONE.name];
+  function toneSprite(name, flip, pal) {                                        // 스프라이트 캔버스를 한 번 복사해 색마다 톤 표로(불투명 그대로 — 알파·망사 없음). [r5 F4] pal = 행인 옷 색
+    const g = G(), so = flip || pal ? (pal ? { flip: !!flip, pal } : { flip: true }) : null, src = g.getSprite(name, so), TN = MC.artgen.tone, def = TN.defs[TONE.name];
     if (!src || !def) return src;
-    const q = Math.max(1, Math.min(4, Math.round(TONE.k * 4))), key = name + (flip ? '|f|' : '|') + TONE.name + q;
+    const q = Math.max(1, Math.min(4, Math.round(TONE.k * 4))), key = name + (flip ? '|f|' : '|') + (pal ? pal + '|' : '') + TONE.name + q;
     let c = toneCv.get(key);
     if (c) return c;
     c = g.makeCanvas(src.width, src.height);
@@ -10528,8 +10568,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   }
   function sprT(name, x, y, opt) {                                              // g.sprite와 같되 맵 톤이 켜져 있으면 톤 캔버스(tint·white·pal·scale은 예전 길)
     const g = G();
-    if (!toneOn() || (opt && (opt.tint || opt.white || opt.pal || opt.scale > 1))) { g.sprite(name, x, y, opt); return; }
-    const c = toneSprite(name, !!(opt && opt.flip));
+    if (!toneOn() || (opt && (opt.tint || opt.white || (opt.pal && !SW.F4) || opt.scale > 1))) { g.sprite(name, x, y, opt); return; }   // [r5 F4] 예전: opt.pal이면 톤 없이
+    const c = toneSprite(name, !!(opt && opt.flip), opt && opt.pal);
     if (!c) { g.sprite(name, x, y, opt); return; }
     const a = opt && opt.alpha != null ? opt.alpha : 1;
     if (a <= 0) return;
@@ -10613,6 +10653,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
         if (!o.anim && !g.hasSprite(o.sprite) && g.hasSprite(o.sprite + '_0')) o.anim = 260;
         break;
       }
+      case 'walker':                                       // [r5 F4] 행인(장식 — 아래 「행인」 블록). 되돌리기: 이 두 줄 삭제
+        o.solid = true; o.wk = wkInit(o, d); break;
       case 'guard': {                                      // 순찰·시야는 stealth.js
         o.solid = d.solid !== false; o.sprite = d.sprite || 'ch_tguard';
         const g = G();
@@ -10667,7 +10709,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const nx = a.x + DV[d][0], ny = a.y + DV[d][1];
     if (!map || nx < 0 || ny < 0 || nx >= map.w || ny >= map.h) return { blocked: true, x: nx, y: ny };
     const isPl = a === pl, gh = isPl && ghost;
-    let block = false, sym = null, fire = null;
+    let block = false, sym = null, fire = null, wk = null;
     for (const o of map.objs) {
       if (o === a || !o.present || !o.visible || o.ghost) continue;
       if (!occupies(o, nx, ny)) continue;
@@ -10677,13 +10719,13 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
         if (isPl && invuln()) continue;                  // 무적 중엔 심볼을 지나갈 수 있다
         block = true; continue;
       }
-      if (o.solid) block = true;
+      if (o.solid) { block = true; if (o.type === 'walker') wk = o; }   // [r5 F4] 행인에 막힘(wk) — attemptMove가 '툭' 대신 비켜 달라고 한다
     }
     if (!isPl && pl.visible && occupies(pl, nx, ny)) block = true;
     if (sym) return { enc: sym, x: nx, y: ny };
     const ts = tileSolid(nx, ny);
     if (gh) return { ok: true, x: nx, y: ny };
-    if (block || ts) return { blocked: true, fire: ts || (fire && fire.def && fire.def.bump) ? fire : null, x: nx, y: ny };   // fixer-s3: bump 트리거는 막힌 물건 칸에서도 '밀면' 발동
+    if (block || ts) return { blocked: true, fire: ts || (fire && fire.def && fire.def.bump) ? fire : null, x: nx, y: ny, wk: ts ? null : wk };   // fixer-s3: bump 트리거는 막힌 물건 칸에서도 '밀면' 발동
     return { ok: true, x: nx, y: ny };
   }
   function bumpTrigAt(x, y) {                              // fixer-s3: 미끄러질 칸이 막혀 있어도 거기 bump 트리거가 있으면 그쪽으로 민 것으로 친다
@@ -10874,6 +10916,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   }
   function footstep(a, dust) {
     if (!map) return;
+    if (a.type === 'walker') return;                       // [r5 F4] 행인은 발소리·먼지 없음(장식 — 소리 묶음을 건드리지 않는다)
     const i = a.y * map.w + a.x, st = (i >= 0 && i < map.step.length && map.step[i]) || 'stone';
     const isPl = a === pl;
     if (!isPl && (!a.visible || a.type === 'symbol')) return;
@@ -10980,6 +11023,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       if (cd) { pl.dir = d; return 'wait'; }             // 비켜 갈 틈이 있으면 '툭' 없이 120ms 기다렸다가 옆으로 비켜 선다
     }
     pl.dir = d;
+    if (r.wk && SW.F4) { walkerNudge(r.wk, d); return 'wait'; }   // [r5 F4] 행인이 막으면 '툭' 없이 — 행인이 옆으로 비켜서거나(없으면) 잠깐 지나가게 둔다. 되돌리기: 이 줄 삭제
     bump(d);
     return 'blocked';
   }
@@ -11474,6 +11518,122 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       }
     }
   }
+  /* ================================================================ [r5 F4] 행인(walker) — 저장하지 않는 장식 인물(맵 정의 objects의 type:"walker")
+     {id, type:"walker", x, y, sprite, pal?(옷 색 부분 팔레트), dir, route:[[x,y,바라볼 방향?],…], loop:"pingpong"(기본)|"loop", pause:[min,max]ms, step:ms, idle:"work"|"hop"?, cond}
+     · 조작이 풀려 있을 때만 칸을 옮긴다 — 이벤트·컷신 이동·대화·메뉴 중엔 그 자리에 선다(제자리 동작만: 고개 돌림 · work 1px 들썩). 시야 없음 · event 없음(탭해도 반응·새 대사 없음)
+     · 들어가지 않는 칸: 막힌 타일·solid 물건·다른 사람(플레이어·동행자·다른 행인 — 걷는 중이면 두 칸 모두)·플레이어가 누르고 있는 앞 칸·출구·트리거·스폰 칸
+     · 대화 대상(event 있는 물건·사람) 옆 칸에서는 쉬지 않고 지나간다. 길이 막히면 기다리다 1.6초 뒤 거꾸로 걷는다(끼임 없음)
+     · 플레이어가 밀면 '툭' 대신 옆으로 비켜서고, 비킬 곳이 없으면 잠깐 통과(ghost) — 행인이 길·문 앞을 막는 일이 없다
+     · 게임 난수(MC.rng)는 쓰지 않는다(전투·심볼 순서가 바뀌지 않게) — 자기 작은 난수. 위치는 저장하지 않는다(맵에 들 때마다 처음 자리)
+     되돌리기: ?uw2off=F4(맵 데이터에서 행인·광장 소품이 빠지고 예전 타일 — port.js·catalan.js) 또는 이 블록과 부르는 곳(buildObj·buildMap·probe·attemptMove·footstep·drawObj·update·bgTick) 삭제 */
+  let wkSeed = 0x2f6e2b1;
+  function wkRand() { wkSeed = (Math.imul(wkSeed, 1103515245) + 12345) >>> 0; return wkSeed / 4294967296; }
+  function wkRange(r, d) { return Array.isArray(r) && r.length >= 2 && +r[1] >= +r[0] ? +r[0] + (r[1] - r[0]) * wkRand() : d; }
+  function wkMs(d) { const v = +(d && d.step); return v >= 120 && v <= 1200 ? v : 420; }
+  function wkInit(o, d) {
+    const R = [];
+    for (const p of (Array.isArray(d.route) ? d.route : [])) if (Array.isArray(p) && p.length >= 2) R.push({ x: p[0] | 0, y: p[1] | 0, face: DV[p[2]] ? p[2] : null });
+    if (!R.length) R.push({ x: o.x, y: o.y, face: DV[d.dir] ? d.dir : null });
+    const i = R.length > 1 && R[0].x === o.x && R[0].y === o.y ? 1 : 0;
+    return { R, i, dir: 1, wait: 400 + hash2(o.x * 3 + 1, o.y * 5 + 2) * 1400, since: -1, nudge: null, idleT: 700 + hash2(o.y + 9, o.x) * 1600, face: o.dir, look: 0, loop: d.loop === 'loop' };
+  }
+  // 맵마다 칸 표: wkAvoid = 들어가지 않는 칸(출구·트리거·스폰), wkFront = 쉬지 않는 칸(event 있는 물건·사람·상자·줍기 옆 칸). cond와 상관없이 맵 정의 전체로
+  function wkCells(m) {
+    const avoid = new Set(), front = new Set(), sp = (m.def && m.def.spawns) || {};
+    for (const s in sp) { const p = sp[s]; if (Array.isArray(p) && p.length >= 2) avoid.add((p[0] | 0) + ',' + (p[1] | 0)); }
+    for (const o of m.objs) {
+      if (o.type === 'walker') continue;
+      const r = rectOf(o);
+      if (o.type === 'exit' || o.type === 'trigger') { for (let y = r[1]; y < r[1] + r[3]; y++) for (let x = r[0]; x < r[0] + r[2]; x++) avoid.add(x + ',' + y); continue; }
+      if (!(o.event || o.type === 'chest' || o.type === 'pickup')) continue;
+      for (let y = r[1]; y < r[1] + r[3]; y++) for (let x = r[0]; x < r[0] + r[2]; x++) for (const d of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const fx = x + d[0], fy = y + d[1];
+        if (fx < r[0] || fy < r[1] || fx >= r[0] + r[2] || fy >= r[1] + r[3]) front.add(fx + ',' + fy);
+      }
+    }
+    m.wkAvoid = avoid; m.wkFront = front;
+  }
+  function wkCan(o, x, y) {
+    if (!map || tileSolid(x, y) || (map.wkAvoid && map.wkAvoid.has(x + ',' + y))) return false;
+    for (let i = 0; i < map.objs.length; i++) {
+      const q = map.objs[i];
+      if (q === o || !q.present || !q.visible || q.type === 'exit' || q.type === 'trigger') continue;
+      if (!q.solid && q.type !== 'npc' && q.type !== 'walker') continue;
+      if (occupies(q, x, y)) return false;
+    }
+    if (pl.visible && occupies(pl, x, y)) return false;
+    if (pl.visible && pl.holdDir && DV[pl.holdDir] && pl.x + DV[pl.holdDir][0] === x && pl.y + DV[pl.holdDir][1] === y) return false;   // 플레이어가 가려는 앞 칸
+    if (fol && fol.visible && occupies(fol, x, y)) return false;
+    return true;
+  }
+  function wkHop(o, h, ms) { if (o.jumpRes || o.jumpMs > 0) return; o.jumpH = h; o.jumpMs = ms; o.jumpT = 0; }
+  function wkNext(W) {
+    const n = W.R.length; if (n < 2) return;
+    if (W.loop) W.i = (W.i + W.dir + n) % n;
+    else { if (W.i + W.dir < 0 || W.i + W.dir >= n) W.dir = -W.dir; W.i += W.dir; }
+  }
+  function wkArrive(o, W, d) {
+    const tg = W.R[W.i], single = W.R.length < 2;
+    if (tg.face) o.dir = tg.face;
+    W.face = o.dir;
+    W.wait = single ? 1200 : (map.wkFront && map.wkFront.has(o.x + ',' + o.y) ? 60 : wkRange(d.pause, 900));
+    if (d.idle === 'hop' && !single && wkRand() < 0.55) wkHop(o, 3, 240);
+    wkNext(W);
+  }
+  function wkIdle(o, W, d, dt, ctl) {                     // 제자리 동작(이벤트 중에도): 고개 돌림 · work(그물 깁기) 1px 들썩 · hop(아이) 쉬는 동안 깡충
+    if (o.moving || o.jumpMs > 0 || o.path) return;
+    W.idleT -= dt;
+    if (W.idleT > 0) return;
+    if (W.look) { o.dir = W.face; W.look = 0; W.idleT = wkRange(d.idle === 'work' ? [400, 800] : [1800, 3600], 2000); return; }
+    const resting = !ctl || W.wait > 500 || W.R.length < 2;
+    if (d.idle === 'work') {
+      if (wkRand() < 0.1) { W.face = o.dir; W.look = 1; o.dir = PERP[o.dir][wkRand() < 0.5 ? 0 : 1]; W.idleT = wkRange([700, 1200], 900); return; }
+      wkHop(o, 1, 150); W.idleT = wkRange([380, 820], 600); return;
+    }
+    if (d.idle === 'hop' && ctl && resting && wkRand() < 0.35) { wkHop(o, 3, 240); W.idleT = wkRange([700, 1500], 1000); return; }
+    if (resting && wkRand() < 0.5) { W.face = o.dir; W.look = 1; o.dir = PERP[o.dir][wkRand() < 0.5 ? 0 : 1]; W.idleT = wkRange([600, 1100], 800); return; }
+    W.idleT = wkRange([1400, 3000], 2000);
+  }
+  function wkYield(o, W) {                                // 플레이어가 밀었다: 옆(두 쪽 중 하나) → 앞(미는 방향) 순으로 비켜선다. 못 비키면 잠깐 통과
+    const N = W.nudge, sides = PERP[N.d].slice();
+    if (wkRand() < 0.5) sides.reverse();
+    for (const md of [sides[0], sides[1], N.d]) {
+      if (wkCan(o, o.x + DV[md][0], o.y + DV[md][1])) { startStep(o, md, 0, Math.max(180, Math.round(wkMs(o.def) * 0.7))); W.nudge = null; W.wait = wkRange([700, 1300], 900); W.since = -1; return; }
+    }
+    if (nowR() - N.t0 > 380) { o.ghost = true; W.nudge = null; W.wait = 700; }
+  }
+  function walkerNudge(w, d) {
+    if (!w || !w.wk || w.moving) return;
+    if (!w.wk.nudge) { w.wk.nudge = { d, t0: nowR() }; w.dir = OPP[d]; }   // 미는 사람 쪽을 본다
+    else w.wk.nudge.d = d;
+  }
+  function walkersAI(dt, ctl) {
+    if (!map || !SW.F4 || !map.hasWalker) return;
+    const t = nowR();
+    for (let i = 0; i < map.objs.length; i++) {
+      const o = map.objs[i];
+      if (o.type !== 'walker' || !o.wk || !o.present || !o.visible) continue;
+      const W = o.wk, d = o.def || {};
+      if (o.ghost && !occupies(pl, o.x, o.y) && Math.abs(pl.x - o.x) + Math.abs(pl.y - o.y) >= 2) o.ghost = false;   // 지나갔으면 다시 막는 사람
+      wkIdle(o, W, d, dt, ctl);
+      if (!ctl || o.moving || o.path || o.jumpMs > 0 || o.ghost) continue;          // 이벤트·컷신·메뉴 중엔 칸을 옮기지 않는다
+      const carry = o.carryAt === MC.time.frame ? o.carry : 0;                       // 한 칸 끝난 같은 스텝에 이어 걷기(끊김 없음)
+      if (W.nudge) { if (t - W.nudge.t0 > 900) W.nudge = null; else { wkYield(o, W); continue; } }
+      W.wait -= dt;
+      if (W.wait > 0) continue;
+      const tg = W.R[W.i];
+      if (o.x === tg.x && o.y === tg.y) { wkArrive(o, W, d); continue; }
+      const dx = tg.x - o.x, dy = tg.y - o.y, hx = dx ? (dx > 0 ? 'right' : 'left') : null, vy = dy ? (dy > 0 ? 'down' : 'up') : null;
+      const order = Math.abs(dx) >= Math.abs(dy) ? [hx, vy] : [vy, hx];
+      let go = null;
+      for (const md of order) if (md && wkCan(o, o.x + DV[md][0], o.y + DV[md][1])) { go = md; break; }
+      if (go) { startStep(o, go, carry, wkMs(d)); W.since = -1; W.look = 0; continue; }
+      o.dir = order[0] || o.dir; W.wait = 180;                                         // 막힘: 그쪽을 보고 잠깐 기다림
+      if (W.since < 0) W.since = t;
+      else if (t - W.since > 1600) { W.since = -1; W.dir = -W.dir; wkNext(W); }      // 오래 막히면 거꾸로(앞 점으로)
+    }
+  }
+
   function troopSize(s) {
     if (s.group) return s.group;
     let n = 1;
@@ -12203,6 +12363,63 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     return sw > cw ? x + ((cw - sw) >> 1) : x;
   }
 
+  /* ================================================================ [r5 F6] 맵 ambient — 작은 타이머(불투명 1px 도트, 알파·망사 없음, 저장 안 함)
+     맵 정의 "ambient": [{kind, at?, every(ms), n?(개수 또는 [min,max]), first?(첫 ms), cond?}, …]
+       ember = at 칸 화덕 입구에서 불씨가 올라가며 식는다(노랑 → 주황 → 검붉음) · glint = 보이는 물 칸(ew)에 햇빛 1px 반짝(흰 → 옅은 하늘)
+       gull = 갈매기 그림자 하나가 화면을 비스듬히 가로지른다(한 번에 하나, 날갯짓 2판). 바닥 층(사람 아래)은 glint·gull, 위 층은 ember
+     되돌리기: ?uw2off=F6 또는 이 블록과 loadMap의 ambLoad · render의 ambTick/ambDraw 두 곳 삭제 */
+  const AMB = { list: [], parts: [] };
+  const AMB_KIND = { ember: 1, glint: 1, gull: 1 };
+  function ambLoad(def) {
+    AMB.list.length = 0; AMB.parts.length = 0;
+    if (!SW.F6 || !def || !Array.isArray(def.ambient)) return;
+    const t = nowR();
+    for (const e of def.ambient) if (e && AMB_KIND[e.kind]) AMB.list.push({ e, next: t + (e.first != null ? +e.first : Math.max(400, +e.every || 4000) * (0.25 + 0.5 * wkRand())), ok: false, okT: -1e9 });
+  }
+  function ambCount(e, d) { return Array.isArray(e.n) ? Math.max(1, Math.round(wkRange(e.n, d))) : (+e.n > 0 ? +e.n | 0 : d); }
+  function ambSpawn(e, t) {
+    if (e.kind === 'ember') {
+      const at = Array.isArray(e.at) ? e.at : [0, 0], n = ambCount(e, 2);
+      for (let i = 0; i < n; i++) AMB.parts.push({ k: 'ember', x: at[0] * TS + 5 + wkRand() * 6, y: at[1] * TS + 11 + wkRand() * 2, t0: t + i * (120 + wkRand() * 380), life: 1000 + wkRand() * 500,
+        vx: (wkRand() - 0.5) * 0.004, vy: -(0.008 + wkRand() * 0.005), sw: wkRand() * 6.28 });
+    } else if (e.kind === 'glint') {
+      const vr = visibleRange(), cand = [];
+      for (const a of map.anim) if (a.td && a.td.ew && !a.top && a.x >= vr[0] && a.x <= vr[2] && a.y >= vr[1] && a.y <= vr[3]) cand.push(a);
+      const n = ambCount(e, 3);
+      for (let i = 0; i < n && cand.length; i++) { const a = cand[(wkRand() * cand.length) | 0]; AMB.parts.push({ k: 'glint', x: a.x * TS + 2 + ((wkRand() * 12) | 0), y: a.y * TS + 2 + ((wkRand() * 12) | 0), t0: t + i * (150 + wkRand() * 450), life: 380 }); }
+    } else if (e.kind === 'gull') {
+      if (AMB.parts.some(p => p.k === 'gull')) return;
+      const g = G(), dir = wkRand() < 0.5 ? 1 : -1, sp = 0.045 + wkRand() * 0.015;
+      AMB.parts.push({ k: 'gull', x: dir > 0 ? rcam.x - 16 : rcam.x + g.W + 4, y: rcam.y + 24 + wkRand() * Math.max(40, g.H * 0.55), vx: dir * sp, vy: (wkRand() - 0.3) * 0.012, t0: t, life: (g.W + 36) / sp });
+    }
+  }
+  function ambTick() {
+    if (!AMB.list.length && !AMB.parts.length) return;
+    const t = nowR();
+    for (const L of AMB.list) {
+      if (t - L.okT > 400) { L.okT = t; L.ok = L.e.cond == null || check(L.e.cond); }
+      if (t < L.next) continue;
+      L.next = t + Math.max(400, +L.e.every || 4000) * (0.8 + 0.4 * wkRand());
+      if (L.ok) ambSpawn(L.e, t);
+    }
+    for (let i = AMB.parts.length - 1; i >= 0; i--) if (t - AMB.parts[i].t0 > AMB.parts[i].life) AMB.parts.splice(i, 1);
+  }
+  function gullCv(f) {                                     // 갈매기 그림자(13×5, 두 톤 — 바다·돌길 어디서나 한 단 어둡게 읽히는 회자줏빛)
+    return bakedRows('gull' + f, f ? ['..x.......x..', '...x.....x...', '....xXXXx....', '.....XXX.....', '......X......']
+                                   : ['.............', 'xxx.......xxx', '...xxXXXxx...', '.....XXX.....', '......X......'], { x: '#6a5a68', X: '#4e4250' });
+  }
+  function ambDraw(layer) {                                // layer 0 = 바닥(사람 아래), 1 = 위
+    if (!AMB.parts.length) return;
+    const g = G(), t = nowR();
+    for (let i = 0; i < AMB.parts.length; i++) {
+      const p = AMB.parts[i], el = t - p.t0;
+      if (el < 0) continue;
+      if (layer === 0 && p.k === 'glint') g.px(p.x, p.y, el < p.life * 0.5 ? '#fff6e0' : '#c8e0ec');
+      else if (layer === 0 && p.k === 'gull') g.ctx.drawImage(gullCv(((el / 240) | 0) & 1), Math.round(p.x + p.vx * el) - 6, Math.round(p.y + p.vy * el) - 2);
+      else if (layer === 1 && p.k === 'ember') { const k = el / p.life; g.px(p.x + p.vx * el + Math.sin(el * 0.006 + p.sw) * 1.2, p.y + p.vy * el, k < 0.35 ? '#ffd27a' : k < 0.7 ? '#ff8a3a' : '#a8441e'); }
+    }
+  }
+
   /* ================================================================ 렌더 */
   function visibleRange() {
     const g = G();
@@ -12216,7 +12433,11 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       if (a.x < vr[0] || a.x > vr[2] || a.y < vr[1] || a.y > vr[3]) continue;
       const td = a.td, fr = td.spr;
       let name, k = 0;
-      if (Array.isArray(fr) && fr.length > 1 && td.anim > 0) {
+      if (a.fr) {                                         // [r5 F5·F6] animSetup이 정한 프레임 묶음(물 4·불 3프레임 · 큰 물결 조각). 되돌리기: 이 갈래 삭제(아래 예전 길)
+        const n = a.seq ? a.seq.length : a.fr.length, q = Math.floor(t / a.ms + a.ph * n) % n;
+        name = a.fr[a.seq ? a.seq[q] % a.fr.length : q];
+        if (a.fo && Array.isArray(fr) && fr.length > 1 && td.anim > 0) k = Math.floor(t / td.anim + a.ph0 * fr.length) % fr.length;   // 땅 쪽 거품 줄은 예전 박자
+      } else if (Array.isArray(fr) && fr.length > 1 && td.anim > 0) {
         const ph = ((a.x * 3 + a.y * 5) & 7) / 8;         // 비스듬한 물결 위상
         k = (Math.floor(t / td.anim + ph * fr.length)) % fr.length;
         name = fr[k];
@@ -12281,7 +12502,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     let alpha = 1;
     if (o === pl && invuln()) alpha = ((nowR() / 80) | 0) & 1 ? 0.25 : 1;       // 도망 후 무적 깜빡임
     else if (o === pl && pl.hidden) alpha = 0.5;                                 // 잠입: 벽감에 숨음
-    const opt = s.flip || alpha !== 1 ? { flip: s.flip, alpha } : null;
+    let opt = s.flip || alpha !== 1 ? { flip: s.flip, alpha } : null;
+    if (SW.F4 && o !== pl && o.def && typeof o.def.pal === 'string') opt = Object.assign(opt || {}, { pal: o.def.pal });   // [r5 F4] 행인 옷 색(부분 팔레트). 되돌리기: 이 줄 삭제(+ 위 let → const)
     const sz = g.spriteSize(s.name);                     // S3 C-1-1: 16×16보다 큰 인물(짝 스프라이트)은 발밑 가운데 기준(16×16은 결과 같음)
     if (sz.w > TS || sz.h > TS) { x += (TS - sz.w) >> 1; y += TS - sz.h; }
     if (o === pl) { const tl = tetherLean(); if (tl) { x += tl[0]; y += tl[1]; } }
@@ -12568,6 +12790,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (sw > 0 && shh > 0) ctx.drawImage(map.cache, sx, sy, sw, shh, sx, sy, sw, shh);
     const vr = visibleRange();
     drawAnimTiles(map.anim, vr);
+    if (SW.F6) { ambTick(); ambDraw(0); }                  // [r5 F6] 바다 반짝·갈매기 그림자(사람 아래). 되돌리기: 이 줄 삭제
     // 2) 바닥 오브젝트(z<0) + 창살 빛
     floorList.length = 0; drawList.length = 0;
     for (let i = 0; i < map.objs.length; i++) {
@@ -12584,6 +12807,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (pl.visible) drawList.push(pl);
     drawList.sort(sortY);
     for (let i = 0; i < drawList.length; i++) drawObj(drawList[i]);
+    if (SW.F6) ambDraw(1);                                 // [r5 F6] 화덕 불씨(사람·물건 위). 되돌리기: 이 줄 삭제
     // 4) over 타일
     if (map.over.length) drawAnimTiles(map.over, vr);
     drawExitHints();
@@ -12661,6 +12885,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     scriptedTick(dt);
     if (controlsOn() && !pl.path && !S3.hold) playerControl(dt);
     if (controlsOn()) { symbolsAI(dt); followerIdle(dt); watchTick(dt); }
+    walkersAI(dt, controlsOn());                           // [r5 F4] 행인(조작 중이 아니면 제자리 동작만). 되돌리기: 이 줄 삭제
     for (let i = 0; i < HOOKS.length; i++) if (HOOKS[i].update) { try { HOOKS[i].update(dt, controlsOn()); } catch (e) { MC.core.error(e, 'field.hook.update'); } }
     updateCamera(dt);
     refreshT += dt;
@@ -12672,6 +12897,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const top = MC.scene.top();
     if (top && top !== scene && top.opaque !== false) return;
     scriptedTick(dt);
+    walkersAI(dt, false);                                  // [r5 F4] 대화창 아래: 행인 제자리 동작만(칸은 옮기지 않음). 되돌리기: 이 줄 삭제
     updateCamera(dt);
   }
   // 이벤트 러너가 lock(true)만 부르고 끝났을 때를 대비: 러너가 '실행 중 아님'을 알려 주면 잠금을 푼다
@@ -12778,6 +13004,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const prev = map ? map.id : null;
     TONE.gen++; TONE.name = uw2('F1') ? mapTone(def) : null; TONE.k = 1;   // [r5 F1] 맵을 바꾸면 맵 정의 pal(조건부 — 없으면 낮)로. 들어오는 첫 프레임부터 맞는 색(기록 불러오기·되감기도 같은 길). 되돌리기: 이 줄 삭제
     map = buildMap(id, def);
+    ambLoad(def);                                          // [r5 F6] 맵 ambient(불씨·반짝·갈매기 그림자). 되돌리기: 이 줄 삭제
     const p = spawnPos(def, at);
     Object.assign(pl, { x: p[0], y: p[1], fx: p[0], fy: p[1], dir: p[2], moving: false, t: 0, path: null, holdDir: null, hold: 0, pushT: 0, bumpT: 0, bufDir: null, emo: null, jumpMs: 0, idleSince: nowG(), lastStepDir: null, hidden: false, seeK: 0 });
     if (MC.state && MC.state.pspr) pl.sprite = MC.state.pspr;
@@ -13002,6 +13229,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     // [r5 F1] 맵 톤(op mappal): name "dusk"|"night"|null(낮), ms>0이면 4단 팔레트 페이드 → Promise. tone() = 지금 상태(확인용). 되돌리기: 이 두 줄 삭제
     setTone(name, ms) { return setTone(name == null || name === '' || name === 'day' ? null : String(name), ms); },
     tone() { return { name: TONE.name, k: TONE.k, pal: tonePalName(map), bakeMs: TONE.ms }; },
+    // [r5 street] 확인용: 행인 상태(walkers) · ambient 상태(ambient) · 스위치. 되돌리기: 이 세 줄 삭제
+    walkers() { return map ? map.objs.filter(o => o.type === 'walker').map(o => ({ id: o.id, x: o.x, y: o.y, dir: o.dir, moving: o.moving, present: o.present, ghost: !!o.ghost, i: o.wk ? o.wk.i : -1, wait: o.wk ? Math.round(o.wk.wait) : 0 })) : []; },
+    ambient() { const t = nowR(); return { list: AMB.list.map(L => ({ kind: L.e.kind, ok: L.ok, next: Math.round(L.next - t) })), parts: AMB.parts.length, sw: Object.assign({}, SW), anim4: map ? map.anim.filter(a => a.fr).length : 0,
+      gull: AMB.parts.filter(p => p.k === 'gull' && t >= p.t0).map(p => [Math.round(p.x + p.vx * (t - p.t0)), Math.round(p.y + p.vy * (t - p.t0))]) }; },
     /* --- 계약 밖 보조(호환 확장) --- */
     hud(show) { hudOn = show !== false; },            // op hud
     setHud(show) { hudOn = show !== false; },
@@ -13365,6 +13596,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   const COL_N = [255, 233, 160], COL_R = [255, 106, 74];   // #ffe9a0 따뜻한 등불 / #ff6a4a 감지 중
   const CUT = 0.82;                                 // 부채꼴이 어둠을 걷어 내는 정도(바닥이 읽히게)
   const GLOW = 0.2;                                 // 'lighter' 따뜻한 빛
+  // [r5 F8] 등불 부채꼴을 촛불처럼 따뜻하게: 부채꼴 모양 그대로 #ffb060을 32%(field.js 촛불 LV.CORE와 같은 값) 섞은 색으로 곱하기 한 번 — 바닥이 등잔 빛 색을 받는다.
+  //   들킴 경고(heat > 0, 붉은 부채꼴) 때는 곱하지 않는다(경고색 그대로). 불투명 도트 모양(부채꼴 디더 그대로) — 알파 덮개 아님. 되돌리기: ?uw2off=F8 또는 이 두 줄·warmCone·renderLight의 [r5 F8] 갈래 삭제
+  //   곱하기만 하면 부채꼴 바닥이 약 10% 어두워져(#7f7e7d → #736f6b) 들킴 판단에 쓰는 밝기가 바뀌므로, 촛불(field.js LV.ADD_CORE)처럼 같은 색을 5% 더해(lighter) 밝기를 예전과 맞춘다(재 보니 #7f7e7d → #88827b: 따뜻한 회색, 밝기 +4%)
+  const WARM = '#ffe6cc', WARM_ADD = '#0d0905', uw2 = id => !!(MC.uw2 && MC.uw2(id));   // = mix(#ffffff, #ffb060, 0.32) · mix(#000000, #ffb060, 0.05)
   const REACT_MS = 900;                             // 들킨 간수가 멈춰 이쪽을 보는 시간
   const DEF = { reset: 'start', seeMs: 250, grace: 1500, max: 3, music: null, bpm: 84, alertBpm: 96, onAlert: null, onCaught: null, onReset: null };
 
@@ -13554,6 +13789,19 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     s.img = { cv: s.cv, x0, y0, R: c.R, heat };
     s.imgKey = key;
     return s.img;
+  }
+  function warmCone(g, im, col, slot) {                  // [r5 F8] 부채꼴 모양(불투명 디더 점)을 한 색으로 칠한 판(곱하기 판 warm · 더하기 판 warmAdd) — 부채꼴이 바뀔 때만 다시 굽는다
+    const s = g.gi, kk = slot + 'Key';
+    let cv = s[slot];
+    if (s[kk] === s.imgKey && cv && cv.width === im.cv.width && cv.height === im.cv.height) return cv;
+    if (!cv || cv.width !== im.cv.width || cv.height !== im.cv.height) cv = s[slot] = G().makeCanvas(im.cv.width, im.cv.height);
+    const x = cv.getContext('2d');
+    x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, cv.width, cv.height);
+    x.drawImage(im.cv, 0, 0);
+    x.globalCompositeOperation = 'source-in'; x.fillStyle = col; x.fillRect(0, 0, cv.width, cv.height);
+    x.globalCompositeOperation = 'source-over';
+    s[kk] = s.imgKey;
+    return cv;
   }
   function lampPos(g) {                                  // 손에 든 등불(바라보는 쪽으로 조금, 아래로 조금)
     const x = Math.round(I.apx(g)) + 8, y = Math.round(I.apy(g)) + 8;
@@ -13762,6 +14010,19 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     renderLight(ox, oy) {                                 // 어둠 위 따뜻한 빛('lighter') + 등불 불꽃
       if (!ST.active || !ST.guards.length) return;
       const gg = G(), ctx = gg.ctx, t = I.nowR();
+      if (uw2('F8')) {                                    // [r5 F8] 부채꼴 안 바닥을 등잔 색으로 곱한다(붉은 경고 때는 건너뜀)
+        ctx.globalCompositeOperation = 'multiply';
+        for (const g of liveGuards()) {
+          if (!onScreen(g, ox, oy)) continue;
+          const im = coneImage(g);
+          if (im.heat) continue;
+          ctx.drawImage(warmCone(g, im, WARM, 'warm'), im.x0 - ox, im.y0 - oy);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.drawImage(warmCone(g, im, WARM_ADD, 'warmAdd'), im.x0 - ox, im.y0 - oy);
+          ctx.globalCompositeOperation = 'multiply';
+        }
+        ctx.globalCompositeOperation = 'source-over';
+      }
       ctx.globalCompositeOperation = 'lighter';
       for (const g of liveGuards()) {
         if (!onScreen(g, ox, oy)) continue;
@@ -14197,6 +14458,36 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     return aliveE(B)[0] || null;
   }
   function firstAliveIdx(B) { const e = aliveE(B)[0]; return e ? e.idx : -1; }
+  /* [SHOUT2 11-07] 조건별 외침(사용자 「좀 더 다양하게」). skills.*.shouts 항목 = 문자열(기본) 또는 {t, tags:{era, hpLow, finisher, boss, fam, faria}}.
+     era: 'p34'(이름을 되찾기 전 · a4m.n1_touch 없음) · 'learn'(되찾은 뒤) · 'truth'(추리로 배신을 안 뒤 · a4d.deduced) · 'alone'(파리아가 죽은 뒤 · s4c.dead)
+     hpLow: 에드몽 HP 30% 아래 · finisher: 노린 적 HP 25% 아래 · boss: 보스전 · fam: 노린 적 계열 · faria: 'with'(같은 편으로 살아 있음) | 'gone'(죽은 뒤).
+     고르기: 태그가 하나라도 안 맞는 줄은 빼고, 맞는 태그 수 n에 무게 1 + 2n(조건 줄이 더 자주, 기본 줄도 가끔) · 바로 앞 줄은 피한다. 문자열 외침(옛 데이터)은 옛 고르기 그대로 */
+  const shoutT = x => (x && typeof x === 'object') ? String(x.t || '') : String(x == null ? '' : x);
+  function shoutCtx(B, u, c) {
+    const fl = k => !!(MC.game && MC.game.flag && MC.game.flag(k));
+    const era = fl('s4c.dead') ? 'alone' : fl('a4d.deduced') ? 'truth' : fl('a4m.n1_touch') ? 'learn' : 'p34';
+    const t0 = c && c.target != null ? tgtEnemy(B, c.target) : (aliveE(B)[0] || null);
+    const fa = B.allies.find(a => a && a.id === 'faria');
+    const immortal = !!(B.script && B.script.d && B.script.d.immortal);   // 불사 단계(절망 1 · 최종전 1단계)에선 '마지막 한 방' 줄을 쓰지 않는다
+    return { era, hpLow: u.hp < u.maxHp * 0.3, finisher: !immortal && !!(t0 && t0.hp <= t0.maxHp * 0.25), boss: !!B.boss, fam: t0 ? t0.fam : null,
+      faria: era === 'alone' ? 'gone' : (fa && fa.alive ? 'with' : null) };
+  }
+  function pickShout(B, u, c, sh, prev) {
+    const cx = shoutCtx(B, u, c), cand = [];
+    sh.forEach((x, i) => {
+      const tg = (x && typeof x === 'object' && x.tags) || {};
+      let n = 0;
+      for (const k in tg) { if (tg[k] === true ? cx[k] !== true : cx[k] !== tg[k]) return; n++; }
+      cand.push({ i, w: 1 + 2 * n });
+    });
+    let pool = cand.length > 1 ? cand.filter(o => o.i !== prev) : cand;
+    if (!pool.length) return Math.floor(B.rng() * sh.length);
+    const sum = pool.reduce((a, o) => a + o.w, 0);
+    let r = B.rng() * sum;
+    for (const o of pool) { r -= o.w; if (r < 0) return o.i; }
+    return pool[pool.length - 1].i;
+  }
+  BT.shoutCtx = (B, u, c) => shoutCtx(B, u, c);                        // [SHOUT2] 확인용
   function pickAlly(B) {
     const a = aliveA(B);
     if (a.length <= 1) return a[0] || null;
@@ -14597,10 +14888,16 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
         const sh = L(sk.shouts);
         if (sh.length) {
           const prev = LB ? LB.get('sh.' + c.id) - 1 : -1;
-          let si = Math.floor(B.rng() * sh.length);
-          if (sh.length > 1 && si === prev) si = (si + 1 + Math.floor(B.rng() * (sh.length - 1))) % sh.length;
-          S.push({ t: 'cutin', unit: u, skill: c.id, rep: !!c.rep });     // [r5 B-03] 기술 컷인(외침 앞 — 대본 반응·첫 사용 기억 대사 길엔 없음). 보이는지는 battle_view H.cutin이 정한다. 되돌리기: 이 줄 삭제
-          S.push({ t: 'msg', text: tx(sh[si]), style: 'think', wait: 'short' });
+          let si;
+          if (sh.some(x => x && typeof x === 'object') && MC.uw2 && MC.uw2('SHOUT2')) si = pickShout(B, u, c, sh, prev);   // [SHOUT2 11-07] 조건별 외침(시기·HP·마지막 한 방·보스·적 계열·파리아). 되돌리기: ?uw2off=SHOUT2(태그 무시 — 아래 옛 고르기)
+          else {
+            si = Math.floor(B.rng() * sh.length);
+            if (sh.length > 1 && si === prev) si = (si + 1 + Math.floor(B.rng() * (sh.length - 1))) % sh.length;
+          }
+          // [CUT2 11-07] 컷인 띠에 기술 이름 대신 이 외침을(사용자 「기술명 대신 대사를」). 띠가 실제로 보였으면 로그의 같은 외침은 battle_view H.msg가 건너뛴다(cutLine). 되돌리기: ?uw2off=CUT2
+          const shText = tx(shoutT(sh[si])), cut2 = !!(MC.uw2 && MC.uw2('CUT2'));
+          S.push({ t: 'cutin', unit: u, skill: c.id, rep: !!c.rep, line: cut2 ? shText : null });     // [r5 B-03] 기술 컷인(외침 앞 — 대본 반응·첫 사용 기억 대사 길엔 없음). 보이는지는 battle_view H.cutin이 정한다. 되돌리기: 이 줄 삭제
+          S.push({ t: 'msg', text: shText, style: 'think', wait: 'short', cutLine: cut2 || undefined });
           if (LB) LB.set('sh.' + c.id, si + 1);
         }
       }
@@ -14708,9 +15005,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const lead = B.allies[0], fd = u.fit ? u.fitDef : null;
     if (sk.kind === 'advice') return adviceAct(B, u, sk, S);
     S.push({ t: 'msg', text: fmt(T('skill'), { actor: u.name, skill: Nn(sk.name, 'skill') }), wait: 0 });
-    if (sk.kind === 'heal' || sk.kind === 'buff') S.push({ t: 'cutin', unit: u, skill: id, rep: !!c.rep });   // [r5 B-03] 파리아 치유의 말·가르침 컷인(맡기기는 rep — 없음). 되돌리기: 이 줄 삭제
     const lines = L(fd && sk.kind === 'heal' && fd.healLines ? fd.healLines : sk.lines);   // (S3) 발작 뒤 치유의 말은 짧아진 대사
-    if (lines.length) S.push({ t: 'msg', text: tx(lines[Math.floor(B.rng() * lines.length)]), style: 'faria', wait: 'short' });
+    const ln = lines.length ? tx(lines[Math.floor(B.rng() * lines.length)]) : null, cut2 = !!(MC.uw2 && MC.uw2('CUT2'));   // [CUT2 11-07] 대사를 먼저 고른다(난수 순서는 옛과 같음 — 컷인 단계는 난수를 쓰지 않는다)
+    if (sk.kind === 'heal' || sk.kind === 'buff') S.push({ t: 'cutin', unit: u, skill: id, rep: !!c.rep, line: cut2 ? ln : null });   // [r5 B-03] 파리아 치유의 말·가르침 컷인(맡기기는 rep — 없음). [CUT2] 띠에 그 대사. 되돌리기: 이 줄 삭제
+    if (ln) S.push({ t: 'msg', text: ln, style: 'faria', wait: 'short', cutLine: (cut2 && (sk.kind === 'heal' || sk.kind === 'buff')) || undefined });
     if (sk.kind === 'heal') {
       const tg = lead && lead.alive ? lead : u;
       const amt = Math.max(1, Math.round(((sk.power || 18) + wisOf(u) * (sk.wisMul != null ? sk.wisMul : 1)) * (fd && fd.healMul != null ? fd.healMul : 1)));
@@ -17023,6 +17321,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     return { name: String(ev.u.name || ''), sub, fam: ev.u.fam };
   }
   H.msg = async function (s) {
+    if (s.cutLine && V && V.cutLine) { V.cutLine = false; return; }     // [CUT2 11-07] 방금 컷인 띠가 이 대사를 보여 줬다 — 로그에 두 번 쓰지 않는다
+    if (s.cutLine && V) V.cutLine = false;
     if (s.quiet) { logPush(s.text, s.style, s.fam, true); return; }
     await logPush(s.text, s.style, s.fam);
     await afterWait(s.wait);
@@ -17053,17 +17353,28 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const look = (MC.state && MC.state.vars && MC.state.vars.dantesLook) || 'normal';
     return (T0[look] || {})[skill] || null;
   }
+  /* [CUT2 11-07] 사용자 「기술명 대신 대사를 넣는 게 낫지 않아? 기술명은 좀 어색하니」: s.line(외침 · 파리아 대사)이 있으면 띠에 기술 이름 대신 그 대사(1~2줄)를,
+     머묾을 CUT_HOLD_LINE으로 늘리고(탭하면 바로 빠짐), 한 전투에서 같은 사람·같은 기술은 한 번만(같은 전투 두 번째부터는 지금처럼 로그에 외침 한 줄).
+     띠가 대사를 보여 줬으면 V.cutLine — 바로 뒤 로그의 같은 대사(cutLine)를 H.msg가 건너뛴다. 되돌리기: ?uw2off=CUT2(battle_core가 line을 넣지 않음 → 옛 모습) */
+  const CUT_HOLD_LINE = 1100;
   H.cutin = async function (s) {
+    if (V) V.cutLine = false;                                            // [CUT2]
     if (!UW('B-03') || !V || V.ow || V.sack || bs() === 2 || s.rep) return;
     if (V.cutRound === V.B.round) return;                                // 한 라운드에 한 번
     const u = s.unit, who = u && u.support ? 'faria' : ((u && u.id) || 'dantes'), g = G();
+    const ck = who + ':' + s.skill;                                      // [CUT2] 한 전투에 사람·기술마다 한 번
+    if (s.line) { V.cutSeen = V.cutSeen || {}; if (V.cutSeen[ck]) return; }
     let pt = null;
     try { pt = MC.dialogue && MC.dialogue.portraitOf ? MC.dialogue.portraitOf(who, cutFace(who, s.skill)) : null; } catch (_) { pt = null; }
     if (!pt || !g.ptcOn || !g.ptcOn() || !g.ptcHas(pt)) return;          // pt-c 얼굴이 없으면 컷인 없음(예전 그대로)
     V.cutRound = V.B.round;
     const sk = CORE().skill(s.skill) || {};
-    V.cutin = { t0: V.t, pt, who, actor: u ? String(u.name || '') : '', name: trB(sk.name, 'skill') || '', color: sk.color || COL.gold, y: cutY() };
-    await bwait((CUT_IN + CUT_HOLD) * kf());
+    const hold = s.line ? CUT_HOLD_LINE : CUT_HOLD;                      // [CUT2]
+    V.cutin = { t0: V.t, pt, who, actor: u ? String(u.name || '') : '', name: trB(sk.name, 'skill') || '', color: sk.color || COL.gold, y: cutY(), line: s.line || null, hold };
+    if (s.line) { V.cutSeen[ck] = true; V.cutLine = true; }
+    const t0 = V.t;
+    await bwait((CUT_IN + hold) * kf());
+    if (s.line && V && V.cutin && V.skipAt >= t0) V.cutin.t0 = V.t - CUT_IN - hold;   // [CUT2] 탭으로 넘기면 띠도 바로 빠지기 시작
   };
   function cutY() {                                                       // 띠 윗변: 무대 가운데와 '살아 있는 적 머리 위 6px' 중 위쪽(순서 바 아래로는 내려가지 않음)
     const g = G();
@@ -18815,10 +19126,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   function drawCutin() {
     const c = V.cutin;
     if (!c) return;
-    const q = V.t - c.t0;
-    if (q >= CUT_IN + CUT_HOLD + CUT_OUT) { V.cutin = null; return; }
+    const q = V.t - c.t0, HOLD = c.hold || CUT_HOLD;                     // [CUT2] 대사 띠는 머묾이 길다
+    if (q >= CUT_IN + HOLD + CUT_OUT) { V.cutin = null; return; }
     const g = G(), W = g.W, y = c.y, col = c.color, dk = g.mix(col, '#000000', 0.62);
-    const pin = EZ.outCubic(clamp(q / CUT_IN, 0, 1)), pout = EZ.inQuad(clamp((q - CUT_IN - CUT_HOLD) / CUT_OUT, 0, 1));
+    const pin = EZ.outCubic(clamp(q / CUT_IN, 0, 1)), pout = EZ.inQuad(clamp((q - CUT_IN - HOLD) / CUT_OUT, 0, 1));
     const sx = Math.round((pin - 1) * (W + 24) + pout * (W + 24));
     g.rect(sx - 8, y, W + 16, CUT_H, '#08060c');                          // 띠 바탕 + 기술 색 성긴 결
     g.ditherRect(sx - 8, y + 3, W + 16, CUT_H - 6, dk, 2);
@@ -18833,6 +19144,19 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (!g.ptcSlot(c.pt, fx + 2, fy + 2, cols, V.scene)) { g.gradV(fx + 2, fy + 2, 48, 48, cols); if (has(c.pt)) g.sprite(c.pt, fx + 10, fy + 18); }
     const tx = fx + 60, room = V.X0 + 176 - (V.X0 + 66);
     if (c.actor) MC.text.draw(c.actor, tx, y + 6, { font: 'small', color: c.who === 'faria' ? COL.faria : COL.name, outline: '#000' });
+    if (c.line) {                                                        // [CUT2 11-07] 기술 이름 대신 대사 — 한 줄에 들어가면 big, 아니면 bold 두 줄까지(넘치면 …)
+      const font = MC.text.width(c.line, 'big') <= room ? 'big' : 'bold';
+      let ls = MC.text.wrap(c.line, room, font);
+      if (ls.length === 2) {                                             // [SHOUT2] 두 줄이면 빈칸 자리 가운데 두 줄 폭이 가장 고른 곳에서 끊는다(「여기서 끝낼 순 / 없다.」 같은 한 낱말 꼬리 줄 막기)
+        const t = c.line; let best = null;
+        for (let i = 0; i < t.length; i++) if (t[i] === ' ') { const a = t.slice(0, i), b = t.slice(i + 1), wa = MC.text.width(a, font), wb = MC.text.width(b, font), m = Math.max(wa, wb); if (wa <= room && wb <= room && (!best || m < best.m)) best = { a, b, m }; }
+        if (best) ls = [best.a, best.b];
+      }
+      if (ls.length > 2) { ls = ls.slice(0, 2); let s2 = ls[1]; while (s2.length > 1 && MC.text.width(s2 + '…', font) > room) s2 = s2.slice(0, -1); ls[1] = s2 + '…'; }
+      const lh = MC.text.LINE[font] || 14, y0 = ls.length > 1 ? y + 17 : y + (font === 'big' ? 19 : 24);
+      ls.forEach((l, i) => MC.text.draw(l, tx, y0 + i * lh, { font, color: '#f4efe0', outline: '#000' }));
+      return;
+    }
     const big = MC.text.width(c.name, 'big') <= room;
     MC.text.draw(c.name, tx, y + (big ? 19 : 26), { font: big ? 'big' : 'bold', color: COL.gold, outline: '#000' });
   }
@@ -19738,7 +20062,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   const UI_PALS = ['act1', 'act2', 'act3', 'act4', 'act5', 'dream', 'despair', 'memory', 'revenge', 'madness', 'sea'];
   const TRANS_KINDS = ['fade', 'white', 'dream', 'wake', 'cut', 'ink'];
   const PARTICLES = ['dust', 'ripple', 'sparkle', 'ember', 'ash', 'bubble', 'drop', 'heal', 'paper'];
-  const OBJ_TYPES = ['npc', 'thing', 'exit', 'trigger', 'symbol', 'chest', 'guard', 'pickup'];
+  const OBJ_TYPES = ['npc', 'thing', 'exit', 'trigger', 'symbol', 'chest', 'guard', 'pickup', 'walker'];   // [r5 F4] walker(행인 장식) 더함. 되돌리기: 'walker' 삭제
   const COND_KEYS = ['flag', 'not', 'all', 'any', 'var', 'eq', 'ne', 'gte', 'lte', 'gt', 'lt', 'item', 'n', 'lv', 'map', 'act'];
   const DIRS = ['up', 'down', 'left', 'right'];
   /* ---------- S2 계약 목록(docs/ARCHITECTURE_S2.md §D) — S1 목록은 그대로 두고 더하기만 ---------- */
@@ -19932,6 +20256,27 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
         if (hasW && eps.length && !eps.some(ch => has(eb(tiles[ch]) + '_wN'))) wrn(w, '물가 젖은 띠 그림(_wN)이 어느 바닥에도 없음');
       }
     }
+    // [r5 F5·F6] 타일 f5(큰 무늬 — 조각 _m0…_m{n²−1}) · f6(새 프레임 spr·anim·seq) 그림이 다 있는지. 빠지면 field.js가 그 칸만 예전 길로 내려간다. 되돌리기: 이 블록 삭제
+    for (const tsId in ts) {
+      const tiles = (ts[tsId] && ts[tsId].tiles) || {};
+      for (const ch in tiles) {
+        const t = tiles[ch], w = 'tileset ' + tsId + " '" + ch + "'";
+        if (!t) continue;
+        if (t.f6 != null) {
+          if (!t.f6 || !isArr(t.f6.spr) || t.f6.spr.length < 2) err(w, 'f6.spr는 프레임 둘 이상');
+          else {
+            for (const n of t.f6.spr) if (!has(n)) wrn(w, 'f6 그림 없음 ' + n);
+            if (t.f6.anim != null && !(+t.f6.anim > 0)) err(w, 'f6.anim은 ms(>0)');
+            if (t.f6.seq != null && !(isArr(t.f6.seq) && t.f6.seq.length && t.f6.seq.every(i => i === (i | 0) && i >= 0 && i < t.f6.spr.length))) err(w, 'f6.seq는 프레임 번호 배열');
+          }
+        }
+        if (t.f5 != null) {
+          const n = t.f5 ? t.f5.macro | 0 : 0;
+          if (n < 2 || !isArr(t.f5.sets) || !t.f5.sets.length || !t.f5.sets.every(isArr)) err(w, 'f5는 {macro: 2 이상, sets: [[이름…]…]}');
+          else for (const set of t.f5.sets) for (const b of set) { for (let i = 0; i < n * n; i++) if (!has(b + '_m' + i)) { wrn(w, 'f5 조각 그림 없음 ' + b + '_m' + i); break; } }
+        }
+      }
+    }
     for (const id of S2_TILESETS) if (!ts[id]) wrn('S2 계약 타일셋', '없음 ' + id);
     for (const id of S3_TILESETS) if (!ts[id]) wrn('S3 계약 타일셋', '없음 ' + id);
     for (const id of S4_TILESETS) if (!ts[id]) wrn('S4 계약 타일셋', '없음 ' + id + '(S4_BUILD2 §F-2)');
@@ -20039,6 +20384,18 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
           }
         }
       }
+      // [r5 F6] 맵 ambient [{kind: ember|glint|gull, every ms, at?(ember), n?, first?, cond?}] — 작은 장식 타이머(field.js). 되돌리기: 이 블록 삭제
+      if (m.ambient != null) {
+        if (!isArr(m.ambient)) err(w0, 'ambient는 [{kind, every, …}]');
+        else m.ambient.forEach((e, k) => {
+          const ww = w0 + ' ambient[' + k + ']';
+          if (!e || ['ember', 'glint', 'gull'].indexOf(e.kind) < 0) { err(ww, '모르는 kind ' + (e && e.kind)); return; }
+          if (!(+e.every >= 400)) wrn(ww, 'every는 400ms 이상');
+          if (e.kind === 'ember' && !(isArr(e.at) && tileAt(e.at[0], e.at[1]) != null)) err(ww, 'ember at [x,y]가 맵 밖이거나 없음');
+          if (e.n != null && !(+e.n > 0 || (isArr(e.n) && e.n.length >= 2 && +e.n[0] > 0 && +e.n[1] >= +e.n[0]))) wrn(ww, 'n은 개수 또는 [min,max]');
+          if (e.cond != null) checkCond(e.cond, ww);
+        });
+      }
       for (const k in sp) {
         const s = sp[k], w = w0 + ' spawn ' + k;
         if (!isArr(s) || s.length < 2) { err(w, '형식 [x,y,dir]'); continue; }
@@ -20112,9 +20469,54 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
           if (o.dir && DIRS.indexOf(o.dir) < 0) err(w, '방향 ' + o.dir);
           if (!o.sprite && !has('ch_tguard_down_0')) wrn(w, '기본 간수 스프라이트 ch_tguard 없음(ch_jailer로 대신)');
         }
+        // [r5 F4] 행인(walker): 장식이라 event 없음 · route 칸이 걷는 칸이고 출구·트리거·스폰 칸이 아님 · 쉬는 점이 대화 대상 옆 칸이 아님 · pal은 있는 팔레트. 되돌리기: 이 블록 삭제
+        if (type === 'walker') {
+          if (o.event != null) wrn(w, 'walker에 event — 행인은 탭해도 반응 없는 장식(event를 빼거나 npc로)');
+          if (!o.sprite) err(w, 'walker에 sprite 없음');
+          if (o.pal != null && !P[o.pal]) err(w, '없는 팔레트 ' + o.pal);
+          if (o.loop != null && o.loop !== 'pingpong' && o.loop !== 'loop') err(w, 'loop는 pingpong|loop');
+          if (o.idle != null && ['work', 'hop'].indexOf(o.idle) < 0) wrn(w, '모르는 idle ' + o.idle);
+          if (o.pause != null && !(isArr(o.pause) && o.pause.length >= 2 && +o.pause[0] >= 0 && +o.pause[1] >= +o.pause[0])) err(w, 'pause 형식 [min,max]ms');
+          if (o.step != null && !(+o.step >= 120 && +o.step <= 1200)) wrn(w, 'step은 120~1200ms');
+          if (o.dir && DIRS.indexOf(o.dir) < 0) err(w, '방향 ' + o.dir);
+          const avoid = new Set(), front = new Set(), still = [];
+          for (const k in sp) if (isArr(sp[k])) avoid.add(sp[k][0] + ',' + sp[k][1]);
+          for (const q of m.objects || []) {
+            if (!q || q === o || q.type === 'walker') continue;
+            const qt = q.type || 'thing', qw = Math.max(1, q.w | 0 || 1), qh = Math.max(1, q.h | 0 || 1), x0 = q.x, y0 = (qt === 'exit' || qt === 'trigger') ? q.y : q.y - qh + 1;
+            for (let yy = y0; yy < y0 + qh; yy++) for (let xx = x0; xx < x0 + qw; xx++) {
+              if (qt === 'exit' || qt === 'trigger') { avoid.add(xx + ',' + yy); continue; }
+              if (q.solid !== false && q.cond == null) still.push(xx + ',' + yy);
+              if (q.event || qt === 'chest' || qt === 'pickup') for (const d of [[1, 0], [-1, 0], [0, 1], [0, -1]]) front.add((xx + d[0]) + ',' + (yy + d[1]));
+            }
+          }
+          const pts = isArr(o.route) && o.route.length ? o.route : [[o.x, o.y]];
+          const cell = (x, y, ww, hard) => {
+            const k = x + ',' + y;
+            if (tileAt(x, y) == null) { err(ww, '맵 밖 (' + k + ')'); return; }
+            if (solidAt(x, y)) err(ww, '막힌 타일 (' + k + " '" + tileAt(x, y) + "')");
+            else if (avoid.has(k)) err(ww, '출구·트리거·스폰 칸 (' + k + ') — 행인이 서면 길을 막는다');
+            else if (still.indexOf(k) >= 0) err(ww, '늘 있는 물건 칸 (' + k + ')');
+            if (hard && front.has(k) && pts.length > 1) wrn(ww, '쉬는 점이 대화 대상 옆 칸 (' + k + ')');
+          };
+          cell(o.x, o.y, w + ' 시작', false);
+          let prev = [o.x, o.y];
+          const seg = (a, b, ww) => {
+            if (a[0] !== b[0] && a[1] !== b[1]) wrn(ww, '구간이 축 방향이 아님(긴 축 먼저 걷는다)');
+            let x = a[0], y = a[1];
+            for (let n = 0; n < 200 && (x !== b[0] || y !== b[1]); n++) { if (Math.abs(b[0] - x) >= Math.abs(b[1] - y) && x !== b[0]) x += Math.sign(b[0] - x); else y += Math.sign(b[1] - y); cell(x, y, ww, false); }
+          };
+          pts.forEach((p, k) => {
+            const ww = w + ' route ' + k;
+            if (!isArr(p) || p.length < 2 || p[0] !== (p[0] | 0) || p[1] !== (p[1] | 0)) { err(ww, '형식 [x,y,방향?]'); return; }
+            if (p[2] != null && DIRS.indexOf(p[2]) < 0) err(ww, '방향 ' + p[2]);
+            seg(prev, p, ww); cell(p[0], p[1], ww, true); prev = p;
+          });
+          if (o.loop === 'loop' && pts.length > 1) seg(prev, pts[0], w + ' route 끝→처음');
+        }
         if (o.sprite && type !== 'symbol') {
           const b = o.sprite;
-          const person = type === 'npc' || type === 'guard';
+          const person = type === 'npc' || type === 'guard' || type === 'walker';   // [r5 F4] walker 더함
           const ok = person ? (has(b + '_down_0') || has(b)) : (+o.anim > 0 ? has(b + '_0') : (has(b) || has(b + '_0')));
           if (!ok) err(w, '없는 스프라이트 ' + b);
           if (type === 'thing' && !(+o.anim > 0) && !has(b) && has(b + '_0')) wrn(w, b + '는 _0/_1만 있음 → anim 지정 필요');
@@ -31353,20 +31755,55 @@ function deckT(v) { // 정자 데크(세로 판자 8px, 꿀색)
   }
   return c;
 }
+// [r5 F6] 물마루 이동표: ph 0~3마다 실제로 다른 자리(예전엔 `ph ?` 참/거짓이라 ph 2·3이 1과 같았다). ph 0·1은 예전과 같은 행 — 옛 2프레임 그림(tl_*_sea_0/_1)은 바이트까지 그대로.
+//   짝수 물마루 0 → −1 → −2 → −1, 홀수 0 → +2 → +3 → +1(되돌아오는 흔들림), 셋째 물마루는 0·1·1·0칸 내려감. 반짝(s)도 프레임마다 자리를 옮긴다. 되돌리기: SEA_DX·SEA_DY·SEA_GL 삭제 + 아래 세 줄을 예전 식으로
+const SEA_DX = [[0, 0], [-1, 2], [-2, 3], [-1, 1]], SEA_DY = [0, 1, 1, 0];
+const SEA_GL = [[[3, 1], [13, 10]], [[11, 4]], [[6, 9]], [[14, 13], [2, 6]]];
 function seaT(ph, C) {
+  ph = ((ph | 0) % 4 + 4) % 4;                                                    // [r5 F6]
   const c = new Cv(16, 16, C.a);
   c.each((ch, x, y) => { const s = Math.sin(TAU * ((y + 0.5) / 8 + 0.16 * Math.sin(TAU * (x + 0.5) / 16 + ph * 1.7)));
     if (s > 0.55 && bay(x, y) < (s - 0.55) * 2.2) return C.d; });
   const CR = [[1, 1, 5], [9, 4, 5], [4, 8, 4], [12, 10, 4], [7, 13, 3]];
   CR.forEach((q, i) => {
-    const x = q[0] + (ph ? ((i & 1) ? 2 : -1) : 0), y = q[1] + (ph && i === 2 ? 1 : 0), L = q[2];
+    const x = q[0] + SEA_DX[ph][i & 1], y = q[1] + (i === 2 ? SEA_DY[ph] : 0), L = q[2];   // [r5 F6] 예전: ph ? ((i & 1) ? 2 : -1) : 0 · (ph && i === 2 ? 1 : 0)
     for (let k = 1; k < L - 1; k++) c.pw(x + k, y, C.l);
     c.pw(x, y + 1, C.L); c.pw(x + L - 1, y + 1, C.L);
     for (let k = 1; k < L - 1; k++) c.pw(x + k, y + 1, C.D);
   });
-  if (C.s) (ph ? [[11, 4]] : [[3, 1], [13, 10]]).forEach(s => c.pw(s[0] + (ph ? 0 : 0), s[1], C.s));
+  if (C.s) SEA_GL[ph].forEach(s => c.pw(s[0], s[1], C.s));                       // [r5 F6] 예전: (ph ? [[11, 4]] : [[3, 1], [13, 10]])
   return c;
 }
+/* [r5 F5·F6] 큰 물결 무늬 32×32(16칸 조각 넷 _m0~_m3로 잘라 쓴다 — field.js tileSpr/animSetup의 macro). v = 변형 0·1, ph = 프레임 0~3.
+   바탕 물결은 테두리 줄에서 모든 변형·프레임이 같은 값(창 함수 0)이라 어느 변형·어느 박자의 덩이를 이어 붙여도 이음매가 없다.
+   물마루(l·L·D)·반짝(s)은 테두리에 닿지 않는 안쪽에서만 움직인다(덩이마다 위치가 달라 16px 벽지 반복이 깨진다). 되돌리기: 이 함수·SEAM_CR 삭제(그림이 없으면 field가 예전 길) */
+const SEAM_CR = [   // [x, y, 길이, 흔들림 종류(0 왼쪽 · 1 오른쪽 크게)] — x+이동이 1~30, y+1이 30을 넘지 않게
+  [[3, 2, 5, 0], [14, 1, 4, 1], [23, 3, 5, 0], [8, 6, 4, 1], [18, 8, 5, 0], [25, 9, 3, 1], [3, 11, 6, 1], [13, 13, 3, 0], [20, 14, 5, 1],
+   [6, 17, 4, 0], [15, 19, 6, 1], [25, 20, 4, 0], [9, 24, 5, 1], [19, 26, 3, 0], [3, 27, 4, 1]],
+  [[6, 1, 4, 0], [16, 3, 6, 1], [26, 2, 3, 0], [2, 6, 5, 1], [12, 8, 4, 0], [21, 9, 5, 1], [7, 12, 3, 1], [16, 14, 5, 0], [24, 15, 4, 1],
+   [3, 18, 4, 0], [11, 20, 6, 1], [22, 21, 4, 0], [5, 25, 5, 1], [16, 26, 4, 0], [25, 27, 3, 1]]
+];
+const SEAM_DX = [[0, -1, -2, -1], [0, 2, 3, 1]], SEAM_DY = [0, 1, 1, 0];
+function seaMacro(v, ph, C) {
+  v &= 1; ph = ((ph | 0) % 4 + 4) % 4;
+  const c = new Cv(32, 32, C.a), win = u => Math.sin(Math.PI * u / 31);          // 0(테두리 줄) … 1(가운데)
+  c.each((ch, x, y) => {
+    const w = win(x) * win(y);
+    const s = Math.sin(TAU * ((y + 0.5) / 8 + 0.16 * Math.sin(TAU * (x + 0.5) / 32) + 0.07 * Math.sin(TAU * ((x + 0.5) / 16 - (y + 0.5) / 32))
+      + 0.14 * w * Math.sin(TAU * (x + 0.5) / 16 + ph * TAU / 4 + v * 2.1)));
+    if (s > 0.55 && bay(x, y) < (s - 0.55) * 2.2) return C.d;
+  });
+  SEAM_CR[v].forEach((q, i) => {
+    const x = q[0] + SEAM_DX[q[3]][ph], y = q[1] + (i % 3 === 2 ? SEAM_DY[ph] : 0), L = q[2] - (ph === 2 && (i & 1) ? 1 : 0);   // 둘째 박자에 물마루 몇 개가 한 칸 짧아진다(숨)
+    for (let k = 1; k < L - 1; k++) c.p(x + k, y, C.l);
+    c.p(x, y + 1, C.L); c.p(x + L - 1, y + 1, C.L);
+    if (C.D) for (let k = 1; k < L - 1; k++) c.p(x + k, y + 1, C.D);
+  });
+  if (C.s) for (let i = 0; i < 2; i++) c.p(3 + Math.floor(hash(v, ph * 2 + i, 77) * 26), 3 + Math.floor(hash(ph, v * 2 + i, 78) * 26), C.s);
+  return c;
+}
+// 32×32 → 16칸 조각 넷(_m0 왼위 · _m1 오른위 · _m2 왼아래 · _m3 오른아래 — field.js 이름 규칙 _m{x%2 + (y%2)*2})
+function macroPut(name, pal, cv) { for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) { const p = new Cv(16, 16); for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p.a[y * 16 + x] = cv.g(i * 16 + x, j * 16 + y); put(name + '_m' + (i + j * 2), pal, p); } }
 const SEA1 = { a: 'w', d: 'v', D: 'v', l: 'b', L: 'V', s: 'H' };
 function edgeT(ph) { // 부두 가장자리: 위 돌 턱, 아래 물
   const c = new Cv(16, 16, 'w');
@@ -31686,9 +32123,11 @@ function fireIn(ph) {
   c.each((ch, x, y) => (ch === 'x' && y > 6 && (x === 3 || x === 12) && bay(x, y) < 0.5) ? 'Z' : undefined);
   const F0 = ["....w.....", "...wF..F..", "..FwwF.FF.", ".FFwwFFFf.", ".fFwwwFFf.", "ffFWwwFfff", "ffFFwFFfzf"];
   const F1 = [".....F....", "..F.Fw....", "..FFwwF.F.", ".fFwwwFFF.", "fFFwWwwFf.", "ffFFwwFFff", "fzfFFFFfff"];
-  c.st(3, 7, ph ? F1 : F0);
+  // [r5 F6] 셋째 불꽃(ph 2): 혀가 왼쪽으로 기울고 가운데 심이 낮아진 사이 모양 — tilesets indoor 'F'의 f6(3프레임 깜빡임 순서)이 쓴다. 되돌리기: F2와 ph === 2 갈래 삭제
+  const F2 = ["...F......", "..Fw...F..", ".FFwwF.Fw.", ".FFwWwFFf.", "ffFwwwFFF.", "fFFwwWFfff", "ffzFwFFfff"];
+  c.st(3, 7, ph === 2 ? F2 : ph ? F1 : F0);
   c.r(3, 14, 10, 1, 'Z'); c.r(4, 14, 3, 1, 'z'); c.r(8, 14, 4, 1, 'z'); c.p(6, 13, 'j'); c.p(9, 13, 'j');
-  c.r(3, 15, 10, 1, ph ? 'z' : 'Z'); c.p(5, 15, 'f'); c.p(10, 15, ph ? 'f' : 'z');
+  c.r(3, 15, 10, 1, ph === 1 ? 'z' : 'Z'); c.p(5, 15, ph === 2 ? 'z' : 'f'); c.p(10, 15, ph ? 'f' : 'z');
   c.p(1, 5, 'M'); c.p(14, 5, 'M');
   return c;
 }
@@ -31720,7 +32159,7 @@ function plantIn() {
   put('tl_indoor_window', 'in', windowIn());
   put('tl_indoor_door', 'in', doorIn());
   put('tl_indoor_shelf', 'in', shelfIn());
-  put('tl_indoor_fire_0', 'in', fireIn(0)); put('tl_indoor_fire_1', 'in', fireIn(1));
+  put('tl_indoor_fire_0', 'in', fireIn(0)); put('tl_indoor_fire_1', 'in', fireIn(1)); put('tl_indoor_fire_2', 'in', fireIn(2));   // [r5 F6] _2 더함(되돌리기: _2 삭제)
   put('tl_indoor_chair', 'in', chairIn());
   put('tl_indoor_plant', 'in', plantIn());
   put('tl_indoor_void', 'in', voidT('X'));
@@ -31892,6 +32331,7 @@ function oarlock() {
 }
 (function sea() {
   put('tl_sea_sea_0', 'se', seaT(0, SEAN)); put('tl_sea_sea_1', 'se', seaT(1, SEAN));
+  put('tl_sea_sea_2', 'se', seaT(2, SEAN)); put('tl_sea_sea_3', 'se', seaT(3, SEAN));   // [r5 F6] 밤바다 4프레임(tilesets sea '~' f6). 되돌리기: 이 줄 삭제
   put('tl_sea_deck', 'se', boatDeck(0)); put('tl_sea_deck_1', 'se', boatDeck(1));
   put('tl_sea_rail', 'se', gunwale()); put('tl_sea_oarlock', 'se', oarlock());
   put('tl_sea_void', 'se', voidT('x'));
@@ -32622,6 +33062,126 @@ function cuSack() { // 이음매 없는 거친 삼베 결
   put('cu_sack', 'sack', cuSack());
 })();
 
+/* ================================================================ 14-b. [r5 street] 항구 살리기 — F4 광장 소품·행인 옷 색 · F5 큰 무늬(32×32 → 16칸 조각) · F6 물 4프레임
+   1815 마르세유 부두(가스등은 1830년대 이후라 쓰지 않는다 — 기름 등잔을 매단 나무 기둥). 다른 게임의 그림·무늬를 옮기지 않고 이 파일의 생성기로 새로 그렸다.
+   ※ tl_town_* 이름은 이 블록(파일 끝)에만 더한다 — spr_world_s2.js가 tl_town_* 순서대로 기억의 마르세유 그림(시드 = 순번)을 만들므로, 앞에 끼우면 B2 그림이 바뀐다.
+   되돌리기: 이 블록 삭제(그림이 없으면 field.js·맵이 예전 길) — 또는 주소 ?uw2off=F4,F5,F6 */
+// [r5 F4] 행인 옷 색(부분 팔레트 — field.js drawObj가 o.def.pal로 ch_guest_a·b·ch_boy 위에 덮는다). 옷·머릿수건·모자만, 얼굴 테·피부 결은 그대로
+PAL.wk_a1 = { f: "#4a5a9a", F: "#2e3870", y: "#c08a3a", Y: "#8a5a22", w: "#e8dcc0", W: "#b0a488", h: "#3a2418" };   // 생선 바구니 든 아낙: 쪽빛 머릿수건 · 황토 숄 · 생베 앞치마
+PAL.wk_a2 = { f: "#2a2430", F: "#16121a", y: "#9a3a2a", Y: "#6a2418", w: "#d8ccb0", W: "#a89c80", s: "#e0aa80", S: "#b07a56" };   // 카탈루냐 그물 깁는 여인: 검은 수건 · 붉은 숄 · 볕에 그은 얼굴
+PAL.wk_b1 = { x: "#c8a058", X: "#e0c080", v: "#3a5a8a", V: "#25385e", p: "#a89878", P: "#7a6c52", s: "#dca47a", S: "#a87048" };   // 짐꾼: 밀짚모자 · 푸른 일옷 · 돛천 바지
+PAL.wk_b2 = { x: "#2a2430", X: "#46405a", v: "#4a5e48", V: "#30402e", p: "#6a6a72", P: "#4a4a52", w: "#e8e4d8" };   // 상인: 검은 둥근 모자 · 짙은 초록 웃옷(모렐의 갈색·당글라르의 보라와 갈리게) · 회색 바지
+PAL.wk_k1 = { h: "#3a2a1e", H: "#5a4430", d: "#22160e", c: "#c0503a", C: "#8a3424", p: "#7a6248", P: "#54402c", k: "#b07a56" };   // 카탈루냐 아이 1: 검은 머리 · 붉은 웃옷
+PAL.wk_k2 = { h: "#5a3a22", H: "#7a5434", d: "#3a2414", c: "#d0a048", C: "#9a7028", p: "#4a5a7a", P: "#323e58", k: "#b07a56" };   // 아이 2: 밤색 머리 · 황토 웃옷 · 쪽빛 바지
+
+// [r5 F4] 돌 화분 테의 플라타너스(마르세유 부두·광장 가로수, 18세기부터) 32×48 — 아래 정렬 2칸(화분 테가 발밑 2칸), 잎 덩이는 위 두 칸 위로
+function obTreePlanter() {
+  const c = new Cv(32, 48);
+  for (let y = 44; y < 48; y++) for (let x = 6; x < 32; x++) { const dx = (x + 0.5 - 19) / 12.5, dy = (y + 0.5 - 46) / 2.6; if (dx * dx + dy * dy < 1 && bay(x, y) < 0.5) c.p(x, y, 'n'); }   // 오른쪽 아래 그늘(50% 도트)
+  // 화분 테: 윗면 갓돌 l(이음 d) · 안쪽 흙 P(안쪽 뒤 그늘 x) · 앞면 들돌 A(줄눈 n) · 밑줄 m
+  c.r(3, 36, 26, 7, 'l'); c.r(3, 36, 26, 1, 'S'); c.r(28, 36, 1, 7, 'a'); c.r(3, 42, 26, 1, 'a');
+  [9, 16, 23].forEach(x => { c.p(x, 36, 'd'); c.p(x, 37, 'd'); c.p(x, 41, 'd'); c.p(x, 42, 'n'); });
+  c.p(4, 38, 'd'); c.p(4, 39, 'd'); c.p(27, 38, 'd'); c.p(27, 40, 'd'); c.p(7, 36, 'H'); c.p(20, 36, 'H');
+  c.r(6, 38, 20, 3, 'P'); c.r(6, 38, 20, 1, 'x');
+  [[8, 39, 'p'], [11, 40, 'm'], [22, 39, 'p'], [24, 40, 'G'], [9, 40, 'h'], [20, 40, 'G'], [21, 40, 'g']].forEach(q => c.p(q[0], q[1], q[2]));   // 흙 위 자갈·떨어진 잎
+  for (let y = 43; y < 47; y++) for (let x = 3; x < 29; x++) c.p(x, y, hash(x >> 2, y, 33) < 0.3 ? 'a' : 'A');
+  c.r(3, 43, 26, 1, 'd'); c.r(3, 46, 26, 1, 'm'); c.r(28, 43, 1, 4, 'm');
+  [7, 13, 19, 25].forEach(x => { c.p(x, 44, 'n'); c.p(x, 45, 'n'); });
+  // 줄기: 플라타너스 얼룩 껍질(크림 N · 회색 7 · 올리브 X), 왼쪽 빛
+  for (let y = 18; y < 40; y++) for (let x = 14; x < 18; x++) {
+    let ch = cylCh(x, 14, 4, ['n', 'm', 'X', '7'], y);
+    const hv = hash(x >> 1, (y / 3) | 0, 21); if (hv < 0.26) ch = x < 16 ? 'N' : '7'; else if (hv > 0.8) ch = 'm';   // 껍질이 벗겨진 크림 얼룩 · 짙은 올리브 얼룩
+    c.p(x, y, ch);
+  }
+  c.p(13, 39, 'X'); c.p(18, 39, 'm'); c.p(12, 40, 'm'); c.p(19, 40, 'n'); c.p(13, 38, 'm');
+  c.ln(14, 22, 9, 15, 'X'); c.ln(15, 22, 10, 15, '7'); c.ln(17, 21, 22, 14, 'm'); c.ln(16, 21, 21, 14, 'X');   // 갈라진 가지
+  outline(c, 'k');
+  // 잎 덩이: 넓고 둥근 지붕(빛 왼쪽 위), 가장자리는 들쭉날쭉, 잎 사이로 가지 몇 칸
+  const L = new Cv(32, 30);
+  const V = vol(32, 30, [{ cx: 16, cy: 14, rx: 15, ry: 11 }, { cx: 7, cy: 17, rx: 7, ry: 6, z: 1 }, { cx: 25, cy: 16, rx: 7, ry: 6, z: 1 },
+    { cx: 11, cy: 8, rx: 8, ry: 6, z: 2 }, { cx: 22, cy: 8, rx: 8, ry: 6, z: 1.5 }, { cx: 16, cy: 4, rx: 7, ry: 4, z: 2.5 }, { cx: 16, cy: 21, rx: 9, ry: 5, z: 0.4 }]);
+  shade(L, V, ['j', 'G', 'g', 'h'], { lo: -0.35, hi: 0.85, dither: 0.8, seam: true });
+  L.each((ch, x, y) => { if (ch === '.') return; const e = L.g(x - 1, y) === '.' || L.g(x + 1, y) === '.' || L.g(x, y - 1) === '.' || L.g(x, y + 1) === '.'; if (e && hash(x, y, 9) < 0.35) return '.'; });
+  speck(L, 'g', 'h', 0.07, 14); speck(L, 'G', 'j', 0.09, 15);
+  [[11, 19], [12, 20], [20, 18], [21, 19], [15, 23], [16, 24]].forEach(q => { if (L.g(q[0], q[1]) !== '.') L.p(q[0], q[1], q[1] > 21 ? 'X' : 'p'); });
+  outline(L, 'j'); L.each((ch, x, y) => ch === 'j' && y < 6 && L.g(x, y + 1) !== '.' && L.g(x, y - 1) === '.' ? 'G' : undefined);
+  stamp(c, L, 0, 2); c.p(8, 8, 'H'); c.p(12, 5, 'h'); c.p(20, 7, 'h');   // 잎 덩이를 2칸 내려 줄기가 덜 길어 보이게
+  return c;
+}
+// [r5 F4] 과일·채소 노점 32×24 — 바랜 황토 돛천 차양(넓은 두 톤 줄), 버들 바구니에 오렌지·레몬, 양파·마늘 더미, 푸성귀 한 단(프로방스 장)
+function obFruitstall() {
+  const c = new Cv(32, 24);
+  c.r(2, 7, 2, 16, 'p'); c.r(28, 7, 2, 16, 'p'); c.r(2, 7, 1, 16, 'O'); c.r(28, 7, 1, 16, 'O');
+  for (let x = 1; x < 31; x++) { const st = (((x - 1) / 5) | 0) & 1; for (let y = 1; y < 6; y++) c.p(x, y, st ? 'q' : 'r'); }
+  c.r(1, 1, 30, 1, 'S'); c.r(1, 5, 30, 1, 'R');
+  for (let x = 1; x < 31; x++) { const sc = (x - 1) % 5, st = (((x - 1) / 5) | 0) & 1; if (sc >= 1 && sc <= 3) c.p(x, 6, st ? 'q' : 'r'); if (sc === 2) c.p(x, 7, 'R'); }
+  c.r(1, 13, 30, 2, '1'); c.r(1, 13, 30, 1, '2'); c.r(1, 15, 30, 7, '3'); c.r(1, 15, 30, 1, '4');
+  for (let x = 3; x < 30; x += 5) c.r(x, 16, 1, 6, '4');
+  c.st(3, 8, [".qr.qr..", "qrrqrrqr", "rrRrrRrr", "TtTtTtTt", "tTtTtTtT"]);           // 오렌지 바구니
+  c.st(12, 8, ["..LH.L..", ".LLLLHL.", "LL2LL2LL", "TtTtTtTt", "tTtTtTtT"]);           // 레몬 바구니
+  c.st(21, 9, ["..s.M..", ".sKsMNM", "sKssNMN", "TTTTTTT"]);                           // 양파·마늘 더미(납작 바구니)
+  c.st(28, 8, [".g", "gG", "Gg", ".G"]);                                                // 푸성귀 한 단
+  c.el(9, 23, 3, 1.4, '4'); c.el(22, 23, 3, 1.4, '4');
+  outline(c, 'k');
+  return c;
+}
+// [r5 F4] 두 바퀴 손수레 32×24 — 판자 짐칸(자루 하나·작은 통 하나), 큰 살바퀴, 왼쪽으로 뻗은 손잡이 두 대, 받침 다리
+function obHandcart() {
+  const c = new Cv(32, 24);
+  c.r(9, 9, 20, 8, 'o'); c.r(9, 9, 20, 1, 'O'); [11, 13, 15].forEach(y => c.r(10, y, 18, 1, 'p')); c.r(28, 9, 1, 8, 'P'); c.r(9, 16, 20, 1, 'P');
+  c.r(9, 17, 20, 2, 'p'); c.r(9, 18, 20, 1, 'P');
+  c.ln(9, 12, 1, 15, 'O'); c.ln(9, 13, 1, 16, 'p'); c.ln(9, 15, 2, 19, 'O'); c.ln(9, 16, 2, 20, 'p');   // 손잡이
+  c.r(11, 19, 1, 4, 'P');                                                                         // 받침 다리
+  c.el(14, 7.5, 4.6, 3.3, 'N'); c.each((ch, x, y) => (ch === 'N' && (x > 15 || y > 8) && bay(x, y) < 0.6) ? '7' : undefined); c.p(12, 5, 'X'); c.p(13, 5, 'X'); c.p(11, 6, 'M');   // 자루
+  for (let y = 2; y < 10; y++) for (let x = 20; x < 26; x++) c.p(x, y, cylCh(x, 20, 6, ['4', '3', '1', '2', '5'], y));   // 작은 통
+  [3, 8].forEach(y => { for (let x = 20; x < 26; x++) c.p(x, y, cylCh(x, 20, 6, ['y', 'y', 'Y', 'z'], y)); }); c.el(23, 2, 3, 1.2, '3'); c.p(22, 1, '2');
+  for (let y = 12; y < 24; y++) for (let x = 14; x < 27; x++) { const d = Math.hypot(x + 0.5 - 20.5, y + 0.5 - 18); if (d < 5.6 && d >= 4.4) c.p(x, y, 'P'); else if (d < 4.4) { const a = Math.atan2(y + 0.5 - 18, x + 0.5 - 20.5), sp = Math.abs(((a / (TAU / 8)) % 1 + 1) % 1 - 0.5); if (sp > 0.38 || d < 1.3) c.p(x, y, d < 1.3 ? 'y' : 'p'); } }   // 살바퀴(8살)
+  c.p(20, 17, 'Y');
+  outline(c, 'k');
+  return c;
+}
+// [r5 F4] 부두에 눕혀 둔 예비 닻 16×16 — 나무 닻장(가로대)·쇠 몸·두 갈고리, 녹 점(그 시대 닻은 나무 닻장이 흔했다)
+function obAnchor() {
+  const c = new Cv(16, 16);
+  c.ln(4, 4, 11, 11, 'y'); c.ln(5, 4, 12, 11, 'Y'); c.ln(4, 5, 11, 12, 'y');                     // 몸(굵기 2~3)
+  c.p(2, 1, 'Y'); c.p(3, 1, 'y'); c.p(1, 2, 'y'); c.p(4, 2, 'y'); c.p(2, 4, 'y'); c.p(1, 3, 'y'); c.p(4, 3, 'Y'); c.p(3, 4, 'y');   // 고리
+  c.ln(1, 9, 8, 2, 'O'); c.ln(2, 9, 9, 2, 'p'); c.p(1, 9, 'P'); c.p(9, 2, 'P');                  // 나무 닻장
+  c.ln(12, 12, 8, 14, 'y'); c.ln(12, 11, 14, 7, 'y'); c.ln(11, 12, 8, 13, 'Y'); c.ln(13, 11, 14, 8, 'Y');   // 두 팔
+  c.st(6, 12, ["yy..", "yYy.", ".yy."]); c.st(13, 5, [".y", "yY", "yy", "y."]);                   // 갈고리 끝
+  [[7, 7, 'K'], [10, 10, 'K'], [13, 9, 'K'], [8, 13, 'K']].forEach(q => c.p(q[0], q[1], q[2]));
+  outline(c, 'k');
+  return c;
+}
+// [r5 F4] 부두 기름 등잔 기둥 16×32 — 나무 기둥 + 쇠 팔 + 매단 양철·유리 등(낮이라 불 꺼짐, 유리 반짝 9). 가스등(1830년대~)이 아니다
+function obQuayLamp() {
+  const c = new Cv(16, 32);
+  c.r(3, 8, 3, 21, 'p'); c.r(3, 8, 1, 21, 'O'); c.r(5, 8, 1, 21, 'P'); c.r(3, 7, 3, 1, 'P');
+  c.r(1, 28, 7, 3, 'a'); c.r(1, 28, 7, 1, 'l'); c.r(1, 30, 7, 1, 'm'); c.p(7, 29, 'd');
+  c.ln(6, 9, 11, 6, 'y'); c.ln(6, 12, 9, 9, 'y'); c.p(11, 7, 'y'); c.p(11, 8, 'y');
+  c.st(9, 9, [".yyy.", "yYYYy", "yzzzy", "y9zzy", "yMzPy", "yzzPy", "yzzzy", "YYYYY", ".yyy.", "..y.."]);
+  outline(c, 'k');
+  return c;
+}
+// [r5 F5] 광장 돌 32×32 — 16칸 돌길(COB)과 같은 결이지만 32px마다 반복. v 1 = 줄눈 풀 포기·금 간 돌·자갈(모든 변형이 같은 돌 배치라 섞어도 이음매 없음)
+function cobbleMacro(v) {
+  const seeds = [];                                                 // 16칸 돌 자리(COB)를 네 귀에 깔고 돌마다 1~1.2px 흔듦 — 같은 돌 결, 반복만 32px로
+  for (let q = 0; q < 4; q++) COB.forEach((s, i) => seeds.push([(s[0] + (q & 1) * 16 + (hash(i, q, 41) - 0.5) * 2.4 + 32) % 32, (s[1] + (q >> 1) * 16 + (hash(q, i, 42) - 0.5) * 2 + 32) % 32]));
+  const c = stoneField(32, 32, seeds, 1, 1.7, COBC, 17);
+  if (v === 1) {                                                    // 줄눈 풀 포기(불규칙 한 덩이) · 금 간 돌 · 자갈
+    for (let y = 18; y < 24; y++) for (let x = 17; x < 24; x++) if (c.mort(x, y) && hash(x, y, 51) < 0.55 - Math.hypot(x - 20, y - 21) * 0.08) c.p(x, y, hash(x, y, 52) < 0.35 ? 'g' : 'G');
+    c.p(20, 19, c.mort(20, 19) ? 'h' : c.g(20, 19));
+    c.p(8, 25, 'n'); c.p(9, 26, 'n'); c.p(10, 26, 'd'); c.p(10, 27, 'n'); c.p(26, 6, 'd'); c.p(27, 6, 'l'); c.p(5, 10, 'd');
+  }
+  return c;
+}
+(function streetArt() {
+  put('ob_tree_planter', 'tw', obTreePlanter()); put('ob_fruitstall', 'tw', obFruitstall()); put('ob_handcart', 'tw', obHandcart());
+  put('ob_anchor', 'tw', obAnchor()); put('ob_quay_lamp', 'tw', obQuayLamp());
+  put('tl_town_sea_2', 'tw', seaT(2, SEA1)); put('tl_town_sea_3', 'tw', seaT(3, SEA1));        // [r5 F6] 16칸 바다 셋째·넷째 프레임(F5가 꺼졌을 때 4프레임)
+  for (let ph = 0; ph < 4; ph++) { macroPut('tl_twm_seaA_' + ph, 'tw', seaMacro(0, ph, SEA1)); macroPut('tl_twm_seaB_' + ph, 'tw', seaMacro(1, ph, SEA1)); }   // [r5 F5·F6] 32 덩이 2벌 × 4프레임 × 조각 4 = 32장
+  macroPut('tl_twm_cobA', 'tw', cobbleMacro(0)); macroPut('tl_twm_cobB', 'tw', cobbleMacro(1));   // [r5 F5] 광장 돌 2벌 × 조각 4 = 8장
+})();
+
 /* ================================================================ 15. 등록 */
 const pals = {}; for (const k in PAL) { const p = {}; for (const ch in PAL[k]) if (ch.length === 1) p[ch] = PAL[k][ch]; pals[k] = p; }
 MC.addSprites({ pals: pals, spr: SPR });
@@ -32630,6 +33190,7 @@ MC.addSprites({ pals: pals, spr: SPR });
 MC.artgen = { TAU, BAY, bay, hash, clamp, nrm, LIGHT, Cv, outline, bevel, vol, shade, rim, gshade, cylCh, voro, stoneField, brickWall, speck, planks, slabTop,
   distIn, edgeLight, tally, tallies, curvePts, glow, topLit, puddle, prFloor, FLAG, PRB, pals: pals };
 MC.artgen.tone = { defs: TONE, rgb: toneRGB };   // [r5 F1] field.js 인물·물건 톤(타일 팔레트와 같은 식). 되돌리기: 이 줄 삭제
+MC.artgen.seaMacro = seaMacro; MC.artgen.seaT = seaT;   // [r5 F5·F6] spr_world_s4.js가 갑판·티불랑 바다 큰 무늬를 같은 식으로 만든다. 되돌리기: 이 줄 삭제
 
 })(window.MC);
 
@@ -35770,16 +36331,19 @@ const wrapSet = (g, x, y, c) => { const h = g.length, w = g[0].length; g[((y % h
 /* ================================================================ 10. 타일셋 sea5 (장면 12 티불랑 — 폭풍 밤 바위섬). REDESIGN B-6 5막: 바위 #1c1e26 + 빛 면 #2a3a58 (storm_g1 앞쪽 바위의 평면 2톤 그대로) · 물 #0c1424 #1a2a44 #33507a */
 PAL.s4sea = { x: '#05070d', k: '#0c0e14', a: '#15171e', b: '#1c1e26', B: '#232a3a', c: '#2a3a58', d: '#3a4e72',
   e: '#0c1424', f: '#1a2a44', g: '#33507a', h: '#4a6490', i: '#8aa0c8', s: '#25242b', t: '#302e37', u: '#403d48' };
+// [r5 F6] spr_world.js seaT와 같은 이동표 — ph 0~3마다 물마루가 실제로 옮겨 간다(예전 `ph ?` 참/거짓). ph 0·1은 예전 행 그대로. 되돌리기: 표 셋 삭제 + 아래 세 줄 예전 식
+const SDX = [[0, 0], [-1, 2], [-2, 3], [-1, 1]], SDY = [0, 1, 1, 0], SGL = [[[3, 1], [13, 10]], [[11, 4]], [[6, 9]], [[14, 13], [2, 6]]];
 function seaRows(ph, C, seed) {                                // 물결 줄(spr_world.js seaT와 같은 식) — C = {base, wave, crest, glint}
+  ph = ((ph | 0) % 4 + 4) % 4;                                                     // [r5 F6]
   const g = grid(16, 16, C.base);
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const s = Math.sin(TAU * ((y + 0.5) / 8 + 0.16 * Math.sin(TAU * (x + 0.5) / 16 + ph * 1.7)));
     if (s > 0.55 && bay(x, y) < (s - 0.55) * 2.2) g[y][x] = C.wave; }
   [[1, 1, 5], [9, 4, 5], [4, 8, 4], [12, 10, 4], [7, 13, 3]].forEach((q, i) => {
-    const x = q[0] + (ph ? ((i & 1) ? 2 : -1) : 0), y = q[1] + (ph && i === 2 ? 1 : 0), L = q[2];
+    const x = q[0] + SDX[ph][i & 1], y = q[1] + (i === 2 ? SDY[ph] : 0), L = q[2];   // [r5 F6] 예전: ph ? ((i & 1) ? 2 : -1) : 0 · (ph && i === 2 ? 1 : 0)
     for (let k = 1; k < L - 1; k++) wrapSet(g, x + k, y, C.crest);
     wrapSet(g, x, y + 1, C.wave); wrapSet(g, x + L - 1, y + 1, C.wave);
   });
-  if (C.glint) (ph ? [[11, 4]] : [[3, 1], [13, 10]]).forEach(q => wrapSet(g, q[0], q[1], C.glint));
+  if (C.glint) SGL[ph].forEach(q => wrapSet(g, q[0], q[1], C.glint));            // [r5 F6] 예전: (ph ? [[11, 4]] : [[3, 1], [13, 10]])
   return g;
 }
 (function () {
@@ -35906,6 +36470,52 @@ function plankRows(v, mid, lite, seed) {                        // 세로 널 4�
   // 뱃전 밖 새벽 바다(2프레임): 바탕 s · 물결 S · 볏 w · 반짝 W
   [0, 1].forEach(ph => T('tl_deck_sea_' + ph, seaRows(ph, { base: 's', wave: 'S', crest: 'w', glint: 'W' })));
   SPR.tl_deck_void = { pal: 's4deck', rows: SPR.tl_deck_sea_0.rows };   // [c50-conv-ships B6-6] 맵 밖 띠(큰 화면)도 새벽 바다로(예전 갈색 o — '위쪽 1/3 빈 갈색')
+})();
+
+/* [r5 street F5·F6] 갑판·티불랑 바다 4프레임 + 큰 물결(32×32, spr_world.js MC.artgen.seaMacro와 같은 식 — 테두리 줄은 모든 변형·박자가 같아 이음매 없음) · 티불랑 바위 큰 판 32×32 ·
+   아버지 집 화덕 셋째 프레임. 조각 이름 _m{0..3}(왼위·오른위·왼아래·오른아래) — field.js tileSpr/animSetup. 타일셋에서 쓰는 곳: tilesets.js deck '~' · sea5 '~' '-' '.' · house 'F'의 f5·f6.
+   되돌리기: 이 블록 삭제(그림이 없으면 field.js가 예전 2프레임·16칸 길) — 또는 ?uw2off=F5,F6 */
+(function () {
+  const A = MC.artgen || {};
+  const cut = (name, pal, rows) => { for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) SPR[name + '_m' + (i + j * 2)] = { pal, rows: rows.slice(j * 16, j * 16 + 16).map(r => r.slice(i * 16, i * 16 + 16)) }; };
+  [2, 3].forEach(ph => {
+    SPR['tl_sea5_deep_' + ph] = { pal: 's4sea', rows: S(seaRows(ph, { base: 'e', wave: 'f', crest: 'g' })) };
+    SPR['tl_sea5_shallow_' + ph] = { pal: 's4sea', rows: S(seaRows(ph, { base: 'f', wave: 'g', crest: 'h', glint: 'i' })) };
+    SPR['tl_deck_sea_' + ph] = { pal: 's4deck', rows: S(seaRows(ph, { base: 's', wave: 'S', crest: 'w', glint: 'W' })) };
+  });
+  if (A.seaMacro) for (let ph = 0; ph < 4; ph++) [0, 1].forEach(v => {
+    const ab = v ? 'B' : 'A';
+    cut('tl_s4m_dsea' + ab + '_' + ph, 's4deck', A.seaMacro(v, ph, { a: 's', d: 'S', l: 'w', L: 'S', s: 'W' }).rows());   // 새벽 바다: 바탕 s · 물결 S · 볏 w · 살구 반짝 W
+    cut('tl_s5m_deep' + ab + '_' + ph, 's4sea', A.seaMacro(v, ph, { a: 'e', d: 'f', l: 'g', L: 'f' }).rows());              // 폭풍 밤 깊은 물: 바탕 e · 물결 f · 볏 g
+  });
+  // 바위 큰 판 32×32: 바탕 b(잡티 a) 위에 빛 받는 평면 판(B, 위·왼 변 c / 아래·오른 변 a) 4~5장 + 곧은 금 k + 빗물 번들 d. 판·금은 테두리에 닿지 않는다(변형끼리 섞어도 이음매 없음)
+  const inPoly = (pts, x, y) => { let s = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const a = pts[i], b = pts[j]; if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) s = !s; } return s; };
+  const ROCKM = [   // 판 크기·모양을 셋 다 다르게(큰 판 · 중간 판 · 작은 조각), 덩이 테두리 1px 안까지 닿게 — 32칸 격자 줄이 드러나지 않게
+    { s: [[[1, 2], [12, 1], [16, 6], [13, 13], [2, 11]], [[18, 2], [30, 4], [29, 10], [20, 9]], [[21, 12], [25, 12], [24, 15]], [[4, 15], [14, 17], [12, 25], [5, 28], [1, 22]], [[16, 19], [27, 16], [30, 24], [24, 30], [17, 27]]],
+      k: [[14, 13, 19, 17], [26, 10, 30, 14], [8, 28, 13, 30], [1, 13, 4, 14]], d: [[5, 5], [24, 6], [8, 20], [22, 22]] },
+    { s: [[[2, 1], [9, 2], [10, 8], [1, 7]], [[12, 3], [25, 1], [27, 8], [18, 12], [11, 9]], [[1, 12], [8, 10], [13, 16], [9, 22], [1, 20]], [[16, 14], [30, 13], [29, 21], [19, 22]], [[3, 25], [14, 23], [15, 30], [4, 30]], [[19, 25], [24, 24], [26, 29], [20, 30]]],
+      k: [[27, 9, 30, 12], [15, 17, 17, 21], [25, 22, 28, 26], [10, 9, 12, 11]], d: [[4, 4], [20, 5], [5, 15], [24, 17], [8, 27]] },
+    { s: [[[1, 1], [7, 1], [8, 5], [2, 6]], [[9, 2], [22, 3], [20, 11], [11, 13], [8, 8]], [[24, 1], [30, 2], [30, 9], [25, 8]], [[2, 9], [7, 10], [9, 19], [3, 22], [1, 16]], [[12, 16], [26, 13], [29, 20], [23, 28], [13, 26]], [[2, 25], [9, 24], [10, 30], [1, 30]]],
+      k: [[22, 10, 26, 13], [9, 20, 12, 24], [26, 22, 30, 25], [14, 27, 18, 30]], d: [[5, 3], [14, 6], [4, 14], [19, 19], [27, 4]] }];
+  ROCKM.forEach((R, v) => {
+    const g = grid(32, 32, 'b');
+    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (hash(x, y, 220 + v) < 0.06) g[y][x] = 'a';
+    R.s.forEach(p => { const m = []; for (let y = 0; y < 32; y++) m.push(new Array(32).fill(0)); for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (inPoly(p, x + 0.5, y + 0.5)) m[y][x] = 1;
+      const o = (x, y) => !(m[y] && m[y][x]);
+      for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (m[y][x]) g[y][x] = (o(x, y - 1) || o(x - 1, y)) ? 'c' : (o(x, y + 1) || o(x + 1, y)) ? 'a' : 'B'; });
+    R.k.forEach(c => { const n = Math.max(Math.abs(c[2] - c[0]), Math.abs(c[3] - c[1])); for (let i = 0; i <= n; i++) { const x = Math.round(c[0] + (c[2] - c[0]) * i / n), y = Math.round(c[1] + (c[3] - c[1]) * i / n); g[y][x] = 'k'; if (g[y + 1] && g[y + 1][x] === 'b') g[y + 1][x] = 'a'; } });
+    R.d.forEach(q => { g[q[1]][q[0]] = 'd'; });
+    cut('tl_s5m_rock' + 'ABC'[v], 's4sea', S(g));
+  });
+  // 아버지 집 화덕 셋째 프레임: spr_world_s2.js hsHearth의 _0 행에서 불씨 자리(_0·_1 두 판의 점)만 그 자리 바탕(재 x · 디더 W · 앞 턱 n·6)으로 되돌리고 새 불씨를 찍는다(형태·팔레트 그대로)
+  const r0 = rowsOf('tl_house_hearth_0');
+  if (r0) {
+    const g = G(r0);
+    const base = (x, y) => y >= 14 ? ((y === 15 && x >= 4 && x <= 11) ? '6' : 'n') : (y <= 7 && x >= 4 && x <= 11) ? 'W' : (y > 9 && bay(x, y) < (y - 9) * 0.07) ? 'W' : 'x';
+    [[5, 13], [6, 13], [8, 13], [9, 13], [4, 14], [7, 14], [8, 12], [8, 11], [7, 12], [9, 12], [9, 10], [10, 14], [7, 11], [6, 10]].forEach(q => set(g, q[0], q[1], base(q[0], q[1])));
+    [[5, 13, 'Z'], [6, 13, 'f'], [7, 13, 'f'], [9, 13, 'f'], [10, 13, 'Z'], [6, 14, 'Z'], [8, 14, 'f'], [7, 12, 'F'], [8, 12, 'f'], [7, 11, 'Z'], [8, 10, 'Z']].forEach(q => set(g, q[0], q[1], q[2]));
+    SPR.tl_house_hearth_2 = { pal: (SRC.tl_house_hearth_0 && SRC.tl_house_hearth_0.pal) || 'hs', rows: S(g) };
+  }
 })();
 
 /* ================================================================ 12. 장면 12·13 필드 오브젝트(직접) */
@@ -44690,6 +45300,15 @@ function mirror(src, from, to, step) {
 }
 const MEMORY = mirror(TOWN, 'tl_town_', 'tl_memory_', 'dream');
 MEMORY["/"] = { spr: "tl_memory_tally", solid: true };
+// [r5 F5·F6] 항구 살리기(street) — 선택 키 두 개(field.js가 스위치가 켜져 있고 그림이 다 있을 때만 쓴다. 없으면 예전 spr·anim·var):
+//   f5 = {macro: n, sets: [[이름…], …], anim?} — n×n칸 큰 무늬를 16칸 조각(이름 뒤 _m{x%n + (y%n)*n})으로. sets는 덩이(n×n)마다 덩이 좌표 해시로 고르는 변형(animVar),
+//        애니 타일이면 sets의 각 줄이 프레임 이름(F6이 꺼지면 0·2번 두 프레임만 예전 박자로)
+//   f6 = {spr: [프레임…], anim: ms, seq?: [프레임 순서]} — 물 4프레임·불 3프레임(seq = 깜빡임 순서)
+//   기억의 마르세유(MEMORY)는 바로 위에서 이미 옮겨 적었으므로 여기서 TOWN에 더한 키는 B2로 번지지 않는다(B2 예전 그림 그대로). 되돌리기: 아래 네 줄과 타일셋 안 [r5 F5·F6] 키 삭제 — 또는 ?uw2off=F5,F6
+const SEA4 = b => [0, 1, 2, 3].map(i => b + '_' + i);
+TOWN["~"].f6 = { spr: SEA4('tl_town_sea'), anim: 420 };
+TOWN["~"].f5 = { macro: 2, sets: [SEA4('tl_twm_seaA'), SEA4('tl_twm_seaB')], anim: 420 };
+TOWN["."].f5 = { macro: 2, sets: [['tl_twm_cobA'], ['tl_twm_cobA'], ['tl_twm_cobA'], ['tl_twm_cobB']] };   // B(풀 포기·금) 덩이는 넷에 하나
 
 const DREAM = {
   " ": { spr: "tl_dream_void", solid: true },
@@ -44723,7 +45342,7 @@ MC.addTilesets({
     "W": { spr: "tl_indoor_window", solid: true },
     "D": { spr: "tl_indoor_door", solid: true },
     "S": { spr: "tl_indoor_shelf", solid: true },
-    "F": { spr: ["tl_indoor_fire_0", "tl_indoor_fire_1"], anim: 180, solid: true },
+    "F": { spr: ["tl_indoor_fire_0", "tl_indoor_fire_1"], anim: 180, solid: true, f6: { spr: ["tl_indoor_fire_0", "tl_indoor_fire_1", "tl_indoor_fire_2"], anim: 150, seq: [0, 1, 2, 0, 2, 1] } },   // [r5 F6] 벽난로 3프레임
     "c": { spr: "tl_indoor_chair", solid: true, top: "tl_indoor_chair_top", under: "." },
     "P": { spr: "tl_indoor_plant", solid: true, top: "tl_indoor_plant_top", under: "." }
   }},
@@ -44741,7 +45360,7 @@ MC.addTilesets({
   dream: { tiles: DREAM },
   sea: { tiles: {
     " ": { spr: "tl_sea_void", solid: true },
-    "~": { spr: ["tl_sea_sea_0", "tl_sea_sea_1"], anim: 650, solid: true },
+    "~": { spr: ["tl_sea_sea_0", "tl_sea_sea_1"], anim: 650, solid: true, f6: { spr: ["tl_sea_sea_0", "tl_sea_sea_1", "tl_sea_sea_2", "tl_sea_sea_3"], anim: 480 } },   // [r5 F6] 밤바다 4프레임
     "=": { spr: "tl_sea_deck", step: "wood", var: ["tl_sea_deck", "tl_sea_deck", "tl_sea_deck_1"] },
     "#": { spr: "tl_sea_rail", solid: true },
     "o": { spr: "tl_sea_oarlock", solid: true }
@@ -44770,7 +45389,7 @@ MC.addTilesets({
     "^": { spr: "tl_house_top", solid: true },
     "W": { spr: "tl_house_window", solid: true },
     "D": { spr: "tl_house_door", solid: true },
-    "F": { spr: ["tl_house_hearth_0", "tl_house_hearth_1"], anim: 320, solid: true },
+    "F": { spr: ["tl_house_hearth_0", "tl_house_hearth_1"], anim: 320, solid: true, f6: { spr: ["tl_house_hearth_0", "tl_house_hearth_1", "tl_house_hearth_2"], anim: 300, seq: [0, 1, 2, 1, 0, 2] } },   // [r5 F6] 식어 가는 화덕 3프레임(_2는 spr_world_s4.js)
     "S": { spr: "tl_house_shelf", solid: true },
     "c": { spr: "tl_house_chair", solid: true, top: "tl_house_chair_top", under: "." }
   }},
@@ -44782,15 +45401,19 @@ MC.addTilesets({
   // [r5 F2·F10·F11] ep(바위 2 > 틈 모래 1)·ew(물 셋), wetSw = 물가 턱(젖은 띠)을 켜고 끄는 스위치 id(기본 F2), shade = 발밑 그림자 색. 되돌리기: 이 키들 삭제
   sea5: { wetSw: 'F10', shade: ['s4sea', 'k'], tiles: {
     " ": { spr: "tl_sea5_void", solid: true },
-    ".": { spr: "tl_sea5_rock", step: "stone", ep: 2, var: ["tl_sea5_rock", "tl_sea5_rock", "tl_sea5_rock_1", "tl_sea5_rock", "tl_sea5_rock_2"] },   // 바위 평평한 면(걷는 곳) [r5 F2] ep
+    ".": { spr: "tl_sea5_rock", step: "stone", ep: 2, var: ["tl_sea5_rock", "tl_sea5_rock", "tl_sea5_rock_1", "tl_sea5_rock", "tl_sea5_rock_2"],   // 바위 평평한 면(걷는 곳) [r5 F2] ep
+      f5: { macro: 2, sets: [["tl_s5m_rockA"], ["tl_s5m_rockB"], ["tl_s5m_rockC"]] } },                                                                              // [r5 F5] 바위 큰 판 32×32 세 벌(spr_world_s4.js)
     ",": { spr: "tl_sea5_sand", step: "street", ep: 1, var: ["tl_sea5_sand", "tl_sea5_sand", "tl_sea5_sand_1"] },                                  // 바위 틈 모래 [r5 F2] ep
     "n": { spr: "tl_sea5_shelter", step: "stone" },                                                                                          // 바위 아래 그늘(걷는 곳 — t_shelter 자리)
     "o": { spr: "tl_sea5_pool", step: "water" },                                                                                             // 바위 오목한 빗물 웅덩이(걷는 곳 — rain_pool 자리)
     "#": { spr: "tl_sea5_cliff", solid: true, var: ["tl_sea5_cliff", "tl_sea5_cliff", "tl_sea5_cliff_1"] },                                 // 바위 덩어리(막힘)
     "^": { spr: "tl_sea5_ridge", solid: true },                                                                                              // 높은 바위 꼭대기 면(막힘, 맵 위쪽 가장자리)
     "_": { spr: ["tl_sea5_foam_0", "tl_sea5_foam_1"], anim: 600, step: "water", ew: 1 },                                                     // 물가 거품(걷는 곳) [r5 F10] ew
-    "-": { spr: ["tl_sea5_shallow_0", "tl_sea5_shallow_1"], anim: 650, solid: true, ew: 1 },                                                 // 얕은 물 [r5 F10] ew
-    "~": { spr: ["tl_sea5_deep_0", "tl_sea5_deep_1"], anim: 700, solid: true, ew: 1 }                                                        // 깊은 물 [r5 F10] ew
+    "-": { spr: ["tl_sea5_shallow_0", "tl_sea5_shallow_1"], anim: 650, solid: true, ew: 1,                                                   // 얕은 물 [r5 F10] ew
+      f6: { spr: ["tl_sea5_shallow_0", "tl_sea5_shallow_1", "tl_sea5_shallow_2", "tl_sea5_shallow_3"], anim: 480 } },                        // [r5 F6] 4프레임
+    "~": { spr: ["tl_sea5_deep_0", "tl_sea5_deep_1"], anim: 700, solid: true, ew: 1,                                                          // 깊은 물 [r5 F10] ew
+      f6: { spr: ["tl_sea5_deep_0", "tl_sea5_deep_1", "tl_sea5_deep_2", "tl_sea5_deep_3"], anim: 520 },                                      // [r5 F6] 4프레임
+      f5: { macro: 2, sets: [SEA4("tl_s5m_deepA"), SEA4("tl_s5m_deepB")], anim: 520 } }                                                      // [r5 F5] 큰 물결 2벌
   }},
   // deck = 장면 13 타르탄선 갑판(새벽). 바깥 '~'는 새벽 바다
   deck: { tiles: {
@@ -44801,7 +45424,9 @@ MC.addTilesets({
     "=": { spr: "tl_deck_rail_h", solid: true },                                                                                              // 뱃머리·고물 가로 난간
     "M": { spr: "tl_deck_mastfoot", solid: true },                                                                                            // 돛대 밑동 + 감긴 밧줄(위에 ob_mast)
     "R": { spr: "tl_deck_rope", solid: true },                                                                                                // 밧줄 더미
-    "~": { spr: ["tl_deck_sea_0", "tl_deck_sea_1"], anim: 650, solid: true }                                                                  // 뱃전 밖 새벽 바다
+    "~": { spr: ["tl_deck_sea_0", "tl_deck_sea_1"], anim: 650, solid: true,                                                                    // 뱃전 밖 새벽 바다
+      f6: { spr: ["tl_deck_sea_0", "tl_deck_sea_1", "tl_deck_sea_2", "tl_deck_sea_3"], anim: 480 },                                           // [r5 F6] 4프레임
+      f5: { macro: 2, sets: [SEA4("tl_s4m_dseaA"), SEA4("tl_s4m_dseaB")], anim: 480 } }                                                      // [r5 F5] 큰 물결 2벌
   }}
 });
 
@@ -44874,7 +45499,7 @@ const pt = n => (SPR[n] ? n : null);
          [people-il] place(인물 기록 쪽 바탕의 장소 — 톤 + 그 장소 그림 vs_<place>를 본 뒤에는 그 그림(house → vs_port · src/ch1/people.js VS_OF). 에드몽은 시기마다 [열아홉, 감옥, 탈옥 뒤])
                      bio[].betray(true = 배신을 알게 되는 줄 — 이 줄의 cond가 맞으면 쪽 바탕이 붉은 잉크빛. 그림 il_<id>는 data/spr_il_c.js)
    글 규칙: 그 시점 당테스가 아는 것만(추리의 밤 dd.n1~n4 전에는 배신을 말하지 않는다) · 섬 이름 금지 · '보물'은 s3t.paper 뒤에만 · S4 연도는 자코포 입(s4e.counted) 뒤에만 ·
-            아버지·모렐 씨는 높임(-시-), 나머지는 평서. 느낌표 없음. 인용은 작은따옴표(게임 대사와 같게). 폭·줄 수는 MC.dbg.validate가 잰다(people *). */
+            모두 평서(11-07 사용자 「인물 소개에 존댓말과 평어가 섞여 있는데 평어로 통일해줘」 — 옛: 아버지·모렐 씨만 높임 -시-. 원본 docs/art_wip/people_plain/backup/people.js). 호칭 '선장님·신부님'은 에드몽이 부르는 이름이라 그대로. 느낌표 없음. 인용은 작은따옴표(게임 대사와 같게). 폭·줄 수는 MC.dbg.validate가 잰다(people *). */
 (function (MC) { 'use strict';
   const F = f => ({ "flag": f });
   const ANY = (...fs) => ({ "any": fs.map(F) });
@@ -44898,10 +45523,10 @@ const pt = n => (SPR[n] ? n : null);
     "morrel": {
       "place": "port",
       "past": ANY("a1.arrived", "a1.done"),
-      "intro": "파라옹호의 선주.\n셈보다 사람을 먼저 보신다.",
+      "intro": "파라옹호의 선주.\n셈보다 사람을 먼저 본다.",
       "bio": [
-        { "t": "나를 다음 선장으로\n점찍어 두셨다.", "cond": F("a1.arrived") },
-        { "t": "끌려가는 나를 두고,\n끝까지 착오라고 외치셨다.", "cond": F("a2.arrested") }
+        { "t": "나를 다음 선장으로\n점찍어 두었다.", "cond": F("a1.arrived") },
+        { "t": "끌려가는 나를 두고,\n끝까지 착오라고 외쳤다.", "cond": F("a2.arrested") }
       ]
     },
     "danglars": {
@@ -44918,9 +45543,9 @@ const pt = n => (SPR[n] ? n : null);
     "father": {
       "place": "house",
       "past": ANY("a1b.father_talked", "a1b.father_done", "a1.done"),
-      "intro": "골목 맨 위 집, 홀로 사신다.\n저녁이면 집 앞에 앉으신다.",
+      "intro": "골목 맨 위 집, 홀로 산다.\n저녁이면 집 앞에 앉는다.",
       "bio": [
-        { "t": "빚을 갚느라 찬장이 비었다.\n배는 안 고프다고만 하신다.", "cond": F("a1b.father_done") },
+        { "t": "빚을 갚느라 찬장이 비었다.\n배는 안 고프다고만 한다.", "cond": F("a1b.father_done") },
         { "t": "갇힌 뒤로는\n소식을 들을 길이 없다.", "cond": F("a2.done") }
       ]
     },
@@ -44929,7 +45554,7 @@ const pt = n => (SPR[n] ? n : null);
       "past": ANY("a1b.father_done", "a1.done"),
       "intro": "아버지 이웃의 재단사.\n손가락엔 늘 골무를 낀다.",
       "bio": [
-        { "t": "아버지께 빚을 받아 갔다.\n받을 생각은 없었다면서.", "cond": F("a1b.father_done") },
+        { "t": "아버지에게 빚을 받아 갔다.\n받을 생각은 없었다면서.", "cond": F("a1b.father_done") },
         { "t": "내가 끌려갈 때,\n입을 열었다가 잔을 비웠다.", "cond": F("a2.arrested") },
         { "t": "쓰지도, 넘기지도 않았다.\n다만 입을 다물었다.", "cond": F("dd.n3"), "betray": true }
       ]
@@ -44984,7 +45609,7 @@ const pt = n => (SPR[n] ? n : null);
       "intro": "제노바 타르탄선의 선원.\n바다에서 나를 건져 올렸다.",
       "bio": [
         { "t": "젖은 옷은 벗으라며\n셔츠를 건넸다.", "cond": F("s4t.helmed") },
-        { "t": "'저기서 나간 사람은\n다 바다에 있다지만요.'", "cond": F("s4t.smoke") },
+        { "t": "저기서 나간 사람은\n다 바다에 있다고 했다.", "cond": F("s4t.smoke") },
         { "t": "날짜를 물으니 알려 주었다.\n1829년 2월 28일.", "cond": F("s4e.counted") }
       ]
     }
@@ -45014,14 +45639,51 @@ MC.data.battle = {
       "fx": "memory", "sfx": "skill_memory", "color": "#9fd0ff",
       "desc": "지난날을 붙잡는다. 절망에 잘 듣는다.",
       "lines": ["메르세데스는 기다린다고 했어.", "파라옹호의 돛, 소금 냄새.", "아버지가 웃으셨지. 괜찮다, 괜찮아.", "항구의 종소리가 들린다."],
-      "shouts": ["기다린다고 했어!", "아버지, 조금만 더!", "파라옹호가 돌아온다!", "종소리가 들린다!"]   // [r3 외침] 두 번째부터 쓸 때마다 한 줄(lines는 처음 한 번)
+      // [SHOUT2 11-07] 조건별 외침(사용자 「좀 더 다양하게」 → 작가·뒤마 감수 → 메인 퇴고). 태그: era p34·learn·truth·alone / hpLow / finisher / boss / fam despair·anger·madness / faria with·gone. 엔진 battle_core pickShout. 옛 줄: docs/art_wip/shout2/backup/battle.js
+      "shouts": [
+        { "t": "돛에 바람이 찬다." },
+        { "t": "손 놓지 말라고 했지." },
+        { "t": "키는 내가 잡는다." },
+        { "t": "파도처럼, 한 번에.", "tags": { "finisher":true } },
+        { "t": "메르세데스, 여기야!", "tags": { "era":"p34" } },
+        { "t": "아버지, 곧 가요!", "tags": { "era":"p34" } },
+        { "t": "난…… 34번이 아니야.", "tags": { "era":"p34", "hpLow":true } },
+        { "t": "밖엔 바다가 있어!", "tags": { "era":"p34", "fam":"despair" } },
+        { "t": "내 이름은 에드몽이다!", "tags": { "era":"learn" } },
+        { "t": "신부님, 이게 제 바다예요!", "tags": { "era":"learn", "faria":"with" } },
+        { "t": "모렐 씨만은 달랐다.", "tags": { "era":"truth" } },
+        { "t": "그 찬장은 내가 채운다.", "tags": { "era":"truth" } },
+        { "t": "그건 내 잔치였다.", "tags": { "era":"truth" } },
+        { "t": "신부님, 보고 계십니까.", "tags": { "faria":"gone" } },
+        { "t": "그 항구는 그대로다.", "tags": { "era":"alone" } },
+        { "t": "여기서 끝낼 순 없다.", "tags": { "era":"alone", "hpLow":true } }
+      ]
     },
     "thought": {
       "name": "사색", "elem": "thought", "target": "one", "mp": [3, 6, 9], "power": [8, 22, 36],
       "fx": "thought", "sfx": "skill_thought", "color": "#d8b8ff", "cureConfuse": true,
       "desc": "따져 생각한다. 광기에 잘 듣고, 혼란이 풀린다.",
       "lines": ["착오야. 이유가 있을 거야.", "생각하자. 미치지 않으려면.", "하나씩 따져 보자.", "누가, 왜? 순서대로."],
-      "shouts": ["하나씩 따져 보자!", "누가, 왜? 순서대로!", "생각해. 미치지 않게!", "이유가 있을 거야!"]
+      // [SHOUT2 11-07] 조건별 외침(사용자 「좀 더 다양하게」 → 작가·뒤마 감수 → 메인 퇴고). 태그: era p34·learn·truth·alone / hpLow / finisher / boss / fam despair·anger·madness / faria with·gone. 엔진 battle_core pickShout. 옛 줄: docs/art_wip/shout2/backup/battle.js
+      "shouts": [
+        { "t": "답은 있다." },
+        { "t": "앞뒤를 맞춘다." },
+        { "t": "어긋난 데가 있다." },
+        { "t": "정신을 붙든다.", "tags": { "hpLow":true } },
+        { "t": "이걸로 맞아떨어진다.", "tags": { "finisher":true } },
+        { "t": "재판을 받게 해 줘!", "tags": { "era":"p34" } },
+        { "t": "누가 이랬어? 왜!", "tags": { "era":"p34" } },
+        { "t": "착오면 바로잡아!", "tags": { "era":"p34", "fam":"madness" } },
+        { "t": "미치면 안 돼……", "tags": { "era":"p34", "hpLow":true } },
+        { "t": "생각을 줄 세운다!", "tags": { "era":"learn" } },
+        { "t": "신부님, 풀었어요!", "tags": { "era":"learn", "faria":"with" } },
+        { "t": "미친 건 네 쪽이다.", "tags": { "fam":"madness", "faria":"with" } },
+        { "t": "득 본 쪽을 본다.", "tags": { "era":"truth" } },
+        { "t": "감정은 빼고 따진다.", "tags": { "era":"truth" } },
+        { "t": "오늘이 며칠인지 안다.", "tags": { "boss":true, "fam":"madness" } },
+        { "t": "생각은 멈추지 않는다.", "tags": { "era":"alone" } },
+        { "t": "신부님이라면, 이렇게.", "tags": { "faria":"gone" } }
+      ]
     },
     "endure": {
       "name": "버티기", "kind": "guard", "button": true, "target": "self", "mp": 0,
@@ -45033,35 +45695,88 @@ MC.data.battle = {
       "fx": "hope", "sfx": "skill_hope", "color": "#ffe9a0",
       "desc": "빛을 떠올린다. 분노에 잘 듣는다.",
       "lines": ["등대는 꺼지지 않는다.", "언젠가, 반드시.", "오늘 밤을 넘길 이유가 있다."],
-      "shouts": ["등대는 꺼지지 않아!", "언젠가, 반드시!", "오늘 밤도 넘긴다!"]
+      // [SHOUT2 11-07] 조건별 외침(사용자 「좀 더 다양하게」 → 작가·뒤마 감수 → 메인 퇴고). 태그: era p34·learn·truth·alone / hpLow / finisher / boss / fam despair·anger·madness / faria with·gone. 엔진 battle_core pickShout. 옛 줄: docs/art_wip/shout2/backup/battle.js
+      "shouts": [
+        { "t": "날은 밝는다." },
+        { "t": "내일, 바다로." },
+        { "t": "내일은 내 것이다." },
+        { "t": "눈 뜨면 내일이다.", "tags": { "hpLow":true } },
+        { "t": "새벽이 온다.", "tags": { "finisher":true } },
+        { "t": "내일 배울 게 남았다!", "tags": { "era":"learn" } },
+        { "t": "같이 나가요, 신부님!", "tags": { "era":"learn", "faria":"with" } },
+        { "t": "때는 온다.", "tags": { "era":"truth" } },
+        { "t": "오늘 말고, 내일.", "tags": { "fam":"anger" } },
+        { "t": "신부님 몫까지 산다.", "tags": { "faria":"gone" } },
+        { "t": "그래도 해는 뜬다.", "tags": { "era":"alone", "boss":true } }
+      ]
     },
     "whisper": {
       "name": "속삭임", "kind": "seal", "target": "one", "mp": [4, 4, 4], "tag": "입 막기", "priority": true,
       "fx": "whisper", "sfx": "seal", "color": "#c8b8ff",
       "desc": "먼저 움직여, 적 하나의 이번 행동을 묶는다.",
       "lines": ["Tace. ……조용히.", "말은 칼보다 먼저 닿는다."],
-      "shouts": ["Tace! 조용히!", "입을 다물어라!"]
+      // [SHOUT2 11-07] 조건별 외침(사용자 「좀 더 다양하게」 → 작가·뒤마 감수 → 메인 퇴고). 태그: era p34·learn·truth·alone / hpLow / finisher / boss / fam despair·anger·madness / faria with·gone. 엔진 battle_core pickShout. 옛 줄: docs/art_wip/shout2/backup/battle.js
+      "shouts": [
+        { "t": "말은 내가 먼저다." },
+        { "t": "그 입, 묶어 둔다." },
+        { "t": "한마디면 된다." },
+        { "t": "라틴어다. 알아듣겠어?", "tags": { "era":"learn" } },
+        { "t": "네 차례는 없다.", "tags": { "era":"truth" } },
+        { "t": "남의 목소리는 그만.", "tags": { "boss":true, "fam":"anger" } },
+        { "t": "속삭임엔 속삭임으로.", "tags": { "fam":"madness" } },
+        { "t": "배운 그대로. Tace.", "tags": { "faria":"gone" } }
+      ]
     },
     "history": {
       "name": "역사의 교훈", "kind": "reveal", "target": "all", "mp": [2, 2, 2], "tag": "약점",
       "fx": "history", "sfx": "page", "color": "#f0d890",
       "desc": "이런 적은 전에도 있었다. 이 싸움 동안 모든 적의 약점과 노림수가 보인다.",
       "lines": ["역사는 배신의 기록이라 하셨지.", "이런 놈은 전에도 있었다."],
-      "shouts": ["이런 놈은 전에도 봤다!", "역사는 되풀이된다!"]
+      // [SHOUT2 11-07] 조건별 외침(사용자 「좀 더 다양하게」 → 작가·뒤마 감수 → 메인 퇴고). 태그: era p34·learn·truth·alone / hpLow / finisher / boss / fam despair·anger·madness / faria with·gone. 엔진 battle_core pickShout. 옛 줄: docs/art_wip/shout2/backup/battle.js
+      "shouts": [
+        { "t": "네 수는 다 읽었다." },
+        { "t": "결말도 알고 있다." },
+        { "t": "기록대로다." },
+        { "t": "카이사르도 이렇게 당했어!", "tags": { "era":"learn" } },
+        { "t": "배신의 길은 늘 같다.", "tags": { "era":"truth" } },
+        { "t": "왕들은 다 이렇게 졌다.", "tags": { "boss":true, "fam":"madness" } },
+        { "t": "광기에도 순서가 있다.", "tags": { "fam":"madness" } },
+        { "t": "교훈은 남았다.", "tags": { "faria":"gone" } }
+      ]
     },
     "stars": {
       "name": "별읽기", "kind": "slow", "target": "all", "mp": [5, 5, 5], "tag": "둔화", "turns": 3, "spdMul": 0.7,
       "fx": "stars", "sfx": "slow", "color": "#a8c8ff",
       "desc": "별자리를 짚는다. 적 모두의 걸음이 3라운드 느려진다.",
       "lines": ["북극성은 저기. 흔들리지 않는다.", "별은 제자리를 지킨다."],
-      "shouts": ["북극성은 저기다!", "별은 흔들리지 않아!"]
+      // [SHOUT2 11-07] 조건별 외침(사용자 「좀 더 다양하게」 → 작가·뒤마 감수 → 메인 퇴고). 태그: era p34·learn·truth·alone / hpLow / finisher / boss / fam despair·anger·madness / faria with·gone. 엔진 battle_core pickShout. 옛 줄: docs/art_wip/shout2/backup/battle.js
+      "shouts": [
+        { "t": "별은 서두르지 않는다." },
+        { "t": "북극성을 기준으로." },
+        { "t": "하늘이 길을 안다." },
+        { "t": "신부님, 저 별이죠?", "tags": { "era":"learn", "faria":"with" } },
+        { "t": "네 걸음은 내가 정한다.", "tags": { "era":"truth" } },
+        { "t": "별은 뒤로 안 간다.", "tags": { "fam":"madness" } },
+        { "t": "벽의 별, 다 외웠다.", "tags": { "faria":"gone" } }
+      ]
     },
     "cold_wrath": {
       "name": "냉정한 분노", "elem": null, "target": "all", "mp": [6, 6, 6], "power": [14, 14, 14], "tag": "전체",
       "fx": "wrath", "sfx": "skill_cold_wrath", "color": "#c8c8d8",
       "desc": "모두에게 고르게 닿는다.",                              // [s44-writer B3-9] '식힌 분노' 해석은 뺀다(효과만)
       "lines": ["차갑게. 차갑게.", "아직은. 아직은 아니다."],
-      "shouts": ["차갑게. 차갑게!", "아직은 아니다!"]
+      // [SHOUT2 11-07] 조건별 외침(사용자 「좀 더 다양하게」 → 작가·뒤마 감수 → 메인 퇴고). 태그: era p34·learn·truth·alone / hpLow / finisher / boss / fam despair·anger·madness / faria with·gone. 엔진 battle_core pickShout. 옛 줄: docs/art_wip/shout2/backup/battle.js
+      "shouts": [
+        { "t": "식혀서 친다." },
+        { "t": "화는 접어 둔다." },
+        { "t": "모두에게, 똑같이." },
+        { "t": "끓는 쪽이 진다.", "tags": { "fam":"anger" } },
+        { "t": "광기엔 찬물이 약이다.", "tags": { "fam":"madness" } },
+        { "t": "피는 끓어도 손은 차게.", "tags": { "hpLow":true } },
+        { "t": "끝은 조용히 낸다.", "tags": { "finisher":true } },
+        { "t": "신부님은 보지 마십시오.", "tags": { "faria":"with" } },
+        { "t": "울 때가 아니다.", "tags": { "faria":"gone" } }
+      ]
     },
     "heal_word": {
       "name": "치유의 말", "user": "faria", "kind": "heal", "target": "lead", "cd": 1, "power": 18, "wisMul": 1.0,
@@ -45088,14 +45803,32 @@ MC.data.battle = {
       "fx": "unveil", "sfx": "skill_unveil", "color": "#ffb060",
       "desc": "불에 쬐듯 적 하나를 드러낸다. 약점·HP·이번 행동이 보이고, 모으던 힘은 흩어진다.",
       "lines": ["불에 쬐면 드러난다."],
-      "shouts": ["불에 쬐면 드러난다!"]
+      // [SHOUT2 11-07] 조건별 외침(사용자 「좀 더 다양하게」 → 작가·뒤마 감수 → 메인 퇴고). 태그: era p34·learn·truth·alone / hpLow / finisher / boss / fam despair·anger·madness / faria with·gone. 엔진 battle_core pickShout. 옛 줄: docs/art_wip/shout2/backup/battle.js
+      "shouts": [
+        { "t": "보인다." },
+        { "t": "숨긴 글씨가 떠오른다." },
+        { "t": "속까지 다 비친다." },
+        { "t": "신부님 말씀대로입니다.", "tags": { "faria":"with" } },
+        { "t": "진짜는 하나다.", "tags": { "boss":true, "fam":"madness" } },
+        { "t": "불은 이제 내가 쬔다.", "tags": { "faria":"gone" } }
+      ]
     },
     "breathe": {
       "name": "숨 고르기", "kind": "selfheal", "target": "self", "mp": [4, 4, 4], "tag": "회복", "pct": 0.3, "cure": ["confuse"], "cureConfuse": true,
       "fx": "breathe", "sfx": "skill_breathe", "color": "#a8e0d0",
       "desc": "스스로 숨을 고른다. HP 30%를 되찾고 혼란이 풀린다.",
       "lines": ["천천히. 셋까지 세고."],
-      "shouts": ["하나, 둘, 셋……", "천천히. 셋까지."]
+      // [SHOUT2 11-07] 조건별 외침(사용자 「좀 더 다양하게」 → 작가·뒤마 감수 → 메인 퇴고). 태그: era p34·learn·truth·alone / hpLow / finisher / boss / fam despair·anger·madness / faria with·gone. 엔진 battle_core pickShout. 옛 줄: docs/art_wip/shout2/backup/battle.js
+      "shouts": [
+        { "t": "들이쉬고, 내쉬고." },
+        { "t": "맥이 고르다." },
+        { "t": "피가 다시 돈다." },
+        { "t": "제 몸은 제가 챙깁니다.", "tags": { "faria":"with" } },
+        { "t": "괜찮습니다, 신부님.", "tags": { "faria":"with", "hpLow":true } },
+        { "t": "숨만 붙어 있으면 된다.", "tags": { "hpLow":true } },
+        { "t": "……내 맥은 뛴다.", "tags": { "faria":"gone" } },
+        { "t": "내 숨은 내가 쉰다.", "tags": { "era":"alone", "boss":true } }
+      ]
     },
     "advice": {
       "name": "조언", "user": "faria", "kind": "advice", "target": "lead", "cd": 0, "last": true,
@@ -45959,6 +46692,30 @@ const EVE_LT = n => ({ "all": [ { "flag": "a1e.on" }, { "not": { "flag": "a1e.do
 const SPR = (MC.data && MC.data.sprites && MC.data.sprites.spr) || {};
 // 부표(art-s1 ob_buoy_0/_1 — spr_s1b.js가 없으면 놓지 않는다): 왼쪽 부두 끝에서 보이는 헤엄 목표. 이튿날에만
 const BUOY = SPR.ob_buoy_0 ? [ { "id": "buoy", "type": "thing", "x": 4, "y": 28, "sprite": "ob_buoy_0", "cond": EVE } ] : [];
+/* [r5 street F4] 1815 부두 광장 + 행인. 스위치 F4가 꺼지면(?uw2off=F4 · MC.UW2_OFF) 예전 타일(잔디 네모 둘 + 둥근 나무)·예전 오브젝트 그대로.
+   광장 소품(모두 event 없음 — 탭해도 새 대사 없음, 컷신 길·대화 대상 옆 칸·스폰·출구를 비켜 놓음):
+     돌 화분 테 플라타너스 둘(잔디 네모 자리, 발밑 2칸) · 과일·채소 노점(생선 가판 옆 장터 줄) · 두 바퀴 손수레 · 예비 닻 + 감은 밧줄 · 그물 더미 · 기름 등잔 기둥 둘(가스등 아님)
+   비켜 둔 곳: 입항 컷신(모렐 7열 13→19행 · 당글라르 5~7열 13행) · 이튿날 뤽이 뛰는 14행 7~15열 · 부두 6~8열 · 서쪽 길 10행 입구 · 북쪽 골목 10열
+   행인 셋(낮 장면만 — 이튿날 해 질 녘·되감기 제외): 생선 바구니 든 아낙(장터 줄 왕복) · 짐꾼(광장 가운데 고리) · 상인(서쪽 사무소 앞 왕복). field.js 「행인」 규칙(조작 중에만 걷고, 막히면 돌아서고, 밀면 비킨다)
+   되돌리기: ?uw2off=F4 또는 이 블록과 아래 tiles·objects의 F4 갈래 삭제 */
+const F4 = !!(MC.uw2 && MC.uw2('F4'));
+const DAYLIT = { "all": [ { "not": { "flag": "rw.on" } }, { "not": { "all": [ { "flag": "a1e.on" }, { "not": { "flag": "a1e.done" } }, { "var": "a1e_step", "gte": 4 } ] } } ] };
+const PLAZA = F4 ? [
+  { "id": "planter_a", "type": "thing", "x": 8,  "y": 9,  "w": 2, "sprite": "ob_tree_planter" },
+  { "id": "planter_b", "type": "thing", "x": 16, "y": 9,  "w": 2, "sprite": "ob_tree_planter" },
+  { "id": "fruit",     "type": "thing", "x": 11, "y": 6,  "w": 2, "sprite": "ob_fruitstall" },
+  { "id": "cart",      "type": "thing", "x": 19, "y": 10, "w": 2, "sprite": "ob_handcart" },
+  { "id": "anchor",    "type": "thing", "x": 13, "y": 13, "sprite": "ob_anchor" },
+  { "id": "coil",      "type": "thing", "x": 14, "y": 13, "sprite": "ob_rope" },
+  { "id": "net_pile",  "type": "thing", "x": 17, "y": 12, "w": 2, "sprite": "ob_net" },
+  { "id": "lamp_a",    "type": "thing", "x": 4,  "y": 14, "sprite": "ob_quay_lamp" },
+  { "id": "lamp_b",    "type": "thing", "x": 16, "y": 14, "sprite": "ob_quay_lamp" },
+  { "id": "wk_fishwife", "type": "walker", "x": 10, "y": 8,  "sprite": "ch_guest_a", "pal": "wk_a1", "dir": "right", "route": [ [10, 8], [14, 8], [14, 7, "right"] ], "pause": [1400, 2800], "step": 430, "cond": DAYLIT },
+  { "id": "wk_porter",   "type": "walker", "x": 12, "y": 11, "sprite": "ch_guest_b", "pal": "wk_b1", "dir": "right", "route": [ [15, 11], [15, 10], [9, 10], [9, 11] ], "loop": "loop", "pause": [500, 1300], "step": 380, "cond": DAYLIT },
+  { "id": "wk_merchant", "type": "walker", "x": 3,  "y": 7,  "sprite": "ch_guest_b", "pal": "wk_b2", "dir": "down", "route": [ [3, 7, "up"], [3, 11, "down"] ], "pause": [1800, 3200], "step": 470, "cond": DAYLIT }
+] : [];
+// [r5 F6] 낮 바다 햇빛 반짝 · 갈매기 그림자 12초마다 — field.js가 스위치 F6일 때만 쓴다(?uw2off=F6이면 없음). 되돌리기: 이 줄과 아래 "ambient" 줄 삭제
+const AMBIENT = [ { "kind": "glint", "every": 1300, "n": [2, 3], "cond": DAYLIT }, { "kind": "gull", "every": 12000, "first": 3500, "cond": DAYLIT } ];
 MC.addMaps({
   "port": {
     "name": "마르세유 항구", "tileset": "town", "ui": "act1",
@@ -45973,8 +46730,8 @@ MC.addMaps({
       "F....................CCF",
       "FB....................BF",
       "F......................F",
-      "F.......\"T\".....\"T\"....F",
-      "F.......\"\"\".....\"\"\"....F",
+      F4 ? "F......................F" : "F.......\"T\".....\"T\"....F",   // [r5 F4] 잔디 네모 둘 → 돌길(돌 화분 플라타너스 planter_a·b). 되돌리기: F4 갈래 삭제
+      F4 ? "F......................F" : "F.......\"\"\".....\"\"\"....F",
       ",,.....................F",
       "F......................F",
       "FBB........CC.........CF",
@@ -46040,6 +46797,7 @@ MC.addMaps({
       { "id": "rowboat",  "type": "thing", "x": 19, "y": 20, "w": 2, "h": 1, "sprite": "ob_rowboat", "event": "a1.rowboat" },
       { "id": "sea",      "type": "thing", "x": 7,  "y": 27, "event": "a1.sea" },
       { "id": "lighthouse", "type": "thing", "x": 21, "y": 28, "sprite": "ob_lighthouse" },
+      ...PLAZA,                                                                                                   // [r5 F4] 광장 소품 + 행인(위 머리 주석)
 
       // [content-s1] 이튿날: 출구 바로 안쪽 칸(서 (1,10) · 북 (10,1)). [qa-s1b] 출구와 같은 칸이면 field.js playerArrived가 출구를 먼저 보므로(목록 순서와 무관)
       //   트리거가 한 번도 발동하지 않고 카탈루냐·골목으로 나가졌다 → 한 칸 안으로 옮김. 이 칸이 출구로 가는 유일한 길목이라 우회할 수 없다. 이벤트는 R1·D1로 되밀기
@@ -46049,6 +46807,7 @@ MC.addMaps({
       { "id": "to_town",    "type": "exit", "x": 10, "y": 0,  "to": "alley", "at": "from_port", "cond": { "flag": "s2.alley_open" }, "lockedEvent": "a1.lock_town" }
     ],
     "onEnter": "a1.port_enter",
+    "ambient": AMBIENT,                                    // [r5 F6] 되돌리기: 이 줄 삭제
     "vignette": 0   // [l45-light B7-9] 낮 바깥은 비네트 0(조정 29: 움직이는 화면에 망사 금지) — 예전 0.1
   }
 });
@@ -46059,6 +46818,18 @@ MC.addMaps({
 /* maps/catalan.js — 카탈루냐 마을(1-6 구혼 거절). 16×22 town. 동쪽 길로만 드나듦(장면 전: 항구 / 장면 후: 레제르브). 마을 안으로 들어가는 길목(x12)에 장면 트리거.
    페르낭은 1-6 끝에 (6,3) 집 문으로 들어간다(붉은 허리띠가 문틀에 걸림). 되감기(rw.on)에는 1-6 배치(페르낭 있음, 트리거 없음) + 스폰 rw. 담당: content-a12(S1) → content-a1b(S2) */
 (function (MC) { 'use strict';
+/* [r5 street F4] 낮(1-6 전, 되감기 제외)의 마을 사람: 그물걸이 옆에서 그물 깁는 여인(제자리 — 1px 손놀림·가끔 고개) · 물가에서 노는 아이 둘(두세 칸 왕복·깡충).
+   1-6 장면 길(12열 5~11행 · 8행 6~11열 · 6열 4~8행)·출구(15,11)·트리거(12열 10~12행)·대화 대상 옆 칸을 비켜 남쪽 모래밭에. 장면 중(이벤트)엔 칸을 옮기지 않는다.
+   되돌리기: ?uw2off=F4 또는 이 블록과 objects의 ...FOLK 삭제 */
+const F4 = !!(MC.uw2 && MC.uw2('F4'));
+const DAY = { "all": [ { "not": { "flag": "a1.catalan_done" } }, { "not": { "flag": "rw.on" } } ] };
+const FOLK = F4 ? [
+  { "id": "wk_netwife", "type": "walker", "x": 10, "y": 15, "sprite": "ch_guest_a", "pal": "wk_a2", "dir": "left", "route": [ [10, 15, "left"] ], "idle": "work", "cond": DAY },
+  { "id": "wk_kid_a",   "type": "walker", "x": 3,  "y": 17, "sprite": "ch_boy", "pal": "wk_k1", "dir": "right", "route": [ [3, 17], [6, 17] ], "pause": [300, 1200], "step": 250, "idle": "hop", "cond": DAY },
+  { "id": "wk_kid_b",   "type": "walker", "x": 9,  "y": 19, "sprite": "ch_boy", "pal": "wk_k2", "dir": "left", "route": [ [9, 19], [6, 19] ], "pause": [400, 1400], "step": 240, "idle": "hop", "cond": DAY }
+] : [];
+// [r5 F6] 낮 바다 햇빛 반짝(field.js가 F6일 때만). 되돌리기: 이 줄과 "ambient" 줄 삭제
+const AMBIENT = [ { "kind": "glint", "every": 1500, "n": [2, 3], "cond": DAY } ];
 MC.addMaps({
   "catalan": {
     "name": "카탈루냐 마을", "tileset": "town", "ui": "act1",
@@ -46108,9 +46879,11 @@ MC.addMaps({
       { "id": "t_scene",  "type": "trigger", "x": 12, "y": 10, "w": 1, "h": 3, "event": "a1.catalan_scene", "once": true, "cond": { "all": [ { "not": { "flag": "a1.catalan_done" } }, { "not": { "flag": "rw.on" } } ] } },
 
       { "id": "to_port",    "type": "exit", "x": 15, "y": 11, "to": "port",    "at": "from_catalan", "cond": { "not": { "flag": "a1.catalan_done" } } },
-      { "id": "to_reserve", "type": "exit", "x": 15, "y": 11, "to": "reserve", "at": "from_catalan", "cond": { "flag": "a1.catalan_done" }, "confirm": "해가 기운다. 집으로 향할까?" }
+      { "id": "to_reserve", "type": "exit", "x": 15, "y": 11, "to": "reserve", "at": "from_catalan", "cond": { "flag": "a1.catalan_done" }, "confirm": "해가 기운다. 집으로 향할까?" },
+      ...FOLK                                                                       // [r5 F4]
     ],
     "onEnter": "a1.catalan_enter",
+    "ambient": AMBIENT,                                                             // [r5 F6]
     "vignette": 0   // [l45-light B7-9] 낮 바깥 비네트 0 — 예전 0.1
   }
 });
@@ -46494,6 +47267,7 @@ MC.addMaps({
       { "id": "to_alley", "type": "exit",  "x": 4, "y": 7, "to": "alley", "at": "from_house" }
     ],
     "onEnter": "a1b.house_enter",
+    "ambient": [ { "kind": "ember", "at": [4, 1], "every": 4000, "n": [1, 2], "first": 1500 } ],   // [r5 F6] 식어 가는 화덕(4,1)에서 4초마다 불씨 1~2개(field.js가 F6일 때만). 되돌리기: 이 줄 삭제
     "vignette": 0.25,
     "vista": "vs_house"   // [r5 UW-3] 골목 문으로 처음 들어설 때 장소 그림(field.js doEnter: 배너 대신 · onEnter 앞 · 한 번만 flag vs.vs_house). ?uw2off=UW-3면 field.js가 띄우지 않는다. 되돌리기: 이 줄 삭제 + 위 줄 끝 쉼표 삭제
   }
@@ -65810,7 +66584,98 @@ MC.addLang('en', {
     "……다 제 눈앞에 있었는데.{p:300}\n왜 여태 몰랐지?": "...It was all right in front of me.{p:300}\nHow did I never see it?",
     "카드루스는 말렸을 겁니다.{p:200}\n정은 있는 사람이니까요.": "Caderousse would have tried to stop them.{p:200}\nHe has a heart, at least.",
     "당글라르라면 그럴 때{p:200}\n'장난일세' 하고 웃었겠지.": "Danglars would have laughed{p:200}\nand said, ‘It’s a joke.’",
-    "믿고 싶었을 걸세.{p:300}\n자네를 아꼈으니까.": "He wanted to believe it.{p:300}\nHe was fond of you."
+    "믿고 싶었을 걸세.{p:300}\n자네를 아꼈으니까.": "He wanted to believe it.{p:300}\nHe was fond of you.",
+    // [SHOUT2 11-07] 전투 외침(조건별) — 한국어 원문이 키. 작가 제안 영어
+    "돛에 바람이 찬다.": "Wind fills the sails.",
+    "손 놓지 말라고 했지.": "Don’t let go, she said.",
+    "키는 내가 잡는다.": "I hold the helm.",
+    "파도처럼, 한 번에.": "One wave, all at once.",
+    "메르세데스, 여기야!": "Mercédès—I’m here!",
+    "아버지, 곧 가요!": "Father, I’m coming!",
+    "난…… 34번이 아니야.": "I’m not... Thirty-four.",
+    "밖엔 바다가 있어!": "The sea’s out there!",
+    "내 이름은 에드몽이다!": "My name is Edmond!",
+    "신부님, 이게 제 바다예요!": "Abbé, this is my sea!",
+    "모렐 씨만은 달랐다.": "Only Morrel stood by me.",
+    "그 찬장은 내가 채운다.": "I will fill his cupboard.",
+    "그건 내 잔치였다.": "That was my feast.",
+    "신부님, 보고 계십니까.": "Are you watching, Abbé?",
+    "그 항구는 그대로다.": "The harbor is as it was.",
+    "여기서 끝낼 순 없다.": "It does not end here.",
+    "답은 있다.": "There is an answer.",
+    "앞뒤를 맞춘다.": "Put it in order.",
+    "어긋난 데가 있다.": "Something does not fit.",
+    "정신을 붙든다.": "Keep your wits.",
+    "이걸로 맞아떨어진다.": "And that settles it.",
+    "재판을 받게 해 줘!": "Give me a trial!",
+    "누가 이랬어? 왜!": "Who did this? Why!",
+    "착오면 바로잡아!": "Mistake? Set it right!",
+    "미치면 안 돼……": "Mustn’t go mad...",
+    "생각을 줄 세운다!": "Thoughts in a row!",
+    "신부님, 풀었어요!": "Abbé, I’ve solved it!",
+    "미친 건 네 쪽이다.": "You are the mad one.",
+    "득 본 쪽을 본다.": "Ask who gains.",
+    "감정은 빼고 따진다.": "Set feeling aside.",
+    "오늘이 며칠인지 안다.": "I know what day it is.",
+    "생각은 멈추지 않는다.": "Thought does not stop.",
+    "신부님이라면, 이렇게.": "As the Abbé would.",
+    "날은 밝는다.": "Day will break.",
+    "내일, 바다로.": "Tomorrow, the sea.",
+    "내일은 내 것이다.": "Tomorrow is mine.",
+    "눈 뜨면 내일이다.": "Wake to tomorrow.",
+    "새벽이 온다.": "Dawn is coming.",
+    "내일 배울 게 남았다!": "More to learn tomorrow!",
+    "같이 나가요, 신부님!": "Out together, Abbé!",
+    "때는 온다.": "The time will come.",
+    "오늘 말고, 내일.": "Not today. Tomorrow.",
+    "신부님 몫까지 산다.": "I will live for us both.",
+    "그래도 해는 뜬다.": "Still, the sun rises.",
+    "말은 내가 먼저다.": "My word comes first.",
+    "그 입, 묶어 둔다.": "That mouth stays shut.",
+    "한마디면 된다.": "One word will do.",
+    "라틴어다. 알아듣겠어?": "Latin. Understand?",
+    "네 차례는 없다.": "Your turn is gone.",
+    "남의 목소리는 그만.": "Enough borrowed voices.",
+    "속삭임엔 속삭임으로.": "Whisper for whisper.",
+    "배운 그대로. Tace.": "As I was taught. Tace.",
+    "네 수는 다 읽었다.": "Your moves are known.",
+    "결말도 알고 있다.": "I know how this ends.",
+    "기록대로다.": "As it is recorded.",
+    "카이사르도 이렇게 당했어!": "That’s how Caesar fell!",
+    "배신의 길은 늘 같다.": "Betrayal walks one road.",
+    "왕들은 다 이렇게 졌다.": "So every king falls.",
+    "광기에도 순서가 있다.": "Even madness has order.",
+    "교훈은 남았다.": "The lessons remain.",
+    "별은 서두르지 않는다.": "Stars never hurry.",
+    "북극성을 기준으로.": "By the Pole Star.",
+    "하늘이 길을 안다.": "The sky knows the way.",
+    "신부님, 저 별이죠?": "That one, Abbé?",
+    "네 걸음은 내가 정한다.": "I set your pace.",
+    "별은 뒤로 안 간다.": "Stars never go back.",
+    "벽의 별, 다 외웠다.": "His stars, by heart.",
+    "식혀서 친다.": "Cold first, then strike.",
+    "화는 접어 둔다.": "Fold the anger away.",
+    "모두에게, 똑같이.": "All of you, the same.",
+    "끓는 쪽이 진다.": "The hotter one loses.",
+    "광기엔 찬물이 약이다.": "Cold water cures madness.",
+    "피는 끓어도 손은 차게.": "Hot blood, cold hands.",
+    "끝은 조용히 낸다.": "End it quietly.",
+    "신부님은 보지 마십시오.": "Do not watch this, Abbé.",
+    "울 때가 아니다.": "This is no time to weep.",
+    "보인다.": "I see it.",
+    "숨긴 글씨가 떠오른다.": "Hidden letters rise.",
+    "속까지 다 비친다.": "Clear to the core.",
+    "신부님 말씀대로입니다.": "Just as you said, Abbé.",
+    "진짜는 하나다.": "Only one is real.",
+    "불은 이제 내가 쬔다.": "I hold the flame now.",
+    "들이쉬고, 내쉬고.": "In... and out.",
+    "맥이 고르다.": "The pulse is steady.",
+    "피가 다시 돈다.": "The blood moves again.",
+    "제 몸은 제가 챙깁니다.": "I tend myself now, Abbé.",
+    "괜찮습니다, 신부님.": "It’s all right, Abbé.",
+    "숨만 붙어 있으면 된다.": "A breath is enough.",
+    "……내 맥은 뛴다.": "...My pulse beats.",
+    "내 숨은 내가 쉰다.": "I breathe for myself."
   }
 });
 })(window.MC);
