@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.9.5-tally';
+  var VERSION = '0.9.6-full';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -766,7 +766,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   function fitIn(rw, rh, dpr) {
     let S = Math.max(1, Math.min(Math.floor(rw / 180), Math.floor(rh / 320)));
     if (dpr && S >= 3 && (S & 1) && (S - 1) / dpr >= 1.8 && MC.uw2 && MC.uw2('RES1')) S--;   // [r5 RES1]
-    return { S, W: Math.max(64, Math.min(216, Math.floor(rw / S))), H: Math.max(64, Math.min(432, Math.floor(rh / S))) };
+    return { S, W: Math.max(64, Math.min(g.maxW || 216, Math.floor(rw / S))), H: Math.max(64, Math.min(432, Math.floor(rh / S))) };
   }
   // [fold] 접힘선(Viewport Segments API, 크롬 138+ · window.viewport.segments): 화면이 두 칸으로 나뉘어 있으면(반쯤 접은 자세)
   //   게임을 한 칸에 통째로 넣어 글·버튼이 접힘선에 걸치지 않게 한다. 한 칸에 넣으면 배율이 화면 전체의 절반보다 작거나 1배가 될 때는 그대로 화면 전체(접힘선 무시).
@@ -806,7 +806,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const offX = rx + Math.max(0, (rw - W * S) >> 1), offY = ry + Math.max(0, (rh - H * S) >> 1);
     const sf = readSafe();
     // [r5 RES1·RES3] 스위치 상태도 열쇠에(실행 중에 켜고 끈 뒤 g.resize()가 다시 잰다). 되돌리기: 끝의 + 갈래를 지운다
-    const key = [dpr, iw, ih, sf.join(','), seg ? [seg.x, seg.y, seg.w, seg.h].join(',') : ''].join('|') + (MC.uw2 ? '|' + (MC.uw2('RES1') ? 1 : 0) + (MC.uw2('RES3') ? 1 : 0) : '');
+    const key = [g.maxW || 216, dpr, iw, ih, sf.join(','), seg ? [seg.x, seg.y, seg.w, seg.h].join(',') : ''].join('|') + (MC.uw2 ? '|' + (MC.uw2('RES1') ? 1 : 0) + (MC.uw2('RES3') ? 1 : 0) : '');
     // [r5 RES6] '세로로 돌려 주세요'는 짧은 변이 600 CSS px 미만인 터치 기기(폰)만 — 터치 노트북·16:9 큰 화면(1280×720 등)은 돌릴 수 없거나 돌릴 까닭이 없다.
     //   폰 가로(짧은 변 < 600)는 옛 그대로 wideOk로 가린다. 되돌리기: ?uw2off=RES6 또는 '&& (…RES6…)' 갈래를 지운다
     const landscape = isTouch && iw > ih && !wideOk(iw, ih) && (!(MC.uw2 && MC.uw2('RES6')) || Math.min(iw, ih) < 600);
@@ -14534,7 +14534,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     return { era, hpLow: u.hp < u.maxHp * 0.3, finisher: !immortal && !!(t0 && t0.hp <= t0.maxHp * 0.25), boss: !!B.boss, fam: t0 ? t0.fam : null,
       faria: era === 'alone' ? 'gone' : (fa && fa.alive ? 'with' : null) };
   }
-  function pickShout(B, u, c, sh, prev) {
+  function pickShout(B, u, c, sh, prev, prev2) {
     const cx = shoutCtx(B, u, c), cand = [];
     sh.forEach((x, i) => {
       const tg = (x && typeof x === 'object' && x.tags) || {};
@@ -14543,6 +14543,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       cand.push({ i, w: 1 + 2 * n });
     });
     let pool = cand.length > 1 ? cand.filter(o => o.i !== prev) : cand;
+    { const p2 = pool.filter(o => o.i !== prev2); if (p2.length) pool = p2; }   // [SHOUT3 11-11] 앞 두 줄 피하기
     if (!pool.length) return Math.floor(B.rng() * sh.length);
     const sum = pool.reduce((a, o) => a + o.w, 0);
     let r = B.rng() * sum;
@@ -14951,7 +14952,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
         if (sh.length) {
           const prev = LB ? LB.get('sh.' + c.id) - 1 : -1;
           let si;
-          if (sh.some(x => x && typeof x === 'object') && MC.uw2 && MC.uw2('SHOUT2')) si = pickShout(B, u, c, sh, prev);   // [SHOUT2 11-07] 조건별 외침(시기·HP·마지막 한 방·보스·적 계열·파리아). 되돌리기: ?uw2off=SHOUT2(태그 무시 — 아래 옛 고르기)
+          if (sh.some(x => x && typeof x === 'object') && MC.uw2 && MC.uw2('SHOUT2')) si = pickShout(B, u, c, sh, prev, LB ? LB.get('sh2.' + c.id) - 1 : -1);   // [SHOUT2 11-07] 조건별 외침(시기·HP·마지막 한 방·보스·적 계열·파리아). 되돌리기: ?uw2off=SHOUT2(태그 무시 — 아래 옛 고르기)
           else {
             si = Math.floor(B.rng() * sh.length);
             if (sh.length > 1 && si === prev) si = (si + 1 + Math.floor(B.rng() * (sh.length - 1))) % sh.length;
@@ -14960,7 +14961,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
           const shText = tx(shoutT(sh[si])), cut2 = !!(MC.uw2 && MC.uw2('CUT2'));
           S.push({ t: 'cutin', unit: u, skill: c.id, rep: !!c.rep, line: cut2 ? shText : null });     // [r5 B-03] 기술 컷인(외침 앞 — 대본 반응·첫 사용 기억 대사 길엔 없음). 보이는지는 battle_view H.cutin이 정한다. 되돌리기: 이 줄 삭제
           S.push({ t: 'msg', text: shText, style: 'think', wait: 'short', cutLine: cut2 || undefined });
-          if (LB) LB.set('sh.' + c.id, si + 1);
+          if (LB) { LB.set('sh2.' + c.id, prev + 1); LB.set('sh.' + c.id, si + 1); }
         }
       }
     }
@@ -65143,6 +65144,7 @@ MC.addLang('ko', {
     "set.moveSpeed": "걷는 속도",
     "set.shake": "흔들림",
     "set.vibrate": "진동",
+    "set.fullscreen": "전체 화면",
     "set.lang": "언어",
     "set.slow": "느림",
     "set.normal": "보통",
@@ -65691,6 +65693,7 @@ MC.addLang('ko', {
     "set.moveSpeed": { "w": 66, "font": "body", "lines": 1, "note": "설정 행(걷는 속도) — ◀ 값 ▶ 줄, 이름 칸 약 66px" },
     "set.shake": { "w": 66, "font": "body", "lines": 1, "note": "설정 행(화면 흔들림) — ◀ 값 ▶ 줄, 이름 칸 약 66px" },
     "set.vibrate": { "w": 96, "font": "body", "lines": 1, "note": "설정 행(진동, 안드로이드만) — 켬/끔 줄, 이름 칸 약 96px" },
+    "set.fullscreen": { "w": 96, "font": "body", "lines": 1, "note": "설정 진행 탭 켬/끔 줄(브라우저 전체 화면). 이름 칸 약 96px" },
     "set.lang": { "w": 64, "font": "body", "lines": 1, "note": "설정 행(언어) — 앞에 지구본 아이콘, 오른쪽에 지금 언어의 자기 이름. 고를 언어가 2개 이상일 때만 보인다" },
     "set.slow": { "w": 44, "font": "body", "lines": 1, "note": "설정 값(◀ ▶ 사이 가운데) — 대사·전투 속도" },
     "set.normal": { "w": 44, "font": "body", "lines": 1, "note": "설정 값 — 속도·흔들림 기본" },
@@ -66263,6 +66266,7 @@ MC.addLang('en', {
     "set.moveSpeed": ["Walking", "ff8iy3"],
     "set.shake": ["Shake", "9rmwwr"],
     "set.vibrate": ["Vibration", "1xeqo3i"],
+    "set.fullscreen": ["Full screen", "1l47idb"],
     "set.lang": ["Language", "r8cphl"],
     "set.slow": ["Slow", "xdt6x"],
     "set.normal": ["Normal", "ohe7mq"],
@@ -82038,6 +82042,11 @@ MC.addLang('en', {
 
   /* ================================================================ 설정 패널 (타이틀·메뉴 공용) */
   const canVib = () => !!navigator.vibrate && !(MC.audio && MC.audio.IOS);
+  // [FULL1 11-11] 전체 화면(주소창·탭 줄 숨김 — 펼친 폴드에서 게임이 한 단계 커진다, 사용자 「폴드 사이즈 대응」). 전체 화면 API가 있는 브라우저 탭에서만 줄이 보인다(아이폰 사파리·설치한 앱은 숨김). 저장하지 않는다(브라우저가 손짓 없이는 못 켬). 되돌리기: ?uw2off=FULL1
+  const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+  const fsStandalone = () => { try { return !!(window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches) && !fsEl()); } catch (_) { return false; } };
+  const canFs = () => { const d = document.documentElement; return !!(MC.uw2 && MC.uw2('FULL1')) && !!(d.requestFullscreen || d.webkitRequestFullscreen) && document.fullscreenEnabled !== false && !fsStandalone(); };
+  const setFs = v => { try { const d = document.documentElement; if (v) { const p = d.requestFullscreen ? d.requestFullscreen({ navigationUI: 'hide' }) : d.webkitRequestFullscreen(); if (p && p.catch) p.catch(() => {}); } else if (fsEl()) { const p = document.exitFullscreen ? document.exitFullscreen() : document.webkitExitFullscreen(); if (p && p.catch) p.catch(() => {}); } } catch (_) {} };
   // 라벨·값은 늦은 문자열 L(키) — 그릴 때마다 현재 언어(언어를 바꾸면 창을 다시 만들지 않아도 바뀐다)
   const SET_TABS = [
     { label: L('set.tabSound'), rows: [
@@ -82056,6 +82065,7 @@ MC.addLang('en', {
       { k: 'moveMs', label: L('set.moveSpeed'), type: 'opt', opts: [[200, L('set.normal')], [150, L('set.faster')]] },
       { k: 'shake', label: L('set.shake'), type: 'opt', opts: [[0, L('set.off')], [0.5, L('set.weak')], [1, L('set.normal')]] },
       { k: 'bright', label: L('set.bright'), type: 'opt', opts: [[0, L('set.bright0')], [15, L('set.bright15')], [30, L('set.bright30')]] },   // [l45-light B7-1] 밝기 보정(최종 화면 감마 — gfx.present). 바꾸는 즉시 보인다
+      { k: 'fullscreen', label: L('set.fullscreen'), type: 'bool', show: canFs, get: () => !!fsEl(), set: setFs },   // [FULL1]
       { k: 'vibrate', label: L('set.vibrate'), type: 'bool', show: canVib },
       { k: 'assist', label: L('set.assist'), type: 'bool' },          // S4 손놀림 보조(탈출 토막 1회 성공·헤엄 체력 감소 없음·키 잡기 5초 — 등급 상한 A, 계약 §D-4)
       { k: 'oneHand', label: L('set.oneHand'), type: 'bool' },        // S4 한 손 조작(헤엄: 누르고 있으면 0.9초 박자로 저절로 젓기)
