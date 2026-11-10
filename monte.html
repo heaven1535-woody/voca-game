@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.9.4-harbor';
+  var VERSION = '0.9.5-tally';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -1266,7 +1266,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   // [pt-fix 11-06] 자리 바탕만(논리 버퍼) — ptc32 · ptc64의 바탕 줄과 같다(bg = [w, h, ox, oy]면 더 큰 칸의 그 자리)
   function ptcBgOnly(x, y, z, cols, bg) {
     if (!cols) return;
-    if (bg) g.ctx.drawImage(gradCanvas(bg[0], bg[1], cols), bg[2], bg[3], z, z, x | 0, y | 0, z, z);
+    if (bg) gcDraw(g.ctx, gradCanvas(bg[0], bg[1], cols), bg[2], bg[3], z, z, x | 0, y | 0, z, z);
     else g.gradV(x, y, z, z, cols);
     PT.n.wait++;
   }
@@ -1387,8 +1387,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   // [r5 A1·A2] z = 자리 크기(32 · 48 · 64 — 48이면 옛 그대로), fb = 그 자리 논리판(s32 · r.fb · s64), bg = [w, h, ox, oy] — 바탕 그라데이션이 더 큰 칸(w×h)의 (ox, oy) 자리일 때(이음매 없게).
   //   되돌리기: 인자 z · fb · bg와 아래 z · bg 갈래를 지운다(48 · r.fb · gradCanvas(48, 48)로)
   function ptcBg(x, cols, z, bg, S) {                     // [r5 A1·A2] 바탕을 S배로(논리 1 · 기기 S)
-    if (bg) x.drawImage(gradCanvas(bg[0], bg[1], cols), -bg[2] * S, -bg[3] * S, bg[0] * S, bg[1] * S);
-    else x.drawImage(gradCanvas(z, z, cols), 0, 0, z * S, z * S);
+    if (bg) gcDraw(x, gradCanvas(bg[0], bg[1], cols), -bg[2] * S, -bg[3] * S, bg[0] * S, bg[1] * S);
+    else gcDraw(x, gradCanvas(z, z, cols), 0, 0, z * S, z * S);
   }
   function ptcExp(name, r, cols, z, fb, bg) {
     z = z || 48;
@@ -1396,6 +1396,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     let e = PT.exp.get(key);
     if (e) return e;
     const c = mk(z, z), x = c.getContext('2d', { willReadFrequently: true });
+    if (!x) { c.width = c.height = 0; PT.n.hiNull++; return null; }   // [fix 11-10] 캔버스 메모리 상한(getContext null): 이 프레임은 대체 그림 없이(ptcPut이 바탕 + 논리판을 곧바로 그린다). 옛: 아래 줄에서 예외. 되돌리기: 이 줄과 ptcPut의 [fix 11-10] 줄 삭제
     ptcBg(x, cols, z, bg, 1);
     x.drawImage(fb || r.fb, 0, 0);
     e = { c, key, z, bg: bg || null, px: new Uint32Array(x.getImageData(0, 0, z, z).data.buffer.slice(0)) };
@@ -1422,6 +1423,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   // [r5 A1·A2] 자리 하나: 논리 버퍼에 대체 그림(바탕 + fb)을 그리고, 기본 화면이면 이 프레임 줄(PT.q)에 적는다 — present 뒤 기기 해상도로 src(칸 2z)를 얹는다
   function ptcPut(name, r, x, y, cols, sc, z, fb, src, bg) {
     const e = ptcExp(name, r, cols, z, fb, bg), ctx = g.ctx;
+    if (!e) { ptcBgOnly(x, y, z, cols, bg); const f0 = fb || (r && r.fb); if (f0) ctx.drawImage(f0, x | 0, y | 0); return true; }   // [fix 11-10] 대체 그림 판을 못 만든 프레임: 논리 버퍼에 바탕 + 논리판만(화면 얹기 없음 · 다음 프레임에 다시)
     ctx.drawImage(e.c, x | 0, y | 0);
     if (ctx !== g._main) return true;                     // 다른 캔버스에 굽는 중 — 대체 그림만
     let tx = g.ox, ty = g.oy;
@@ -1459,7 +1461,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (!r.ok) { if (!PT.kicked) ptcKick(); if (o.cols) g.gradV(x, y, 32, 32, o.cols); return true; }   // 덜 풀림: 바탕만
     if (!r.s32) return false;
     if (o.cols && m32() === 'C' && r.c64) return ptcPut(k, r, x, y, o.cols, o.sc, 32, r.s32, r.c64, o.bg || null);
-    if (o.cols) { if (o.bg) { const c = gradCanvas(o.bg[0], o.bg[1], o.cols); g.ctx.drawImage(c, o.bg[2], o.bg[3], 32, 32, x | 0, y | 0, 32, 32); } else g.gradV(x, y, 32, 32, o.cols); }
+    if (o.cols) { if (o.bg) { const c = gradCanvas(o.bg[0], o.bg[1], o.cols); gcDraw(g.ctx, c, o.bg[2], o.bg[3], 32, 32, x | 0, y | 0, 32, 32); } else g.gradV(x, y, 32, 32, o.cols); }
     g.ctx.drawImage(r.s32, x | 0, y | 0);                 // L판(논리 1:1)
     return true;
   };
@@ -1475,7 +1477,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       if (!PT.kicked) ptcKick();
       if (r && !r.ok && cols && pt1On()) { ptcBgOnly(x, y, 64, cols, bg); return true; }   // [pt-fix 11-06] 덜 풀림·실패: 64 바탕만(옛: false → 48 길 또는 옛 2배). s64만 없으면 옛처럼 false(부르는 쪽 48 길 — 새 얼굴). 되돌리기: ?uw2off=PT1 또는 이 줄을 지운다
       if (r && r.ok && cols && pt1On()) {                 // [pt-fix2 11-06] s64만 없음(실패 · PT_OPT_MS 한도): 64 바탕 + 가운데 48(ptcSlot bg로 둘레와 이음매 없이 — menu.js 큰 초상과 같은 길) → true.
-        if (bg) g.ctx.drawImage(gradCanvas(bg[0], bg[1], cols), bg[2], bg[3], 64, 64, x | 0, y | 0, 64, 64); else g.gradV(x, y, 64, 64, cols);   // [pt-fix2 11-06]   옛(pt-fix): false → ptc 없는 클로즈업(cards.js closeup)은 옛 2배 32칸. 되돌리기: ?uw2off=PT1 또는 이 갈래를 지운다
+        if (bg) gcDraw(g.ctx, gradCanvas(bg[0], bg[1], cols), bg[2], bg[3], 64, 64, x | 0, y | 0, 64, 64); else g.gradV(x, y, 64, 64, cols);   // [pt-fix2 11-06]   옛(pt-fix): false → ptc 없는 클로즈업(cards.js closeup)은 옛 2배 32칸. 되돌리기: ?uw2off=PT1 또는 이 갈래를 지운다
         g.ptcSlot(name, (x | 0) + 8, (y | 0) + 8, cols, sc, bg ? [bg[0], bg[1], bg[2] + 8, bg[3] + 8] : [64, 64, 8, 8]);   // [pt-fix2 11-06]
         return true;                                      // [pt-fix2 11-06]
       }                                                   // [pt-fix2 11-06]
@@ -1483,7 +1485,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     }
     // [r5 A2] c128이 있으면 화면엔 128칸을 기기 2px로(짝수 배율 · 덮개 검사는 48 길과 같다), 논리 버퍼엔 지금처럼 바탕 + s64. 되돌리기: ?uw2off=A2 또는 이 줄을 지운다
     if (cols && r.c128 && MC.uw2 && MC.uw2('A2')) return ptcPut(name, r, x, y, cols, sc, 64, r.s64, r.c128, bg || null);
-    if (cols && bg) g.ctx.drawImage(gradCanvas(bg[0], bg[1], cols), bg[2], bg[3], 64, 64, x | 0, y | 0, 64, 64);   // [r5 A3]
+    if (cols && bg) gcDraw(g.ctx, gradCanvas(bg[0], bg[1], cols), bg[2], bg[3], 64, 64, x | 0, y | 0, 64, 64);   // [r5 A3]
     else if (cols) g.gradV(x, y, 64, 64, cols);
     g.ctx.drawImage(r.s64, x | 0, y | 0);
     return true;
@@ -1825,6 +1827,22 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (level >= 16) { g.rect(x, y, w, h, c); return; }
     const ctx = g.ctx; ctx.fillStyle = pattern(c, level); ctx.fillRect(x | 0, y | 0, w | 0, h | 0);
   };
+  /* [fix 11-10] g.rd(canvas) — 읽기 전용 사본 컨텍스트: 그림 캔버스(스프라이트·무대 판·논리 화면)를 willReadFrequently 작업 판 하나에 1:1로 베낀 뒤 그 판의 컨텍스트를 돌려준다.
+     쓰는 꼴: MC.gfx.rd(cv).getImageData(…) — 옛 cv.getContext('2d').getImageData(…) 자리. 같은 그림 캔버스를 두 번 넘게 읽을 때 뜨던 Chrome 안내(willReadFrequently)가 없어지고,
+     원본 캔버스는 그리기용(GPU) 그대로 둔다. 값은 같다(같은 크기 · copy 합성). 작업 판을 못 만들면(캔버스 메모리 상한) 원본 컨텍스트 그대로.
+     되돌리기: 이 칸을 지우고 각 파일의 MC.gfx.rd(X)를 X.getContext('2d')로(백업 docs/art_wip/fix1110/backup/) */
+  let rdCv = null, rdCx = null;
+  g.rd = function (cv) {
+    if (!cv || !cv.getContext) return cv;
+    try {
+      if (!rdCv) { rdCv = mk(1, 1); rdCx = rdCv.getContext('2d', { willReadFrequently: true }); }
+      if (!rdCx) return cv.getContext('2d');
+      if (rdCv.width !== cv.width || rdCv.height !== cv.height) { rdCv.width = cv.width; rdCv.height = cv.height; }
+      rdCx.setTransform(1, 0, 0, 1, 0, 0); rdCx.globalAlpha = 1; rdCx.imageSmoothingEnabled = false;
+      rdCx.globalCompositeOperation = 'copy'; rdCx.drawImage(cv, 0, 0); rdCx.globalCompositeOperation = 'source-over';
+      return rdCx;
+    } catch (_) { return cv.getContext('2d'); }
+  };
   g.ditherFill = function (c, level) {                   // 전체 화면(오프셋 무시)
     const ctx = g.ctx;
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1890,14 +1908,17 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   const gradCache = new Map();
   g.gradV = function (x, y, w, h, cols) {                // 4색 세로 Bayer 디더 그라데이션(캐시)
     w |= 0; h |= 0; if (w <= 0 || h <= 0 || !cols || !cols.length) return;
-    g.ctx.drawImage(gradCanvas(w, h, cols), x | 0, y | 0);
+    gcDraw(g.ctx, gradCanvas(w, h, cols), x | 0, y | 0);
   };
+  function gcDraw(ctx, c, ...a) { if (c) ctx.drawImage(c, ...a); }   // [fix 11-10] gradCanvas가 null(캔버스를 못 만든 프레임)이면 그리지 않는다
   function gradCanvas(w, h, cols) {                      // [pt-c] gradV의 캐시 캔버스(초상 C 자리 바탕을 기기 해상도로 키울 때도 같은 칸)
     const key = w + 'x' + h + '|' + cols.join(',');
     let c = gradCache.get(key);
     if (!c) {
       c = mk(w, h);
-      const x2 = c.getContext('2d'), id = x2.createImageData(w, h), d = id.data;
+      const x2 = c.getContext('2d');
+      if (!x2) { c.width = c.height = 0; PT.n.hiNull++; return null; }   // [fix 11-10] 캔버스 메모리 상한(아이폰 — getContext null): 이 프레임 이 바탕만 건너뛴다(캐시에 안 넣어 다음 프레임에 다시). 옛: 아래 줄에서 예외. 되돌리기: 이 줄 삭제(+ gcDraw를 drawImage로)
+      const id = x2.createImageData(w, h), d = id.data;
       const n = cols.length - 1, P = cols.map(rgb);
       for (let yy = 0; yy < h; yy++) {
         const t = n > 0 ? (h > 1 ? yy / (h - 1) : 0) * n : 0;
@@ -10348,7 +10369,18 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
      덩이 안의 칸은 같은 변형·같은 박자를 쓴다(조각이 맞물리게). 그림이 없으면 null(예전 길). 되돌리기: 이 세 함수와 부르는 곳 삭제 — 또는 ?uw2off=F5 */
   function macroSet(f5, x, y) {
     const n = f5.macro | 0; if (n < 2 || !f5.sets || !f5.sets.length) return null;
-    return f5.sets[Math.floor(hash2(Math.floor(x / n) * 7 + 11, Math.floor(y / n) * 13 + 5) * f5.sets.length) % f5.sets.length];
+    const bx = Math.floor(x / n), by = Math.floor(y / n), L = f5.sets.length, pick = (i, j) => Math.floor(hash2(i * 7 + 11, j * 13 + 5) * L) % L;
+    let k = pick(bx, by);
+    // [fix 11-10 F5G] lone = 드문 변형(광장 돌의 풀 포기 덩이)의 번호 — 맞닿은 덩이(상하좌우·대각 8곳)에 같은 변형이 또 뽑혔으면 해시 값이 가장 큰 덩이만 남기고 나머지는 0번(민돌)으로.
+    //   풀 포기가 줄로 이어져 보이던 것(uw2_street 남은 흠 4)을 흩는다. 되돌리기: ?uw2off=F5G 또는 이 칸(if 블록)과 tilesets.js의 lone 삭제
+    if (f5.lone != null && k === f5.lone && uw2('F5G')) {
+      const h0 = hash2(bx * 7 + 11, by * 13 + 5);
+      for (let j = -1; j <= 1 && k === f5.lone; j++) for (let i = -1; i <= 1; i++) {
+        if (!i && !j) continue;
+        if (pick(bx + i, by + j) === f5.lone) { const h1 = hash2((bx + i) * 7 + 11, (by + j) * 13 + 5); if (h1 > h0 || (h1 === h0 && (j < 0 || (!j && i < 0)))) { k = 0; break; } }
+      }
+    }
+    return f5.sets[k];
   }
   function macroIdx(f5, x, y) { const n = f5.macro | 0; return (x % n) + (y % n) * n; }
   function macroName(f5, x, y, k) {
@@ -10444,11 +10476,37 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     return m;
   }
   // 정적 타일 캐시 굽기(맵 진입 · [r5 F1] 맵 톤이 바뀔 때). 새 캔버스에 다 그린 뒤 바꿔 끼워 한 프레임도 비지 않는다
+  // [fix 11-10 성능] 굽기를 줄 단위(bakeRows)·바꿔 끼우기(bakeSwap)로 나눴다 — 톤이 4단으로 넘어갈 때(setTone ms>0) 다음 단을 기다리는 동안 미리 여러 프레임에 나눠 굽는다(bakeAhead).
+  //   맵 진입·즉시 톤은 예전처럼 한 번에(bakeCache). 그림 결과는 같다. 되돌리기: ?uw2off=TONEPRE(한 프레임에 굽는 예전 길) · 코드는 백업 docs/art_wip/fix1110/backup/engine/field.js의 bakeCache·setTone
   function bakeCache(m) {
-    const g = G(), w = m.w, h = m.h, layer = m.layer, po = toneOpt(m);   // [r5 F1] po = {pal: 저녁·밤 부분 팔레트} | null(낮 — 예전과 같음)
-    const c = g.makeCanvas(Math.max(1, w * TS), Math.max(1, h * TS));
+    const g = G(), po = toneOpt(m);   // [r5 F1] po = {pal: 저녁·밤 부분 팔레트} | null(낮 — 예전과 같음)
+    const c = g.makeCanvas(Math.max(1, m.w * TS), Math.max(1, m.h * TS));
+    bakeRows(m, c, po, 0, m.h);
+    bakeSwap(m, c, po);
+  }
+  function bakeSwap(m, c, po) {
+    const g = G();
+    m.cache = c;
+    const vt = m.tiles[' '], vc = vt && g.getSprite(tileSpr(vt, 0, 0), po);
+    m.voidPat = null;
+    if (vc) { try { m.voidPat = g.ctx.createPattern(vc, 'repeat'); } catch (_) { m.voidPat = null; } }
+  }
+  async function bakeAhead(m, po, alive) {                 // 새 캔버스에 프레임마다 약 2.5ms씩 — 끝나면 {c, ms(가장 긴 토막), total}
+    const g = G(), c = g.makeCanvas(Math.max(1, m.w * TS), Math.max(1, m.h * TS));
+    let y = 0, mx = 0, tot = 0;
+    while (y < m.h) {
+      if (!alive()) return null;
+      const t0 = performance.now();
+      do { bakeRows(m, c, po, y, y + 1); y++; } while (y < m.h && performance.now() - t0 < 2.5);
+      const dt = performance.now() - t0; tot += dt; if (dt > mx) mx = dt;
+      if (y < m.h) await MC.core.nextFrame();
+    }
+    return alive() ? { c, ms: Math.round(mx * 10) / 10, total: Math.round(tot * 10) / 10 } : null;
+  }
+  function bakeRows(m, c, po, y0, y1) {
+    const g = G(), w = m.w, layer = m.layer;
     g.withCtx(c, () => {
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      for (let y = y0; y < y1; y++) for (let x = 0; x < w; x++) {
         const e = layer[y * w + x];
         if (e) {
           if (e.td) { g.sprite(tileSpr(e.td, x, y), x * TS, y * TS, po); edgeOver(m, x, y, e.td, po); } else g.rect(x * TS, y * TS, TS, TS, m.dark);   // [r5 F2] 물건 아래 바닥에도 이음
@@ -10461,10 +10519,6 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
         edgeOver(m, x, y, td, po);                                   // [r5 F2·F10]
       }
     });
-    m.cache = c;
-    const vt = m.tiles[' '], vc = vt && g.getSprite(tileSpr(vt, 0, 0), po);
-    m.voidPat = null;
-    if (vc) { try { m.voidPat = g.ctx.createPattern(vc, 'repeat'); } catch (_) { m.voidPat = null; } }
   }
 
   /* ---------- [r5 F2·F10] 땅 경계 이음 — 그림 이름 규칙은 data/spr_world.js [r5 F2] 머리 주석. 바닥 정의 ep(우선순위)·ew(물)는 data/tilesets.js
@@ -10590,11 +10644,19 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const up = !!name, nm = name || from;
     return (async () => {
       for (let s = 1; s <= 4; s++) {
+        // [fix 11-10 성능] 다음 단의 타일 판을 기다리는 동안 미리 굽는다(프레임마다 2.5ms 토막) — 단이 바뀌는 프레임에는 바꿔 끼우기만. 옛: 기다린 뒤 그 프레임에 bake() 한 번(저녁 항구 9.2ms)
+        let pre = null, po1 = null; const m0 = map;
+        if (uw2('TONEPRE')) {
+          const sv = [TONE.name, TONE.k], k1 = up ? s / 4 : 1 - s / 4;
+          TONE.name = k1 <= 0 ? null : nm; TONE.k = k1 <= 0 ? 1 : k1; po1 = toneOpt(m0); TONE.name = sv[0]; TONE.k = sv[1];
+          pre = bakeAhead(m0, po1, () => gen === TONE.gen && map === m0).catch(() => null);
+        }
         await MC.core.waitReal(ms / 4);
+        const r = pre ? await pre : null;
         if (gen !== TONE.gen || !map) return;
         TONE.name = nm; TONE.k = up ? s / 4 : 1 - s / 4;
         if (TONE.k <= 0) { TONE.name = null; TONE.k = 1; }
-        bake();
+        if (r && map === m0) { bakeSwap(m0, r.c, po1); TONE.ms = r.ms; TONE.total = r.total; } else bake();
       }
     })();
   }
@@ -10611,7 +10673,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (col) return col;
     const g = G(), cv = sp && g.getSprite(sp, pn ? { pal: pn } : null);
     let r = 0, gg = 0, b = 0, n = 0;
-    if (cv) { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; for (let i = 0; i < d.length; i += 4) if (d[i + 3]) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; n++; } }
+    if (cv) { const d = MC.gfx.rd(cv).getImageData(0, 0, cv.width, cv.height).data; for (let i = 0; i < d.length; i += 4) if (d[i + 3]) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; n++; } }
     col = n ? g.mix('#000000', '#' + [r, gg, b].map(v => Math.round(v / n).toString(16).padStart(2, '0')).join(''), 0.5) : '#000000';
     const ts = MC.data.tilesets && MC.data.tilesets[m.tileset], sh = ts && ts.shade, P = MC.data.sprites && MC.data.sprites.pals;
     if (sh && P) { const sc = (pn && P[pn] && P[pn][sh[1]]) || (P[sh[0]] && P[sh[0]][sh[1]]); if (sc) col = g.mix(col, sc, 0.5); }
@@ -16763,6 +16825,13 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     B.enemies.forEach((e, i) => { v.en[i] = e._v = enemyView(B, e, i); });
     const sd = v.stage, n = sd.tallies != null ? sd.tallies : 6;
     for (let i = 0; i < n; i++) v.tallies.push({ fx: MC.rng(), fy: MC.rng(), n: 1 + ((MC.rng() * 5) | 0), floor: false });
+    // [fix 11-10 TALLY1] 꿈 B1 무대 벽의 빗금은 잠든 횟수만큼 번진다 — 첫날 밤 꿈(sleeps 1 이하 · 금 하나만 그은 날)은 한 줄 하나, 둘째 꿈은 묶음 셋, 그 뒤는 예전 일곱(사용자 신고 「수감 첫날에도 빗금이 여러 개」).
+    //   난수는 예전과 같은 수만큼 뽑고(전투 난수 순서 불변) 목록만 줄인다. 3막의 '2년 후' 카드 전만 — 그 뒤·4막부터는 예전 그대로. 되돌리기: ?uw2off=TALLY1 또는 이 칸(if 블록) 삭제
+    if (sd === ((MC.data.battle || {}).stages || {}).b1 && MC.uw2 && MC.uw2('TALLY1') && MC.game && MC.game.flag && !MC.game.flag('a4.met') && !MC.game.flag('a3.after_card')) {
+      const sl = +(MC.game.getVar ? MC.game.getVar('sleeps') : 0) || 0;
+      if (sl <= 1) { v.tallies.length = Math.min(v.tallies.length, 1); if (v.tallies[0]) v.tallies[0].n = 1; }
+      else if (sl === 2) v.tallies.length = Math.min(v.tallies.length, 3);
+    }
     if (sd.floorTally) for (let i = 0; i < 16; i++) v.tallies.push({ fx: MC.rng(), fy: MC.rng(), n: 1 + ((MC.rng() * 5) | 0), floor: true });
     if (sd.skyline) v.sky = makeSkyline();
     if (sd.names) v.names = makeNames();
@@ -16808,7 +16877,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     try {
       const c = G().hasSprite(spr) ? G().getSprite(spr) : null;
       if (c && c.getContext) {
-        const w = c.width, h = c.height, d = c.getContext('2d').getImageData(0, 0, w, h).data;
+        const w = c.width, h = c.height, d = MC.gfx.rd(c).getImageData(0, 0, w, h).data;
         let x0 = w, y0 = h, x1 = -1, y1 = -1;
         for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 0) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
         if (x1 >= 0) bb = { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
@@ -18347,7 +18416,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     c = G().makeCanvas(src.width, src.height);
     const x = c.getContext('2d'); x.drawImage(src, 0, 0);
     const id = x.getImageData(0, 0, c.width, c.height), d = id.data;
-    const od = tint && !rim ? base.getContext('2d').getImageData(0, 0, base.width, base.height).data : null;
+    const od = tint && !rim ? MC.gfx.rd(base).getImageData(0, 0, base.width, base.height).data : null;
     for (let y = 0, i = 0; y < c.height; y++) for (let xx = 0; xx < c.width; xx++, i += 4) {
       if (!d[i + 3]) continue;
       if (DT_BAYER[((y & 3) << 2) | (xx & 3)] >= lv || (od && od[i] === 0x2b && od[i + 1] === 0x1d && od[i + 2] === 0x2a)) d[i + 3] = 0;
@@ -22509,6 +22578,16 @@ MC.data.sfx = {
     {"t":270,"o":"sine","f":[72,46],"a":4,"d":160,"g":0.14},
     {"t":270,"n":"brown","lp":400,"a":4,"d":140,"g":0.1,"send":{"stone":0.5}}]},
   /* pour: 흙을 도로 쏟음(굴 메우기) */
+  /* [plot-dark 11-10] 포도주를 잔에 따르는 소리(병목 꿀럭 5번 + 가는 물줄기 + 마지막 방울). a1.hands가 흙 쏟는 pour를 빌려 쓰던 것을 바꿈 */
+  "pour_wine": {"c":"story","p":2,"cd":200,"rp":0.04,"gain":2,"L":[
+    {"t":0,  "o":"triangle","f":[330,520],"fms":70,"a":5,"d":75,"g":0.075},
+    {"t":140,"o":"triangle","f":[350,560],"fms":70,"a":5,"d":75,"g":0.07},
+    {"t":300,"o":"triangle","f":[380,610],"fms":65,"a":5,"d":70,"g":0.065},
+    {"t":440,"o":"triangle","f":[420,680],"fms":60,"a":5,"d":65,"g":0.055},
+    {"t":610,"o":"triangle","f":[470,770],"fms":55,"a":5,"d":60,"g":0.045},
+    {"t":30, "n":"pink","bp":[1500,2600],"q":1.4,"ffms":800,"wob":0.55,"a":80,"s":1,"h":560,"r":220,"g":0.03},
+    {"t":30, "n":"white","hp":4500,"wob":0.4,"a":120,"s":1,"h":500,"r":200,"g":0.008},
+    {"t":840,"o":"sine","f":[1250,1900],"fms":40,"a":2,"d":70,"g":0.03}]},
   "pour": {"c":"field","p":2,"cd":200,"rp":0.06,"gain":2,"L":[
     {"n":"brown","lp":750,"wob":0.35,"a":90,"s":1,"h":650,"r":300,"g":0.12},
     {"n":"white","bp":[1700,900],"q":1,"gate":[14,28],"a":70,"s":1,"h":650,"r":300,"g":0.035},
@@ -23354,6 +23433,134 @@ MC.data.bgm = {
 
   /* (10-29 시안) 레제르브 음모(a1.hands — 당테스가 떠난 뒤 세 사람): D단조 느린 4/4. 마르세유 주제를 단조로 뒤집어 낮은 하프로 띄엄띄엄,
      콘트라베이스 피치카토 두 번 박(심장 같은 D 페달), 높은 현 트레몰로 한 음(A↔B♭ 반음 비빔), 마디 첫 박 낮은 쿵. 세 손 뒤 bgmcut으로 끊긴다 */
+  /* [plot-dark 11-10] 사용자 「마르세유 배경음을 음침하게 편곡」 → 시안 B 추천대로: 항구 주제를 D단조 6/8 점4분 52로 뒤집음(도입 = 원래 항구 노래 머리가 F#→F로 꺾임). a1.hands가 plot_dark, 추리의 밤 세 손(a4c)은 도입 없는 plot_dark2.
+     옛 곡 plot은 그대로 둔다(되돌리기: events_a1.js · events_a4c.js의 id를 plot으로). 시안·측정 docs/art_wip/plot_bgm/ */
+  "plot_dark": {
+    "bpm": 52, "spb": 3, "bar": 6, "vol": 1, "filter": 2600, "echo": 0.577, "fb": 0.2,
+    "ch": {
+      "Q":   {"w":"p25","v":0.07,"a":6,"d":260,"s":0.62,"r":160,"gate":0.9,"vib":[5.5,10,180],"lp":2600,"send":{"rev":0.3,"echo":0.2}},
+      "P1":  {"w":"p25","v":0.13,"a":40,"d":600,"s":0.7,"r":300,"gate":0.95,"vib":[4.6,8,300],"lp":1400,"send":{"rev":0.3}},
+      "H":   {"chord":true,"w":"p12","v":0.1,"a":3,"d":320,"s":0.2,"r":160,"gate":0.9,"arp":"xxxx12","win":50,"lp":1800,"send":{"rev":0.3}},
+      "T":   {"w":"triangle","v":0.15,"a":30,"d":800,"s":0.75,"r":300,"gate":0.97,"lp":700},
+      "PAD": {"chord":true,"pad":true,"w":"pad","v":0.035,"a":1100,"d":800,"s":0.9,"r":1400,"gate":1,"win":48,"lp":900,"send":{"rev":0.35}},
+      "N":   {"kit":true,"v":0.5}
+    },
+    "pat": {
+      "I": {
+        "Q":   "D4 - E4 F#4 - A4 | B4 - - A4 - F4",
+        "PAD": "D - - - - - | G - - Dm - -",
+        "T":   "D2 - - - - - | D2 - - - - -"
+      },
+      "A1": {
+        "P1":  "D3 - E3 F3 - A3 | Bb3 - - A3 - F3 | G3 - F3 E3 - D3 | E3 - - - - A2 | D3 - E3 F3 - A3 | D4 - - C#4 - Bb3 | A3 - F3 G3 - E3 | D3 - - - - -",
+        "PAD": "Dm - - - - - | Gm - - Dm - - | Gm - - A7 - - | A - - - - - | Dm - - - - - | Bb - - A7 - - | Dm/A - - A7 - - | Dm - - - - -",
+        "T":   "D2 - - - - - | D2 - - - - - | D2 - - - - - | A2 - - - - - | D2 - - - - - | Bb2 - - A2 - - | A2 - - - - - | D2 - - - - -",
+        "N":   "b . . . . . | . . . . . . | . . . . . . | . . . . . . | b . . . . . | . . . . . . | . . . . . . | . . . . . ."
+      },
+      "B": {
+        "P1":  "F4 - E4 D4 - Bb3 | C#4 - - A3 - - | Bb3 - A3 G3 - F3 | E3 - - - - A2",
+        "H":   "Bb - - - - - | A - - - - - | Gm - - - - - | A7 - - - - -",
+        "PAD": "Bb - - - - - | A - - - - - | Gm - - - - - | A7 - - - - -",
+        "T":   "Bb2 - - - - - | A2 - - - - - | G2 - - - - - | A2 - - - - -",
+        "N":   ". . . . . . | . . . . . . | b . . . . . | . . . . . ."
+      },
+      "A2": {
+        "P1":  "D3 - E3 F3 - A3 | Bb3 - - A3 - F3 | G3 - F3 E3 - D3 | E3 - - - - A2 | D3 - E3 F3 - A3 | D4 - - C#4 - Bb3 | A3 - F3 G3 - E3 | D3 - - - - -",
+        "H":   "Dm - - - - - | Gm - - Dm - - | Gm - - A7 - - | A - - - - - | Dm - - - - - | Bb - - A7 - - | Dm/A - - A7 - - | Dm - - - - -",
+        "PAD": "Dm - - - - - | Gm - - Dm - - | Gm - - A7 - - | A - - - - - | Dm - - - - - | Bb - - A7 - - | Dm/A - - A7 - - | Dm - - - - -",
+        "T":   "D2 - - - - - | D2 - - - - - | D2 - - - - - | A2 - - - - - | D2 - - - - - | Bb2 - - A2 - - | A2 - - - - - | D2 - - - - -",
+        "N":   "b . . . . . | . . . . . . | . . . . . . | . . . . . . | b . . . . . | . . . . . . | . . . . . . | . . . . . ."
+      },
+      "L": {
+        "P1":  "D3 - E3 F3 - A3 | Bb3 - - A3 - G3 | F3 - E3 D3 - - | D3 - - C#3 - -",
+        "H":   "Dm - - - - - | C#dim7 - - - - - | Dm/C - - G/B - - | Bb - - A7 - -",
+        "PAD": "Dm - - - - - | C#dim7 - - - - - | Dm/C - - G/B - - | Bb - - A7 - -",
+        "T":   "D3 - - - - - | C#3 - - - - - | C3 - - B2 - - | Bb2 - - A2 - -",
+        "N":   "b . . . . . | . . . . . . | . . . . . . | . . . . . ."
+      },
+      "E": {
+        "P1":  "D3 - E3 F3 - - | . . . . . . | A2 - - - - - | . . . . . .",
+        "PAD": "Dm - - - - - | Dm - - - - - | A - - - - - | A7 - - - - -",
+        "T":   "D2 - - - - - | D2 - - - - - | A2 - - - - - | A2 - - - - -",
+        "N":   "b . . . . . | . . . . . . | b . . . . . | . . . . . ."
+      }
+    },
+    "order": ["I","A1","B","A2","L","E"], "loopTo": 1,
+    "sfc": {
+      "vol": 0.85, "pbw": "vc", "pbv": 0.05,
+      "ch": {
+        "Q":   {"w":"p25","v":0.06},
+        "P1":  {"w":"vc","v":0.2,"a":90,"r":320,"lp":null,"vib":[4.8,8,260],"send":{"rev":0.3,"echo":0.06}},
+        "H":   {"w":"hp","v":0.1,"gate":1,"r":600,"lp":null,"win":48},
+        "T":   {"w":"cb","v":0.11,"lp":300},
+        "PAD": {"w":"str","v":0.04,"lp":1200},
+        "N":   {"v":0.45}
+      }
+    }
+  },
+  "plot_dark2": {
+    "bpm": 52, "spb": 3, "bar": 6, "vol": 1, "filter": 2600, "echo": 0.577, "fb": 0.2,
+    "ch": {
+      "Q":   {"w":"p25","v":0.07,"a":6,"d":260,"s":0.62,"r":160,"gate":0.9,"vib":[5.5,10,180],"lp":2600,"send":{"rev":0.3,"echo":0.2}},
+      "P1":  {"w":"p25","v":0.13,"a":40,"d":600,"s":0.7,"r":300,"gate":0.95,"vib":[4.6,8,300],"lp":1400,"send":{"rev":0.3}},
+      "H":   {"chord":true,"w":"p12","v":0.1,"a":3,"d":320,"s":0.2,"r":160,"gate":0.9,"arp":"xxxx12","win":50,"lp":1800,"send":{"rev":0.3}},
+      "T":   {"w":"triangle","v":0.15,"a":30,"d":800,"s":0.75,"r":300,"gate":0.97,"lp":700},
+      "PAD": {"chord":true,"pad":true,"w":"pad","v":0.035,"a":1100,"d":800,"s":0.9,"r":1400,"gate":1,"win":48,"lp":900,"send":{"rev":0.35}},
+      "N":   {"kit":true,"v":0.5}
+    },
+    "pat": {
+      "I": {
+        "Q":   "D4 - E4 F#4 - A4 | B4 - - A4 - F4",
+        "PAD": "D - - - - - | G - - Dm - -",
+        "T":   "D2 - - - - - | D2 - - - - -"
+      },
+      "A1": {
+        "P1":  "D3 - E3 F3 - A3 | Bb3 - - A3 - F3 | G3 - F3 E3 - D3 | E3 - - - - A2 | D3 - E3 F3 - A3 | D4 - - C#4 - Bb3 | A3 - F3 G3 - E3 | D3 - - - - -",
+        "PAD": "Dm - - - - - | Gm - - Dm - - | Gm - - A7 - - | A - - - - - | Dm - - - - - | Bb - - A7 - - | Dm/A - - A7 - - | Dm - - - - -",
+        "T":   "D2 - - - - - | D2 - - - - - | D2 - - - - - | A2 - - - - - | D2 - - - - - | Bb2 - - A2 - - | A2 - - - - - | D2 - - - - -",
+        "N":   "b . . . . . | . . . . . . | . . . . . . | . . . . . . | b . . . . . | . . . . . . | . . . . . . | . . . . . ."
+      },
+      "B": {
+        "P1":  "F4 - E4 D4 - Bb3 | C#4 - - A3 - - | Bb3 - A3 G3 - F3 | E3 - - - - A2",
+        "H":   "Bb - - - - - | A - - - - - | Gm - - - - - | A7 - - - - -",
+        "PAD": "Bb - - - - - | A - - - - - | Gm - - - - - | A7 - - - - -",
+        "T":   "Bb2 - - - - - | A2 - - - - - | G2 - - - - - | A2 - - - - -",
+        "N":   ". . . . . . | . . . . . . | b . . . . . | . . . . . ."
+      },
+      "A2": {
+        "P1":  "D3 - E3 F3 - A3 | Bb3 - - A3 - F3 | G3 - F3 E3 - D3 | E3 - - - - A2 | D3 - E3 F3 - A3 | D4 - - C#4 - Bb3 | A3 - F3 G3 - E3 | D3 - - - - -",
+        "H":   "Dm - - - - - | Gm - - Dm - - | Gm - - A7 - - | A - - - - - | Dm - - - - - | Bb - - A7 - - | Dm/A - - A7 - - | Dm - - - - -",
+        "PAD": "Dm - - - - - | Gm - - Dm - - | Gm - - A7 - - | A - - - - - | Dm - - - - - | Bb - - A7 - - | Dm/A - - A7 - - | Dm - - - - -",
+        "T":   "D2 - - - - - | D2 - - - - - | D2 - - - - - | A2 - - - - - | D2 - - - - - | Bb2 - - A2 - - | A2 - - - - - | D2 - - - - -",
+        "N":   "b . . . . . | . . . . . . | . . . . . . | . . . . . . | b . . . . . | . . . . . . | . . . . . . | . . . . . ."
+      },
+      "L": {
+        "P1":  "D3 - E3 F3 - A3 | Bb3 - - A3 - G3 | F3 - E3 D3 - - | D3 - - C#3 - -",
+        "H":   "Dm - - - - - | C#dim7 - - - - - | Dm/C - - G/B - - | Bb - - A7 - -",
+        "PAD": "Dm - - - - - | C#dim7 - - - - - | Dm/C - - G/B - - | Bb - - A7 - -",
+        "T":   "D3 - - - - - | C#3 - - - - - | C3 - - B2 - - | Bb2 - - A2 - -",
+        "N":   "b . . . . . | . . . . . . | . . . . . . | . . . . . ."
+      },
+      "E": {
+        "P1":  "D3 - E3 F3 - - | . . . . . . | A2 - - - - - | . . . . . .",
+        "PAD": "Dm - - - - - | Dm - - - - - | A - - - - - | A7 - - - - -",
+        "T":   "D2 - - - - - | D2 - - - - - | A2 - - - - - | A2 - - - - -",
+        "N":   "b . . . . . | . . . . . . | b . . . . . | . . . . . ."
+      }
+    },
+    "order": ["A1","B","A2","L","E"], "loopTo": 0,
+    "sfc": {
+      "vol": 0.85, "pbw": "vc", "pbv": 0.05,
+      "ch": {
+        "Q":   {"w":"p25","v":0.06},
+        "P1":  {"w":"vc","v":0.2,"a":90,"r":320,"lp":null,"vib":[4.8,8,260],"send":{"rev":0.3,"echo":0.06}},
+        "H":   {"w":"hp","v":0.1,"gate":1,"r":600,"lp":null,"win":48},
+        "T":   {"w":"cb","v":0.11,"lp":300},
+        "PAD": {"w":"str","v":0.04,"lp":1200},
+        "N":   {"v":0.45}
+      }
+    }
+  },
   "plot": {
     "bpm": 54, "spb": 2, "bar": 8, "vol": 1, "filter": 2400,
     "ch": {
@@ -32616,6 +32823,12 @@ function obTally() {
   put('ob_candle_0', 'cn', obCandle(0)); put('ob_candle_1', 'cn', obCandle(1));
   put('ob_bed_straw', 'pr', obBedStraw()); put('ob_bowl', 'pr', obBowl());
   put('ob_door_cell', 'pr', obDoorCell()); put('ob_tally', 'pr', obTally());
+  // [fix 11-10 TALLY1] 독방 (2,1) 벽의 금을 타일에서 오브젝트로(maps/cell.js — 수감 첫날 빗금 0): 하루치 한 줄 · 예전 빗금 타일(prTally)과 같은 자리·색의 금(바탕 투명).
+  //   꿈 B1 첫 방(maps/b1.js 「빗금 하나.」)의 한 줄은 꿈 벽 색('dr' — drTally와 같은 C·k). 되돌리기: 아래 다섯 줄 삭제(맵은 그림이 없으면 예전 타일로 돌아간다)
+  const tOne = (lc, hi) => { const c = new Cv(16, 16); tally(c, 1, 2, 1, lc, 'k', 5, false); if (hi) c.p(1, 2, hi); return c; };
+  const tWall = () => { const c = new Cv(16, 16); tally(c, 1, 2, 4, 'v', 'k', 5, true); tally(c, 11, 2, 3, 'v', 'k', 5, false); tally(c, 4, 9, 4, 'v', 'k', 5, true); return c; };
+  put('ob_tally_one', 'pr', tOne('v')); put('ob_tally_wall', 'pr', tWall());
+  put('ob_tally_one_dream', 'dr', tOne('C', 'H'));
 })();
 
 function obChest(open) {
@@ -33572,6 +33785,7 @@ function memKind(nm) {
     if (name.indexOf('tl_town_') !== 0) continue;
     const nm = name.slice(8);
     if (nm === 'void') { put('tl_memory_void', 'mem', new Cv(16, 16, '0')); continue; }
+    if (nm === 'sea_2' || nm === 'sea_3') { n++; continue; }   // [fix 11-10] 쓰이지 않는 그림 정리: [r5 F6] 바다 셋째·넷째 프레임(tl_town_sea_2/_3)은 항구 전용 — B2(기억의 마르세유)는 0·1 두 프레임만 쓴다(tilesets MEMORY는 f6 앞에서 옮겨 적음). n++는 뒤 타일의 씨앗을 그대로 두려고. 되돌리기: 이 줄 삭제
     const cv = memTile(name, memKind(nm), 11 + n * 7); n++;
     if (cv) put('tl_memory_' + nm, 'mem', cv);
   }
@@ -45308,7 +45522,7 @@ MEMORY["/"] = { spr: "tl_memory_tally", solid: true };
 const SEA4 = b => [0, 1, 2, 3].map(i => b + '_' + i);
 TOWN["~"].f6 = { spr: SEA4('tl_town_sea'), anim: 420 };
 TOWN["~"].f5 = { macro: 2, sets: [SEA4('tl_twm_seaA'), SEA4('tl_twm_seaB')], anim: 420 };
-TOWN["."].f5 = { macro: 2, sets: [['tl_twm_cobA'], ['tl_twm_cobA'], ['tl_twm_cobA'], ['tl_twm_cobB']] };   // B(풀 포기·금) 덩이는 넷에 하나
+TOWN["."].f5 = { macro: 2, lone: 3, sets: [['tl_twm_cobA'], ['tl_twm_cobA'], ['tl_twm_cobA'], ['tl_twm_cobB']] };   // [fix 11-10 F5G] lone: 3 = B 덩이끼리 맞닿지 않게(field.js macroSet — 풀 포기가 줄로 이어지지 않게). 되돌리기: lone 삭제   // B(풀 포기·금) 덩이는 넷에 하나
 
 const DREAM = {
   " ": { spr: "tl_dream_void", solid: true },
@@ -47293,6 +47507,16 @@ MC.addMaps({
   const HALF = has('ob_bread_half') ? 'ob_bread_half' : 'ob_pickup';
   const CANDLE_OFF = has('ob_candle_off') ? { "sprite": "ob_candle_off" } : { "sprite": "ob_candle", "anim": 170 };   // 없으면 촛불 그대로
   const FARIA_BED = SPR.ch_faria2_bed_wall ? 'ch_faria2_bed_wall' : SPR.ch_faria2_lie_0 ? 'ch_faria2_lie_0' : 'ch_dantes_lie_0';   // 2차 장면 8(없을 때 계약 폴백)
+  // [fix 11-10 TALLY1] 수감 첫날 빗금 0 — 사용자 신고 「감옥 수감 첫날에도 벽에 빗금이 여러개가 쳐져 있어」. 벽 (2,1)의 빗금 타일('/' = tl_prison_tally, 금 11개가 늘 그려져 있었다)을
+  //   민벽('#')으로 바꾸고 금은 오브젝트로: 첫 금을 긋기 전(a3.first_mark 없음)엔 없음 → 첫 금 뒤 하루치 한 줄(tally_one) → 30일부터 예전 타일과 같은 금(tally_wall) → 그 뒤는 예전 그대로(tally_30·200·730).
+  //   되돌리기: 주소 ?uw2off=TALLY1(또는 MC.UW2_OFF에 'TALLY1') — 예전 타일 그대로. 코드를 걷으려면 이 칸 · tiles의 TALLY_ROW(→ "^#/#W#D#^") · objects의 ...TALLY_OBJ 줄 · spr_world.js의 [fix 11-10 TALLY1] 줄을 지운다
+  const TALLY1 = !!(MC.uw2 && MC.uw2('TALLY1')) && has('ob_tally_one') && has('ob_tally_wall');
+  const TALLY_ROW = TALLY1 ? "^###W#D#^" : "^#/#W#D#^";
+  const TALLY_GROWN = { "any": [ { "var": "days", "gte": 30 }, { "flag": "a3.after_card" }, { "flag": "a4.met" }, { "flag": "a4.joined" }, { "flag": "s3.on" }, { "flag": "s4.on" } ] };   // 옛 기록·프리셋(days 없이 뒤 막으로 건너뜀)에서도 벽이 비지 않게
+  const TALLY_OBJ = TALLY1 ? [
+    { "id": "tally_one", "type": "thing", "x": 2, "y": 1, "sprite": "ob_tally_one", "z": -1, "event": "a3.tally", "cond": { "all": [ { "flag": "a3.first_mark" }, { "not": TALLY_GROWN } ] } },
+    { "id": "tally_wall", "type": "thing", "x": 2, "y": 1, "sprite": "ob_tally_wall", "z": -1, "event": "a3.tally", "cond": TALLY_GROWN }
+  ] : [];
   MC.addMaps({
     "cell": {
       "name": "이프 성 · 독방",
@@ -47302,7 +47526,7 @@ MC.addMaps({
       "camAnchor": { "center": { "minDark": 0.7 } },   // [r5 UW-4] 방 어둠 0.7 이상(촛불 밤 — 첫 만남·세 번째 발작·결심 등)이면 방을 화면 가운데로(field.js anchorY · ?uw2off=UW-4면 예전). 낮(0.4)·새벽(0.6)은 그대로 대화창 위. 되돌리기: 이 줄 삭제
       "tiles": [
         "^^^^^^^^^",
-        "^#/#W#D#^",
+        TALLY_ROW,   // [fix 11-10 TALLY1] 옛: "^#/#W#D#^"
         "^,,.~...^",
         "^,,.....^",
         "^,,.....^",
@@ -47331,6 +47555,7 @@ MC.addMaps({
 
         { "id": "rathole", "type": "thing", "x": 1, "y": 1, "sprite": "ob_rathole", "event": "a4.rathole", "cond": J },   // 벽 밑 쥐구멍(벽 줄 그림, 통합 단계에서 바닥 (1,2)→벽 (1,1)). 같은 칸 빗금보다 먼저 두어 탭이 쥐구멍으로
         { "id": "tally", "type": "thing", "x": 2, "y": 1, "event": "a3.tally" },
+        ...TALLY_OBJ,   // [fix 11-10 TALLY1] (2,1) 금 그림 — 첫 금 뒤 한 줄 · 30일부터 예전 타일의 금(z -1: 네 이름 ob_names 아래)
         { "id": "tally_30", "type": "thing", "x": 3, "y": 1, "sprite": "ob_tally", "event": "a3.tally", "cond": { "all": [ { "var": "days", "gte": 30 }, { "not": { "flag": "a4d.deduced" } } ] } },
         { "id": "tally_200", "type": "thing", "x": 1, "y": 1, "sprite": "ob_tally", "event": "a3.tally", "cond": { "var": "days", "gte": 200 } },
         { "id": "tally_730a", "type": "thing", "x": 5, "y": 1, "sprite": "ob_tally", "event": "a3.tally", "cond": { "all": [ { "var": "days", "gte": 730 }, { "not": { "flag": "a4.lesson_sci" } } ] } },
@@ -47402,6 +47627,9 @@ MC.addMaps({
       "name": "이프 성 · 27번의 방",
       "tileset": "prison",
       "vignette": 0.4,
+      // [fix 11-10 UW4] 27번의 방도 독방처럼: 방 어둠 0.7 이상(S3·S4 밤 장면 — 세 번째 발작 앞뒤·결심 등 등잔 0.8)이면 방을 화면 가운데로(field.js anchorY · [r5 UW-4] 조건부 가운데).
+      //   등잔 켠 보통 때(0.5)는 그대로 대화창 위(위에 방 그림 vs_faria). 되돌리기: ?uw2off=UW4(이 방만 예전) · ?uw2off=UW-4(독방까지 예전) 또는 아래 한 줄 삭제
+      ...(MC.uw2 && MC.uw2('UW4') ? { "camAnchor": { "center": { "minDark": 0.7 } } } : {}),
       "tiles": [
         "^^^^^^^^^",
         "^#W####D^",
@@ -47468,6 +47696,12 @@ MC.addMaps({
      t_nook: 처음 골방에 들어서면 카메라가 철문을 비춘다(1817 엿봄). 4막 두 번째 잠부터는 계단 옆 스폰 'stairs'(2,12)에서 시작.
      검은 철문·빛기둥·onEnter·창/빗금·깊은 물은 a4d.* 래퍼가 4막이면 4막 대사, 아니면 S1 a3.* 이벤트를 부른다. */
 (function (MC) { 'use strict';
+  // [fix 11-10 TALLY1] 첫 방(R1)의 빗금 벽 (4,18): 글은 「빗금 하나.」(a3.b1_tally1)인데 타일(tl_dream_tally)은 금 11개였다 → 민벽 + 한 줄 그림(ob_tally_one_dream). R2~R4·보스방은 그대로(방마다 느는 빗금 = 설계 REDESIGN F-7).
+  //   되돌리기: ?uw2off=TALLY1 또는 이 칸 · tiles의 R1_ROW(→ "^#.#/#W^    ^#//.W#^") · tal_r1의 ...R1_ONE 삭제
+  const SPR0 = (MC.data && MC.data.sprites && MC.data.sprites.spr) || {};
+  const TALLY1 = !!(MC.uw2 && MC.uw2('TALLY1')) && !!SPR0.ob_tally_one_dream;
+  const R1_ROW = TALLY1 ? "^#.###W^    ^#//.W#^" : "^#.#/#W^    ^#//.W#^";
+  const R1_ONE = TALLY1 ? { "sprite": "ob_tally_one_dream", "z": -1 } : {};
   const ACT4 = { "flag": "a4.met" };
   const S1 = { "not": { "flag": "a4.met" } };
   MC.addMaps({
@@ -47501,7 +47735,7 @@ MC.addMaps({
         " ^.^   ^^^^^^^^^.^^^",
         " ^.^           ^.^  ",
         "^^.^^^^^    ^^^^.^^^",
-        "^#.#/#W^    ^#//.W#^",
+        R1_ROW,   // [fix 11-10 TALLY1] 옛: "^#.#/#W^    ^#//.W#^"
         "^.....,^^^^^^....,.^",
         "^......^####^....,.^",
         "^..................^",
@@ -47549,7 +47783,7 @@ MC.addMaps({
         { "id": "win_r4b", "type": "thing", "x": 14, "y": 1, "event": "a4d.b1_win4" },
         { "id": "win_nook", "type": "thing", "x": 2, "y": 10, "event": "a3.b1_win_nook" },
 
-        { "id": "tal_r1", "type": "thing", "x": 4, "y": 18, "event": "a4d.b1_tally1" },
+        { "id": "tal_r1", "type": "thing", "x": 4, "y": 18, "event": "a4d.b1_tally1", ...R1_ONE },
         { "id": "tal_r2a", "type": "thing", "x": 14, "y": 18, "event": "a4d.b1_tally2" },
         { "id": "tal_r2b", "type": "thing", "x": 15, "y": 18, "event": "a4d.b1_tally2" },
         { "id": "tal_r3a", "type": "thing", "x": 16, "y": 10, "event": "a4d.b1_tally3" },
@@ -49058,7 +49292,7 @@ MC.addEvents({
     { "op": "move", "id": "player", "path": "R1", "speed": 240 },
     { "op": "show", "id": "player", "v": false },
     { "op": "letterbox", "on": true, "ms": 500, "async": true },
-    { "op": "bgm", "id": "plot", "fade": 1500 },                          // [10-29 사용자] 예전 filterTo(600)는 폰에서 음악이 없는 것처럼 들렸다 → 음모 곡(마르세유 주제를 단조로)
+    { "op": "bgm", "id": "plot_dark", "fade": 1500 },                          // [10-29 사용자] 예전 filterTo(600)는 폰에서 음악이 없는 것처럼 들렸다 → 음모 곡(마르세유 주제를 단조로)
     { "op": "light", "dark": 0.45, "r": 72, "at": [7, 8], "color": "#ffb060", "flicker": true, "ms": 1800, "async": true },
     { "op": "cam", "to": [7, 8], "ms": 1800 },
     { "op": "wait", "ms": 600 },
@@ -49066,11 +49300,11 @@ MC.addEvents({
     //   [a1-plot 11-06] 두 대사 사이에 한 번 더 따르는 소리(pour 1.1)를 넣었다
     { "op": "face", "id": "r_danglars", "dir": "right" },
     { "op": "face", "id": "r_fernand", "dir": "down" },
-    { "op": "sfx", "id": "pour", "gain": 0.6 },
+    { "op": "sfx", "id": "pour_wine", "gain": 0.8 },
     { "op": "wait", "ms": 600 },
     { "op": "jump", "id": "r_caderousse", "h": 2, "ms": 180 },
     { "op": "say", "who": "caderousse", "t": "선장에, 신부에……{p:200}\n거참, 누구는 복도 많아.", "pos": "top" },
-    { "op": "sfx", "id": "pour", "gain": 0.5, "pitch": 1.1 },             // 잔이 비기도 전에 또 따른다
+    { "op": "sfx", "id": "pour_wine", "gain": 0.7, "pitch": 1.1 },             // 잔이 비기도 전에 또 따른다
     { "op": "wait", "ms": 400 },
     { "op": "say", "who": "caderousse", "t": "……그래도 좋은 녀석이야.{p:200}\n에드몽은.", "pos": "top" },
     // ② 장부에 없는 짐 — [s44-writer B3-2] '엘바에서 편지…' 삭제: 추리의 밤이 풀 것을 먼저 말하지 않는다. [a1-plot 11-06] 당글라르가 페르낭 쪽(up)을 보고, 줄바꿈 \n을 넣었다
@@ -54878,7 +55112,7 @@ MC.addEvents({
       { "op": "say", "who": "dantes", "face": "shock", "t": "……다 제 눈앞에 있었는데.{p:300}\n왜 여태 몰랐지?" },
       // [r3 B7] 세 손 동기 귀환의 끝(11-04 사용자 「추천대로」): a4c.hands에서 들어온 plot을 이 깨달음 대사 바로 뒤에서 1막처럼 뚝 끊는다 — plot이 지금 곡일 때만(music.cutIf).
       //   되돌리기: 이 주석과 아래 한 줄, a4c.hands의 [r3 B7] 주석 두 줄과 bgm 한 줄 삭제
-      { "op": "music", "fn": "cutIf", "args": [ "plot" ] },
+      { "op": "music", "fn": "cutIf", "args": [ "plot_dark2" ] },
       // [10-30 사용자 「카드루스 서사」] 카드루스는 꾸미지도 넘기지도 않았다 — [a1-plot 11-06] 1막에서 말렸다가 '장난일세'에 넘어가고(에드몽은 '정 있는 사람이니 말렸을 것'으로만 안다),
       //   체포 때 당글라르의 눈에 입을 다문 사람. 빚은 동기가 아니라 사람됨(빈 찬장을 보고도 눈감은 사람). 1막 a1.hands·되감기 ③ 물음·체포 클로즈업 세 컷(a2.arrest)이 근거
       //   [a1-plot 11-06] 에드몽은 되감기 ③의 물음(「……말리기는 했을까.」)에 스스로 답하고(그 말을 들은 적은 없다), 파리아는 1막에서 플레이어가 들은 「장난일세, 장난.」을
@@ -54978,7 +55212,7 @@ MC.addEvents({
         "decoy": { "who": "villefort", "t": "그자는 그 탁자에 없었네. 그 손은 따로 짚어 보세." } } },
       // [r3 B7] 세 손 동기 귀환(음악 감독 r3 P1-3 · 11-04 사용자 「추천대로」): 세 손이 맞는 순간 1막 레제르브(a1.hands)의 음모 곡 plot이 fade 800으로 돌아온다.
       //   끊기는 곳은 a4c.n3의 「……왜 여태 몰랐지?」 바로 뒤(music.cutIf — plot이 지금 곡일 때만, 1막과 같은 뚝 끊김). 되돌리기: 이 주석과 아래 한 줄, a4c.n3의 [r3 B7] 주석 두 줄과 cutIf 한 줄 삭제
-      { "op": "bgm", "id": "plot", "fade": 800 },
+      { "op": "bgm", "id": "plot_dark2", "fade": 800 },
       { "op": "if", "cond": { "var": "dd_miss", "gte": 1 },
         "then": [ { "op": "say", "who": "faria", "t": "그래, 그 손들일세.{p:300}\n기억은 가끔 돌아서 오지." } ],
         "else": [ { "op": "say", "who": "faria", "t": "한 번에 짚었군.{p:300}\n자네 눈이 나보다 낫네." } ] }
@@ -66169,7 +66403,7 @@ MC.addLang('en', {
     "card.learned": ["Newly learned", "3moskn"],
 
     "story.handInk": ["...Write left-handed...", "yijd87"],
-    "story.handThimble": ["...It’s a joke, right? A joke...", "10foeoe"],
+    "story.handThimble": ["...A joke, right? A joke...", "10foeoe"],   // [fix 11-10] 폭 넘침 184>164px → 159px(옛: "...It’s a joke, right? A joke..."). 물음(right?)과 되풀이는 그대로 — a1.hands 9번 첫 줄(strings)도 같은 말로
     "story.handSash": ["...To the prosecutor...", "ejkilh"],
     "story.letter": ["To the King’s Prosecutor.\nA friend of Throne and Altar informs you that Edmond Dantès, first mate of the Pharaon, put in at Elba and came away with the usurper’s letter to the Bonapartists of Paris.\nThe proof lies on his person, in his father’s house, or else in his quarters on the Pharaon.", "1enslxl"],
 
@@ -66211,7 +66445,7 @@ MC.addLang('en', {
     "deduce.tapAgain": ["Tap again to answer.", "w607dy"],
     "deduce.tapWall": ["Tap the wall.", "3aih0m"],
 
-    "hint.move": ["Drag on the screen to walk", "ygfcpy"],
+    "hint.move": ["Drag anywhere to walk", "ygfcpy"],   // [fix 11-10] 폭 넘침 175>170px → 147px(옛: "Drag on the screen to walk")
     "mg.holdPrompt": ["Press and hold to endure.", "18z6ood"],
     "mg.holdHint": ["Don’t let go. Hold your breath.", "md2r7p"],
     "mg.breath": ["Air", "ce6cd3"],
@@ -66231,7 +66465,30 @@ MC.addLang('en', {
     "vista.dream.floor": ["B1 · Cell after Cell", "14vsgij"],
     "vista.b2.floor": ["B2 · Marseille Past", "xzw2h7"],
     "vista.b3.floor": ["B3 · Stairs Upside Down", "ygx6x9"],
-    "vista.b4.floor": ["B4 · Sacks under the Sea", "19d831r"]
+    "vista.b4.floor": ["B4 · Sacks under the Sea", "19d831r"],
+    // [fix 11-10] 옛 장소 그림 이름표 9곳(항구~갑판 18키) · 필드 위 장소 줄 · 기억 목록 안내 — 영어에서 한국어가 비치던 자리. 장소는 en 맵 이름(strings)과 같은 말로, 때는 짧은 명사구.
+    //   폭: 장소 body 152 · 때 small 152(가장 긴 vista.tiboulen.time 147px). 되돌리기: 아래 스물한 줄 삭제(+ 위 줄 끝 쉼표)
+    "vista.port.place": ["Port of Marseille", "1uu3tp6"],
+    "vista.port.time": ["February 1815 · Morning", "15tamnj"],
+    "vista.catalan.place": ["The Catalan Village", "152ht4f"],
+    "vista.catalan.time": ["Dusk", "1isb08j"],
+    "vista.reserve.place": ["La Réserve", "1kamwyx"],
+    "vista.reserve.time": ["Evening", "185c35m"],
+    "vista.villefort.place": ["Prosecutor’s Study", "1cd8jc2"],
+    "vista.villefort.time": ["Night", "8yi0j7"],
+    "vista.if.place": ["Château d’If", "ukaove"],
+    "vista.if.time": ["Night", "8yi0j7"],
+    "vista.cell.place": ["Château d’If", "ukaove"],
+    "vista.cell.room": ["Cell", "1setymj"],
+    "vista.faria.place": ["Château d’If", "ukaove"],
+    "vista.faria.room": ["N°27", "1ai1j75"],
+    "vista.tunnel.place": ["The Tunnel", "a2w3ks"],
+    "vista.tiboulen.place": ["Tiboulen Island", "14ur32g"],
+    "vista.tiboulen.time": ["February 1829 · Stormy Night", "e4kfjw"],
+    "vista.tartane.place": ["The Smugglers’ Deck", "zi22h8"],
+    "vista.tartane.time": ["Dawn", "wc69ry"],
+    "field.placeLine": ["{place} · {year}", "5n4bhk"],
+    "deduce.listHint": ["Tap a memory to read it.", "wg2vat"]
   },
   "strings": {
     "에드몽": "Edmond",
@@ -66461,6 +66718,12 @@ MC.addLang('en', {
     "빗금 사이로 절망이 차오른다.": "Despair wells up between the marks.",
     "맞서기만 해서는 버거울 것 같다. ……[배운 것]을 떠올려 보자.": "Not with blows alone.\nWhat have I learned?\nMy [Skills].",
     "정신력이 바닥났다. [버티기]로 숨을 고르자.": "My Spirit has run dry. I’ll [Endure] and catch my breath.",
+    // [fix 11-10] 첫 전투 안내 다섯 상자(battle.tutorials.first — [r3 B2]) — 영어에서 한국어로 나오던 자리. 단추 이름은 en 그대로([Fight]·[Endure]·[Skills]), 정신력 = Spirit. 되돌리기: 아래 다섯 줄 삭제
+    "초록 줄 HP는 몸이다.\n다 닳으면 쓰러진다.": "The green bar is HP, your body.\nAt zero, you fall.",
+    "파란 줄 MP는 정신력이다.\n기술을 쓰면 줄어든다.": "The blue bar is MP, your Spirit.\nSkills spend it.",
+    "[맞선다]는 공격이다.\n정신력이 들지 않는다.": "[Fight] is your attack.\nIt costs no Spirit.",
+    "[버티기]는 막으면서\n정신력을 조금 되찾는다.": "[Endure] guards you\nand restores a little Spirit.",
+    "[배운 것]은 기술이다.\n맞서기만으론 버겁다.": "[Skills] are what I’ve learned.\nBlows alone won’t do.",
 
     "몇 개째지?": "How many is that now?",
     "빗금 말이야. 네가 긋던 거.": "The tally marks. The ones you keep making.",
@@ -66569,7 +66832,7 @@ MC.addLang('en', {
     "내 글씨는 장부가 알아.{p:200}\n왼손으로 쓰면……": "Ledgers know my hand.{p:200}\nWrite left-handed...",
     "어이, 에드몽은 친구야.{p:200}\n해코지는 안 된다니까.": "Hey, Edmond’s a friend.{p:200}\nNo harm, I tell you.",
     "누가 해코지래?{p:200}\n장난일세, 장난.": "Harm? Who said harm?{p:200}\nIt’s a joke. Only a joke.",
-    "……장난이지? 장난이지……{p:300}\n그럼, 에드몽을 위해!": "...It’s a joke, right? A joke...{p:300}\nWell then—to Edmond!",
+    "……장난이지? 장난이지……{p:300}\n그럼, 에드몽을 위해!": "...A joke, right? A joke...{p:300}\nWell then—to Edmond!",
     "많이 마셨네.{p:200}\n가세, 바래다주지.": "You’ve had plenty.{p:200}\nCome, I’ll see you home.",
     "구석에 버려진 종이.": "The paper in the corner.",
     "어, 페르낭?{p:200}\n카탈루냐는 저쪽인데……": "Eh? Fernand?{p:200}\nThe Catalans are that way...",
@@ -68495,7 +68758,7 @@ MC.addLang('en', {
   function burnPrep() {
     const sheet = bakeLetterSheet();
     if (burnMemo.src === sheet && burnMemo.map) return burnMemo;
-    const w = sheet.width, h = sheet.height, d = sheet.getContext('2d').getImageData(0, 0, w, h).data;
+    const w = sheet.width, h = sheet.height, d = MC.gfx.rd(sheet).getImageData(0, 0, w, h).data;
     const map = new Float32Array(w * h), dmax = Math.hypot(w, h);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const dl = Math.hypot(x, h - 1 - y), dr = Math.hypot(w - 1 - x, h - 1 - y) * 0.85;   // 아래 두 모서리(오른쪽이 조금 빠름)
@@ -68635,7 +68898,7 @@ MC.addLang('en', {
     flameAt = [16, 6];
     if (!c) return flameAt;
     try {
-      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      const d = MC.gfx.rd(c).getImageData(0, 0, c.width, c.height).data;
       let sx = 0, sy = 0, n = 0;
       for (let i = 0; i < d.length; i += 4) { if (d[i + 3] && d[i] > 230 && d[i + 1] > 150 && d[i + 2] < 190) { const p = i / 4; sx += p % c.width; sy += (p / c.width) | 0; n++; } }
       if (n) flameAt = [Math.round(sx / n), Math.round(sy / n)];
@@ -70701,7 +70964,7 @@ MC.addLang('en', {
     total: (st, ms) => (st.dark ? ms + 250 : ms),
     luma(cv) {
       try {
-        const w = cv.width, h = cv.height, d = cv.getContext('2d').getImageData(0, 0, w, h).data;
+        const w = cv.width, h = cv.height, d = MC.gfx.rd(cv).getImageData(0, 0, w, h).data;
         let s = 0, n = 0;
         for (let i = 0; i < d.length; i += 4 * 7) { s += (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) * d[i + 3] / 255; n++; }
         return n ? s / n / 255 : 0;
@@ -70942,7 +71205,7 @@ MC.addLang('en', {
     const w = c.width, h = c.height;
     let out = null;
     try {
-      const d = c.getContext('2d').getImageData(0, 0, w, h).data, y0 = Math.floor(h * 0.55), cnt = new Array(w).fill(0);
+      const d = MC.gfx.rd(c).getImageData(0, 0, w, h).data, y0 = Math.floor(h * 0.55), cnt = new Array(w).fill(0);
       for (let x = 0; x < w; x++) for (let y = y0; y < h; y++) if (d[(y * w + x) * 4 + 3] > 0) cnt[x]++;
       const thr = (h - y0) * 0.5, runs = [];
       let s = -1;
@@ -71662,7 +71925,7 @@ MC.addLang('en', {
     if (wristCache.has(img)) return wristCache.get(img);
     let out = [84, 38];
     try {
-      const w = img.width, h = img.height, d = img.getContext('2d').getImageData(0, 0, w, h).data;
+      const w = img.width, h = img.height, d = MC.gfx.rd(img).getImageData(0, 0, w, h).data;
       let best = 1e9;
       for (let x = Math.floor(w * 0.45); x <= Math.floor(w * 0.85); x++) {
         let t = -1, b = -1;
@@ -72650,7 +72913,7 @@ MC.addLang('en', {
   // 좌우 4분의 1씩 잘라 쓴다. 종이 가장자리(art 좌표)를 함께 돌려줘 우리 종이의 모서리에 엄지가 오게 맞춘다.
   function handCrops(hs) {
     return once('hands|' + (hs._tid || (hs._tid = ++tidN)), () => {
-      const W0 = hs.width, H0 = hs.height, d = hs.getContext('2d').getImageData(0, 0, W0, H0).data;
+      const W0 = hs.width, H0 = hs.height, d = MC.gfx.rd(hs).getImageData(0, 0, W0, H0).data;
       const key = (x, y) => { const o = (y * W0 + x) * 4; return d[o + 3] ? (d[o] << 16) | (d[o + 1] << 8) | d[o + 2] : -1; };
       const cnt = new Map(); let tot = 0;
       for (let y = Math.round(H0 * 0.15); y < Math.round(H0 * 0.8); y++) for (let x = Math.round(W0 * 0.3); x < Math.round(W0 * 0.7); x++) { const k = key(x, y); if (k < 0) continue; cnt.set(k, (cnt.get(k) || 0) + 1); tot++; }
@@ -73473,7 +73736,7 @@ MC.addLang('en', {
     const A = shadowImg(3), B = shadowImg('3b'), key0 = (A._tid || (A._tid = ++tidN)) + '|' + (B._tid || (B._tid = ++tidN));
     return once('jaw|' + key0, () => {
       const w = Math.min(A.width, B.width), h = Math.min(A.height, B.height);
-      const da = A.getContext('2d').getImageData(0, 0, w, h).data, db = B.getContext('2d').getImageData(0, 0, w, h).data;
+      const da = MC.gfx.rd(A).getImageData(0, 0, w, h).data, db = MC.gfx.rd(B).getImageData(0, 0, w, h).data;
       const pts = []; let y0 = 1e9, y1 = -1;
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = (y * w + x) * 4; if (db[o + 3] > 0 && !(da[o + 3] > 0)) { pts.push([x, y]); if (y < y0) y0 = y; if (y > y1) y1 = y; } }
       const only = G().makeCanvas(B.width, B.height), ox = only.getContext('2d'), id = ox.createImageData(B.width, B.height);
@@ -74117,7 +74380,7 @@ MC.addLang('en', {
     const key0 = 'bedh|' + (art._tid || (art._tid = ++tidN)) + '|' + (lf._tid || (lf._tid = ++tidN)) + '|' + (oh._tid || (oh._tid = ++tidN));
     return once(key0, () => {
       const w = art.width, h = art.height, c = G().makeCanvas(w, h), x = c.getContext('2d');
-      const px = im => im.getContext('2d').getImageData(0, 0, w, h).data, A = px(art), B = px(lf), O = px(oh);
+      const px = im => MC.gfx.rd(im).getImageData(0, 0, w, h).data, A = px(art), B = px(lf), O = px(oh);
       const col = (d, i) => d[i + 3] ? (d[i] << 16) | (d[i + 1] << 8) | d[i + 2] : -1, inLf = new Set(), inOh = new Set();
       for (let i = 0; i < A.length; i += 4) { inLf.add(col(B, i)); inOh.add(col(O, i)); }
       const id = x.createImageData(w, h), q = id.data;
@@ -74346,6 +74609,22 @@ MC.addLang('en', {
 
   // 스테이지 씬(s3night.js mount와 같은 틀). o: {name, opaque, init(sc), update(sc,dt), render(sc,lv), input(sc,ev), exit(sc), safe()}
   // 불투명(화면형)은 한 장에 그린 뒤 들고 날 때 FADE ms 디더로 아래(필드)와 섞는다. 이벤트 잠금 중이라 입력은 다 먹는다(조작 없는 컷신도 같음)
+  // [fix 11-10 A11] 짧은 걷힘: k(0~1) < 0.6 → 그림을 66% · 40% · 18% 밝기로(곱하기 한 번 — 칸 경계 그대로), 그 뒤 → 아래 화면 위에 검정 디더 12 · 7 · 3단. 곱하기가 없는 브라우저면 false(옛 길)
+  const A11_M = ['#a8a8a8', '#666666', '#2e2e2e'], A11_B = [12, 7, 3];
+  function a11Out(buf, k) {
+    const g = G(), x = g.ctx;
+    if (k >= 0.6) { g.ditherFill('#000000', A11_B[Math.min(2, Math.floor((k - 0.6) / 0.4 * 3))]); return true; }
+    x.save();
+    x.globalCompositeOperation = 'multiply';
+    if (x.globalCompositeOperation !== 'multiply') { x.restore(); return false; }
+    x.globalCompositeOperation = 'source-over';
+    U.drawDither(buf, 0, 0, 16);
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.globalCompositeOperation = 'multiply'; x.globalAlpha = 1; x.fillStyle = A11_M[Math.min(2, Math.floor(k / 0.6 * 3))];
+    x.fillRect(0, 0, x.canvas.width, x.canvas.height);
+    x.restore();
+    return true;
+  }
   function mount(o) {
     return new Promise(resolve => {
       // [c50-pixel B6-12] 화면형 스테이지의 디더 교차는 0.6초 8단(+밝기 차가 크면 검정 거침 — s3night.js ch1.cuX). 300ms 미만으로 일부러 준 in/out(장부 1ms·떨어짐 120ms 등)은 그대로
@@ -74412,7 +74691,11 @@ MC.addLang('en', {
             o.render(sc, 16);
             const dm = dimOf(); if (dm > 0) g.ditherFill('#000000', dm);
           });
-          if (inPh) CUX.drawIn(xst, buf, sc.t, IN); else U.drawDither(buf, 0, 0, lv);
+          // [fix 11-10 A11] 짧게(300ms 미만) 걷히는 화면형 그림(정지 그림 still out 120·200·250 — 1817 첫 만남 등잔빛 파리아 등): 16단 디더로 아래 화면과 섞으면 가운데 단(50%)에서
+          //   얼굴 위에 바둑판이 덮였다(r5 A11 · 4-7). → 앞 60%는 그림 전체를 한 단씩 어둡게(3단 — 칸마다 같은 비율, 망사·반투명 없음), 뒤 40%는 검정이 굵은 디더 3단으로 걷히며 아래 화면이 나온다(얼굴은 이미 검정).
+          //   되돌리기: ?uw2off=A11(옛 16단 디더) 또는 이 칸을 지우고 아래 else의 옛 한 줄만 남긴다
+          if (!inPh && sc.out >= 0 && OUT === out0 && OUT >= 60 && lv < 16 && MC.uw2 && MC.uw2('A11') && a11Out(buf, sc.out / OUT)) { /* 그렸다 */ }
+          else if (inPh) CUX.drawIn(xst, buf, sc.t, IN); else U.drawDither(buf, 0, 0, lv);
         } catch (e) { MC.core.error(e, o.name + '.render'); sc.end(o.safe ? o.safe() : { ok: true }); }
       };
       if (o.init) o.init(sc);
@@ -74554,7 +74837,7 @@ MC.addLang('en', {
     if (r) return r;
     r = { x: im.width / 2, y0: Math.round(im.height * 0.08), y1: Math.round(im.height * 0.9) };
     try {
-      const d = im.getContext('2d').getImageData(0, 0, im.width, im.height).data;
+      const d = MC.gfx.rd(im).getImageData(0, 0, im.width, im.height).data;
       let best = 0, bx = -1, by0 = 0, by1 = 0;
       for (let x = Math.round(im.width * 0.3); x < Math.round(im.width * 0.7); x++) {
         let n = 0, y0 = -1, y1 = -1;
@@ -75088,7 +75371,7 @@ MC.addLang('en', {
     let r = flameMemo.get(im); if (r) return r;
     r = [im.width / 2, 2];
     try {
-      const d = im.getContext('2d').getImageData(0, 0, im.width, im.height).data; let best = 0;
+      const d = MC.gfx.rd(im).getImageData(0, 0, im.width, im.height).data; let best = 0;
       for (let y = 0; y < im.height; y++) for (let x = 0; x < im.width; x++) { const o = (y * im.width + x) * 4; if (!d[o + 3]) continue; const v = d[o] * 2 + d[o + 1] - d[o + 2] * 2; if (d[o] > 180 && v > best) { best = v; r = [x + 0.5, y + 0.5]; } }
     } catch (_) {}
     flameMemo.set(im, r); return r;
@@ -75155,7 +75438,7 @@ MC.addLang('en', {
     let r = ropeScanM.get(im); if (r) return r;
     r = { end: [im.width / 2, im.height], ankle: [im.width / 2, im.height * 0.5] };
     try {
-      const d = im.getContext('2d').getImageData(0, 0, im.width, im.height).data, span = y => { let x0 = -1, x1 = -1; for (let x = 0; x < im.width; x++) if (d[(y * im.width + x) * 4 + 3]) { if (x0 < 0) x0 = x; x1 = x; } return [x0, x1]; };
+      const d = MC.gfx.rd(im).getImageData(0, 0, im.width, im.height).data, span = y => { let x0 = -1, x1 = -1; for (let x = 0; x < im.width; x++) if (d[(y * im.width + x) * 4 + 3]) { if (x0 < 0) x0 = x; x1 = x; } return [x0, x1]; };
       for (let y = im.height - 1; y >= 0; y--) { const s = span(y); if (s[0] >= 0) { r.end = [(s[0] + s[1] + 1) / 2, y + 1]; break; } }
       let best = 1e9;
       for (let y = Math.round(im.height * 0.3); y < Math.round(im.height * 0.65); y++) { const s = span(y); if (s[0] >= 0 && s[1] - s[0] < best) { best = s[1] - s[0]; r.ankle = [(s[0] + s[1] + 1) / 2, y + 0.5]; } }
@@ -75517,7 +75800,7 @@ MC.addLang('en', {
     const src = ch1.titleCastle ? ch1.titleCastle() : null;
     if (!src) return null;
     if (ifTitle && ifTitle.src === src && ifTitle.w === src.width) return ifTitle;
-    const W = src.width, H = src.height, id = src.getContext('2d').getImageData(0, 0, W, H), d = id.data;
+    const W = src.width, H = src.height, id = MC.gfx.rd(src).getImageData(0, 0, W, H), d = id.data;
     let x0 = W, y0 = H, x1 = -1, y1 = -1;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     if (x1 < 0) return null;
@@ -76906,7 +77189,7 @@ MC.addLang('en', {
     if (winMemo.has(art)) return winMemo.get(art);
     let r = null;
     try {
-      const d = art.getContext('2d').getImageData(0, 0, art.width, art.height).data; let best = 0;
+      const d = MC.gfx.rd(art).getImageData(0, 0, art.width, art.height).data; let best = 0;
       for (let y = 0; y < art.height; y++) for (let x = Math.floor(art.width * 0.6); x < art.width; x++) { const o = (y * art.width + x) * 4; if (!d[o + 3]) continue; const v = d[o] + d[o + 1] - d[o + 2] * 1.5; if (d[o] > 170 && v > best) { best = v; r = [x + 0.5, y + 0.5]; } }
     } catch (_) {}
     winMemo.set(art, r); return r;
@@ -77418,7 +77701,7 @@ MC.addLang('en', {
     const key = img.width + 'x' + img.height;
     if (!colMemo[key]) {
       const out = [];
-      try { const d = img.getContext('2d').getImageData(img.width - 1, 0, 1, img.height).data; for (let r = 60 * (D > 1 ? D : 1); r < img.height; r++) if (d[r * 4 + 3] > 10) out.push([r, 'rgb(' + d[r * 4] + ',' + d[r * 4 + 1] + ',' + d[r * 4 + 2] + ')']); } catch (_) {}
+      try { const d = MC.gfx.rd(img).getImageData(img.width - 1, 0, 1, img.height).data; for (let r = 60 * (D > 1 ? D : 1); r < img.height; r++) if (d[r * 4 + 3] > 10) out.push([r, 'rgb(' + d[r * 4] + ',' + d[r * 4 + 1] + ',' + d[r * 4 + 2] + ')']); } catch (_) {}
       colMemo[key] = out;
     }
     const g = G(), col = colMemo[key];
@@ -77616,7 +77899,7 @@ MC.addLang('en', {
     let r = null;
     try {
       const w = Math.min(img0.width, img1.width), h = Math.min(img0.height, img1.height);
-      const d0 = img0.getContext('2d').getImageData(0, 0, w, h).data, d1 = img1.getContext('2d').getImageData(0, 0, w, h).data;
+      const d0 = MC.gfx.rd(img0).getImageData(0, 0, w, h).data, d1 = MC.gfx.rd(img1).getImageData(0, 0, w, h).data;
       let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
       for (let i = 0; i < d0.length; i += 4) if (Math.abs(d0[i] - d1[i]) + Math.abs(d0[i + 1] - d1[i + 1]) + Math.abs(d0[i + 2] - d1[i + 2]) + Math.abs(d0[i + 3] - d1[i + 3]) > 40) { const p = i >> 2, x = p % w, y = (p / w) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
       if (x1 >= 0) r = [(x0 + x1) >> 1, y0 + 3 * D];
@@ -78550,7 +78833,7 @@ MC.addLang('en', {
     let v = 0.5;
     try {
       const e = imgOf(key), c = e && e.B ? G().getSprite(e.B) : null;
-      if (c) { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let s = 0, n = 0; for (let i = 0; i < d.length; i += 4 * 5) { s += d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; n++; } v = n ? s / n / 255 : 0.5; }
+      if (c) { const d = MC.gfx.rd(c).getImageData(0, 0, c.width, c.height).data; let s = 0, n = 0; for (let i = 0; i < d.length; i += 4 * 5) { s += d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; n++; } v = n ? s / n / 255 : 0.5; }
     } catch (_) {}
     lumaCache.set(key, v);
     return v;
@@ -80440,7 +80723,7 @@ MC.addLang('en', {
   const NUM = new Map(), NUM_PAL = { silver: ['#c8d4ec', '#ffffff', '#5a6a90'], gold: ['#ffd98a', '#fff6d8', '#b07830'], white: ['#ffffff', '#ffffff', '#c8d4ec'] };
   function inkBox(im) {                                     // 구운 글의 잉크(불투명) 네모 — 글 판 위아래 여백과 상관없이 아랫변을 맞추려고
     try {
-      const d = im.getContext('2d').getImageData(0, 0, im.width, im.height).data;
+      const d = MC.gfx.rd(im).getImageData(0, 0, im.width, im.height).data;
       let x0 = im.width, y0 = im.height, x1 = -1, y1 = -1;
       for (let y = 0; y < im.height; y++) for (let x = 0; x < im.width; x++) if (d[(y * im.width + x) * 4 + 3] > 0) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
       return x1 < 0 ? { x: 0, y: 0, w: 0, h: 0 } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
