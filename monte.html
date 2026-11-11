@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.9.6-full';
+  var VERSION = '0.9.7-read';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -21104,7 +21104,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
         // 9′. S3 끝 27번 장부(H2-11): s3s.end → call s4c.ledger27 · 장부 넉 줄 = M86 글자
         if (evs['s3s.end'] && !callsIn('s3s.end', 's4c.ledger27')) err('event s3s.end', 'call s4c.ledger27 없음(S3 끝 27번 장부 — H2-11)');
         if (evs['s4c.ledger27']) {
-          const M86 = ['27번.', '1811년 입소.', '비고: 정신 이상.', '1828년 현재, 생존.'];
+          const M86 = ['27번.', '1811년 수감.', '비고: 정신 이상.', '1828년 현재, 생존.'];
           const lg = opsIn('s4c.ledger27', c => c.op === 'custom' && c.id === 's4' && c.args && c.args.stage === 'ledger');
           if (!lg.length) err('event s4c.ledger27', 'custom s4 ledger 없음');
           else if (JSON.stringify(lg[0][0].args.ledger) !== JSON.stringify(M86)) err(lg[0][1], '27번 장부 넉 줄이 M86 글자와 다름 ' + JSON.stringify(lg[0][0].args.ledger));
@@ -45661,7 +45661,7 @@ const pt = n => (SPR[n] ? n : null);
   //   이름이 곧 직업인 화자(간수·감찰관·선장 등)와 아버지에게는 달지 않는다. 글은 작중 호칭에 맞춘다(재단사 — a4c.hands 귀띔, 검사 — 「검사님」)
   "dantes":     { "name": "{name}",     "portrait": "pt_dantes",     "color": "#f0c860", "voice": "dantes" },
   "morrel":     { "name": "모렐",       "portrait": "pt_morrel",     "color": "#c8d8a0", "voice": "morrel", "role": "선주" },
-  "danglars":   { "name": "당글라르",   "portrait": "pt_danglars",   "color": "#b8b0c8", "voice": "danglars", "role": "회계사" },
+  "danglars":   { "name": "당글라르",   "portrait": "pt_danglars",   "color": "#b8b0c8", "voice": "danglars", "role": "회계 담당" },
   "fernand":    { "name": "페르낭",     "portrait": "pt_fernand",    "color": "#b8b0c8", "voice": "fernand", "role": "어부" },
   "caderousse": { "name": "카드루스",   "portrait": "pt_caderousse", "color": "#b8b0c8", "voice": "caderousse", "role": "재단사" },
   "mercedes":   { "name": "메르세데스", "portrait": "pt_mercedes",   "color": "#f08a8a", "voice": "mercedes", "role": "약혼녀" },
@@ -45747,7 +45747,7 @@ const pt = n => (SPR[n] ? n : null);
     "danglars": {
       "place": "reserve",
       "past": ANY("a1.arrived", "a1.done"),
-      "intro": "파라옹호의 회계사.\n셈이 빠르고, 늘 웃는다.",
+      "intro": "파라옹호의 회계 담당.\n셈이 빠르고, 늘 웃는다.",
       "bio": [
         { "t": "장부 글씨는 반듯한데,\n소매 끝은 잉크로 새까맣다.", "cond": { "any": [ { "var": "a1.t_danglars", "gte": 1 }, F("dd.n3") ] } },
         { "t": "내가 선장이 되면,\n그 장부부터 들여다봤을 터.", "cond": F("dd.n1") },
@@ -45791,7 +45791,7 @@ const pt = n => (SPR[n] ? n : null);
       "bio": [
         { "t": "'난 기다리는 쪽을 골랐어.'\n페르낭에게 그렇게 말했다.", "cond": F("a1.catalan_done") },
         { "t": "기다리겠다고 외쳤다.\n끌려가는 내 등 뒤에서.", "cond": F("a2.arrested") },
-        { "t": "14년이 지났다.\n그녀도 이제 서른하나다.", "cond": F("s4e.counted") }
+        { "t": "14년이 지났다.\n메르세데스도 서른하나다.", "cond": F("s4e.counted") }
       ]
     },
     "villefort": {
@@ -45868,7 +45868,7 @@ MC.data.battle = {
         { "t": "신부님, 이게 제 바다예요!", "tags": { "era":"learn", "faria":"with" } },
         { "t": "모렐 씨만은 달랐다.", "tags": { "era":"truth" } },
         { "t": "그 찬장은 내가 채운다.", "tags": { "era":"truth" } },
-        { "t": "그건 내 잔치였다.", "tags": { "era":"truth" } },
+        { "t": "그건 내 파티였다.", "tags": { "era":"truth" } },
         { "t": "신부님, 보고 계십니까.", "tags": { "faria":"gone" } },
         { "t": "그 항구는 그대로다.", "tags": { "era":"alone" } },
         { "t": "여기서 끝낼 순 없다.", "tags": { "era":"alone", "hpLow":true } }
@@ -48820,7 +48820,7 @@ MC.addEvents({
     { "op": "cam", "to": "player", "ms": 400 },
     { "op": "intro", "id": "morrel" },                                    // [people] 모렐 소개 컷(당글라르는 첫 대사 앞에 저절로)
     { "op": "say", "who": "dantes", "face": "sad", "t": [ "모렐 씨!", "……르클레르 선장님이 바다에서 돌아가셨습니다." ] },
-    { "op": "say", "who": "morrel", "face": "sad", "t": "……그 양반이?{p:300} 나폴리를 떠날 땐 정정했는데." },
+    { "op": "say", "who": "morrel", "face": "sad", "t": "……그 양반이?{p:300} 떠나던 날엔 그리 정정했는데." },
     { "op": "say", "who": "dantes", "face": "sad", "t": "열병이었습니다.{p:200} 사흘 앓으시고, 그대로." },
     { "op": "emote", "id": "morrel", "kind": "dots", "ms": 1200 },
     { "op": "say", "who": "morrel", "t": "……화물은?" },
@@ -48860,7 +48860,7 @@ MC.addEvents({
     { "op": "sfx", "id": "cloth_slip", "gain": 0.3, "pitch": 1.1 },
     { "op": "jump", "id": "player", "h": 1, "ms": 140 },
     { "op": "wait", "ms": 450 },
-    { "op": "say", "who": "morrel", "t": [ "아직 공식은 아니니 들뜨지 말고.", "자, 그럼. 오늘은 아버님부터 찾아뵙게.", "카탈루냐에서 누가 아침부터 부두만 보더군." ] },
+    { "op": "say", "who": "morrel", "t": [ "아직 공식은 아니니 들뜨지 말고.", "자, 그럼. 오늘은 아버님부터 찾아뵙게.", "카탈루냐 마을에서 누가 아침부터 부두만 보더군." ] },
     { "op": "say", "who": "dantes", "face": "smile", "t": "네!{p:200} 다녀오겠습니다!" },
     { "op": "face", "id": "player", "dir": "left" },
     { "op": "say", "who": "danglars", "face": "smirk", "t": "……축하드립니다.{p:300} 공식이 되면, 한 번 더 드리지요." },
@@ -48918,7 +48918,7 @@ MC.addEvents({
       "else": [ { "op": "if", "cond": { "var": "a1.t_danglars", "gte": 1 },
         "then": [ { "op": "say", "who": "danglars", "face": "smirk", "t": "축하드립니다, 예비 선장님.{p:300} '예비'라는 말은 참 편리하지요." } ],
         "else": [
-          { "op": "say", "who": "danglars", "t": "선원 열둘에 하루 반.{p:300} 열여덟 사람 몫입니다." },
+          { "op": "say", "who": "danglars", "t": "선원 열둘에 하루 반.{p:300} 열여덟 날 치 품삯입니다." },
           { "op": "say", "who": "danglars", "t": "적어 뒀습니다. 누구 앞으로 달아 둘지는 선주님이 정하시겠지요." },
           { "op": "wait", "ms": 300 },
           { "op": "say", "who": "think", "t": "……장부 글씨는 반듯한데,{p:200} 소매 끝은 잉크로 새까맣다." }
@@ -49240,7 +49240,7 @@ MC.addEvents({
   ],
 
   "a1.reserve_greet": [
-    { "op": "say", "who": "danglars", "t": "오, 예비 신랑!{p:200} 날은 잡았소?", "pos": "top" },
+    { "op": "say", "who": "danglars", "t": "오, 예비 신랑!{p:200} 날은 잡았습니까?", "pos": "top" },
     { "op": "emote", "id": "player", "kind": "exclaim", "ms": 600 },
     { "op": "face", "id": "player", "dir": "up" },
     { "op": "cam", "to": [7, 10], "ms": 700 },
@@ -49953,7 +49953,7 @@ MC.addEvents({
   "a1b.father_talk": [
     { "op": "if", "cond": { "var": "a1b.t_father", "gte": 1 },
       "then": [ { "op": "if", "cond": { "var": "father", "eq": "B" },
-        "then": [ { "op": "say", "who": "father", "face": "smile", "t": "선장이라…….\n{p:300}네 어미가 봤어야 하는데." } ],
+        "then": [ { "op": "say", "who": "father", "face": "smile", "t": "선장이라……\n{p:300}네 어미가 봤어야 하는데." } ],
         "else": [ { "op": "say", "who": "father", "t": "어서 가 봐라.\n{p:250}메르세데스가 목 빠지겠다." } ] } ],
       "else": [ { "op": "if", "cond": { "var": "sardine", "eq": "Y" },
         "then": [ { "op": "say", "who": "father", "face": "smile", "t": "저녁엔 정어리 굽자.\n{p:200}늦지 마라." } ],
@@ -50217,7 +50217,7 @@ MC.addEvents({
 
   "a2.guest_b": [
     { "op": "if", "cond": { "var": "a2.t_guest_b", "gte": 1 },
-      "then": [ { "op": "say", "who": "guest", "t": "스무 살도 안 된 선장이라니.{p:300} 나 때는 말이야……" } ],
+      "then": [ { "op": "say", "who": "guest", "t": "스무 살도 안 된 선장이라니.{p:300} 내 젊을 적엔……" } ],
       "else": [ { "op": "say", "who": "guest", "t": "파라옹호 새 선장이라지?{p:200} 모렐 씨가 사람 볼 줄 알아." } ] },
     { "op": "add", "var": "a2.t_guest_b", "n": 1 }
   ],
@@ -50240,7 +50240,7 @@ MC.addEvents({
   ],
 
   "a2.wine": [
-    { "op": "say", "who": "think", "t": "모렐 씨가 통째로 들여온 포도주다.{p:200} 벌써 반이 비었다." }
+    { "op": "say", "who": "think", "t": "모렐 씨가 궤짝째 들여온 포도주다.{p:200} 벌써 반이 비었다." }
   ],
 
   /* ───────────── 2-2 건배와 체포 ───────────── */
@@ -50293,12 +50293,13 @@ MC.addEvents({
     { "op": "face", "id": "cop", "dir": "up" },
     { "op": "say", "who": "police", "t": "에드몽 당테스." },
     { "op": "say", "who": "dantes", "face": "shock", "t": "……접니다만." },
-    { "op": "say", "who": "police", "t": "법의 이름으로 연행한다." },
+    { "op": "say", "who": "police", "t": "법의 이름으로 체포한다." },
     { "op": "sfx", "id": "sting" },
     { "op": "face", "id": "morrel", "dir": "down" },
     { "op": "say", "who": "morrel", "t": "무슨 착오요!{p:200} 이 사람은 우리 배 선장이오!" },
-    { "op": "say", "who": "police", "t": "착오인지 아닌지는 검사님이 정하시오." },
+    { "op": "say", "who": "police", "t": "착오인지 아닌지는 검사님이 정하실 거요." },
     { "op": "say", "who": "dantes", "t": "괜찮습니다, 모렐 씨." },
+    { "op": "say", "who": "dantes", "t": "아버지, 걱정 마세요.{p:300}\n금방 다녀옵니다." },   // [0.9.7 통독 나4]
     { "op": "face", "id": "player", "dir": "up" },
     { "op": "say", "who": "dantes", "face": "smile", "t": "메르세데스, 금방 올게.{p:300} 시청은 저녁에 가자." },
     { "op": "move", "id": "cop,player", "path": "L1 D3", "speed": 320, "async": true },
@@ -50362,6 +50363,8 @@ MC.addEvents({
     { "op": "say", "who": "think", "t": "찬탈자라면…… 엘바의 나폴레옹.{p:300}\n그 편지가, 나를?" },   // [s44-writer B3-18] 1815년의 배경 한 줄(투서의 '찬탈자'를 풀어 준다)
     { "op": "say", "who": "dantes", "t": "……처음 봅니다. 글씨를 막 배운 사람 같네요." },
     { "op": "say", "who": "villefort", "t": "나도 그리 보오.{p:200} 이런 종이 한 장으로 사람을 가두진 않소." },
+    { "op": "say", "who": "villefort", "t": "누구 원한 살 일은 없었소?" },   // [0.9.7 통독 나6] 추리의 밤 씨앗
+    { "op": "say", "who": "dantes", "t": "저 같은 사람한테{p:200}\n적이 있겠습니까." },
 
     { "op": "sfx", "id": "quill" },
     { "op": "wait", "ms": 600 },
@@ -50369,7 +50372,7 @@ MC.addEvents({
     { "op": "choice", "who": "think", "t": "엘바에 들른 이유는……", "var": "honest", "opts": [
       { "t": "선장님 유언이었다.", "v": "A", "do": [
         { "op": "say", "who": "dantes", "t": [ "선장님이 숨을 거두시며 부탁하셨습니다.", "엘바에 꾸러미를 전하라고." ] } ] },
-      { "t": "돛대를 손보느라…….", "v": "B", "do": [
+      { "t": "돛대를 손보느라……", "v": "B", "do": [
         { "op": "say", "who": "dantes", "t": "돛대에……{p:200} 손볼 데가 좀 있어서요." },
         { "op": "wait", "ms": 400 },
         { "op": "say", "who": "villefort", "t": "항해사가 돛대 핑계라니,{p:200} 돛대가 서운하겠소." },
@@ -50879,7 +50882,7 @@ MC.addEvents({
       { "op": "light", "dark": 0, "ms": 0 },
       { "op": "vignette", "a": 0, "ms": 0 },
       // [s44-director B5-3] 입소 장부 — 장부 3부작의 첫째(이름에 줄이 그어진다)
-      { "op": "custom", "id": "s4", "args": { "stage": "ledger", "ledger": [ "34번.", "1815년 2월 28일 입소.", "이름: 에드몽 당테스" ], "strike": [ 2, 4 ], "after": 1200 } },
+      { "op": "custom", "id": "s4", "args": { "stage": "ledger", "ledger": [ "34번.", "1815년 2월 28일 수감.", "이름: 에드몽 당테스" ], "strike": [ 2, 4 ], "after": 1200 } },
       { "op": "set", "flag": "a2.done", "v": true },
       { "op": "call", "ev": "a3.start" }
     ]
@@ -50996,7 +50999,7 @@ MC.addEvents({
       { "op": "sfx", "id": "knock", "cap": "철문 · 두드리는 소리", "ring": "door" }, { "op": "shake", "p": 0.12 }, { "op": "wait", "ms": 220 },
       { "op": "sfx", "id": "knock", "pitch": 1.05, "cap": "철문 · 두드리는 소리", "ring": "door" }, { "op": "shake", "p": 0.12 }, { "op": "wait", "ms": 220 },
       { "op": "sfx", "id": "knock", "pitch": 0.95, "cap": "철문 · 두드리는 소리", "ring": "door" }, { "op": "shake", "p": 0.16 }, { "op": "vibrate", "p": 30 },
-      { "op": "say", "who": "dantes", "face": "shock", "t": "여보세요!{p:250} 여보세요,{p:150} 누구 없습니까?" },
+      { "op": "say", "who": "dantes", "face": "shock", "t": "이보시오!{p:250} 이보시오,{p:150} 누구 없습니까?" },
       { "op": "wait", "ms": 900 },
       { "op": "sfx", "id": "drip", "cap": "물방울 소리" },
       { "op": "wait", "ms": 700 },
@@ -51109,7 +51112,7 @@ MC.addEvents({
             { "op": "say", "who": "think", "t": "빗금은 1817년에서 멈췄다.{p:300}\n이제 날을 세지 않는다." } ],
           "else": [
             { "op": "say", "who": "narr", "t": "빗금 사이사이에 신부님이 라틴어 동사를 적어 놓았다." },
-            { "op": "say", "who": "think", "t": [ "아모, 아마스, 아마트.", "날을 세던 벽이 이제는 교과서다." ] } ] },
+            { "op": "say", "who": "think", "t": [ "아모, 아마스, 아마트.", "날을 세던 벽이 이제는 교본이다." ] } ] },
         { "op": "end" } ] },
       { "op": "if", "cond": { "var": "days", "gte": 730 },
         "then": [
@@ -51436,7 +51439,7 @@ MC.addEvents({
           { "op": "say", "who": "dantes", "t": "재판을 받게 해 주십시오. 재판도 없이 왔습니다." },
           { "op": "say", "who": "inspector", "t": "재판이라. 적어 두지." } ] },
         { "t": "편지는 검사님만 봤습니다.", "v": "B", "do": [
-          { "op": "say", "who": "dantes", "t": "제 편지를 읽은 건 빌포르 검사님뿐입니다." },
+          { "op": "say", "who": "dantes", "t": "그 편지를 읽은 건 빌포르 검사님뿐입니다." },
           { "op": "emote", "id": "inspector", "kind": "dots", "ms": 900 },
           { "op": "say", "who": "inspector", "t": "……빌포르. 적어 두지." } ] },
         { "t": "저는 아무 죄도 없습니다.", "v": "C", "do": [
@@ -51445,7 +51448,7 @@ MC.addEvents({
       ] },
       { "op": "sfx", "id": "quill" }, { "op": "wait", "ms": 450 },
       { "op": "sfx", "id": "quill", "pitch": 1.1 }, { "op": "wait", "ms": 400 },
-      { "op": "say", "who": "inspector", "t": "기록을 확인하겠소.{p:400} 약속하지." },
+      { "op": "say", "who": "inspector", "t": "기록을 확인하겠소.{p:400} 약속하오." },
       { "op": "give", "item": "inspector_note" },
       { "op": "set", "var": "promise", "v": 0 },
       { "op": "set", "flag": "a3.inspected" },
@@ -51866,7 +51869,7 @@ MC.addEvents({
       { "op": "fade", "to": 0, "ms": 900 },
       { "op": "call", "ev": "a3.getup" },
       { "op": "wait", "ms": 300 },
-      { "op": "say", "who": "think", "t": "간수가 들고 오는 것 중에{p:200}\n쇠는…… 국 냄비." },
+      { "op": "say", "who": "think", "t": "간수가 들고 오는 것 중에{p:200}\n쇠는…… 국 냄비 손잡이." },
       { "op": "spawn", "id": "plate_spot", "type": "thing", "sprite": "ob_pickup", "x": 6, "y": 2, "solid": false, "z": -1 },
       { "op": "walkto", "id": "player", "to": [ 6, 3 ], "speed": 220, "face": "up" },
       { "op": "face", "id": "player", "dir": "up" },
@@ -51922,7 +51925,7 @@ MC.addEvents({
       { "op": "wait", "ms": 600 },
       { "op": "say", "who": "think", "t": "……나무?{p:400} 들보다." },
       { "op": "wait", "ms": 800 },
-      { "op": "say", "who": "dantes", "face": "sad", "t": "……하느님.{p:500}\n여기까지 와서, 막으십니까." },
+      { "op": "say", "who": "dantes", "face": "sad", "t": "……하느님.{p:500}\n여기까지 와서, 절망하라 하십니까." },
       // [r3 B1] 막힌 들보를 주먹으로 내리친다(탭) — 그 소리에 바닥 밑 목소리가 답하고(「하느님과 절망을……」), 뒤 「그 들보는 건드리지 말게」가 이 주먹을 받는다.
       //   탭만 이어지는 최장 11 → 9. 되돌리기: 이 꼬리표 주석 두 줄과 아래 op 4줄(TAP부터 wait 700까지)을 지운다
       TAP("hole_w", "들보를 내리친다."),
@@ -52173,9 +52176,9 @@ MC.addEvents({
       ] },
       { "op": "bgm", "id": "faria", "fade": 3000 },
       { "op": "wait", "ms": 700 },
-      { "op": "say", "who": "unknown", "t": "……흠.{p:300}\n파도 소리가 안 나는군." },
-      { "op": "say", "who": "unknown", "t": "계산이 틀렸어.{p:200}\n바다 쪽이어야 하는데." },
-      { "op": "say", "who": "dantes", "face": "shock", "t": "누,{p:150} 누구……" },
+      { "op": "say", "who": "unknown", "t": "……역시.{p:300}\n파도 소리가 안 나는군." },
+      { "op": "say", "who": "unknown", "t": "계산이 틀렸던 걸세.{p:200}\n바다 쪽이어야 하는데." },
+      { "op": "say", "who": "dantes", "face": "shock", "t": "어,{p:150} 어젯밤 그 목소리……" },
       { "op": "sfx", "id": "stone_lift", "pitch": 1.0, "gain": 0.7 },
       { "op": "spawn", "id": "hole_m", "type": "thing", "sprite": "ob_hole", "x": 7, "y": 6, "solid": true, "z": -2 },
       { "op": "spawn", "id": "lid", "type": "thing", "sprite": "ob_stone_lid_0", "x": 6, "y": 6, "solid": false, "z": -1 },
@@ -52188,7 +52191,7 @@ MC.addEvents({
       //   → 두 상자가 끝나면 곧바로(holdAfter 0) 0.2초 디더로 걷히고, 0.25초 기다린 뒤 일어서는 그림 · 뛰어오름이 보인다. hidePt = 그림이 있는 동안 상자 초상 숨김.
       //   그림이 없으면 still이 곧바로 끝나 지금 흐름(+0.25초)과 같다. 되돌리기: 이 주석 네 줄과 아래 op 두 줄(still · wait)을 지운다
       { "op": "custom", "id": "s4", "args": { "stage": "still", "spr": "cu_faria_lamp", "ms": 1200, "max": 2, "y": 0.42, "bg": "#000000", "out": 200, "holdSay": 1, "holdAfter": 0, "hidePt": true } },
-      { "op": "say", "who": "unknown", "t": [ "아, 실례했네.", "노크를 했어야 하는데,{p:200}\n문이 없어서." ] },
+      { "op": "say", "who": "unknown", "t": [ "아, 실례했네.", "문을 두드렸어야 하는데,{p:200}\n문이 없어서." ] },
       { "op": "wait", "ms": 400 },                                        // [r3 B5-gem] 정지 컷이 다 걷힌 뒤에 일어선다(걷힘 약 0.3초 + 여유)
       { "op": "sprite", "id": "faria_m", "sprite": "ch_faria" },
       { "op": "jump", "id": "faria_m", "h": 5, "ms": 260 },
@@ -52359,8 +52362,8 @@ MC.addEvents({
     "a4.lesson_lang": [
       { "op": "face", "id": "faria", "dir": "player" },
       { "op": "say", "who": "faria", "t": "오늘은 말일세.{p:200}\n첫 단어는 '빵'." },
-      { "op": "say", "who": "faria", "t": "파네, 브레드, 판.{p:200}\n따라 해 보게." },
-      { "op": "say", "who": "dantes", "t": "파네.{p:150} 브레드.{p:150} 판." },
+      { "op": "say", "who": "faria", "t": "브로트, 브레드, 판.{p:200}\n따라 해 보게." },
+      { "op": "say", "who": "dantes", "t": "브로트.{p:150} 브레드.{p:150} 판." },
       { "op": "say", "who": "faria", "face": "smile", "t": "잘하는군.{p:200} 이제 자네는 세 나라에서 굶지 않겠군." },
       { "op": "wait", "ms": 300 },
       { "op": "say", "who": "faria", "t": "말을 많이 알수록 속일 수 있는 사람도 많아지지." },
@@ -52369,7 +52372,7 @@ MC.addEvents({
         "else": [ { "op": "say", "who": "dantes", "t": "……그리고 속이는 사람을 알아볼 수도 있겠지요." } ] },
       { "op": "learn", "skill": "whisper" },
       { "op": "set", "flag": "a4.lesson_lang" },
-      SEASON("그해 겨울 내내, 이탈리아어."),                              // [s44-writer B3-23]
+      SEASON("그해 겨울 내내, 세 나라 말."),                              // [s44-writer B3-23]
       { "op": "call", "ev": "a4.lesson_after" }
     ],
 
@@ -52516,7 +52519,7 @@ MC.addEvents({
     "a4.talk_4": [
       { "op": "say", "who": "faria", "t": "로마에 성미 급한 추기경이 하나 있었네." },
       { "op": "say", "who": "faria", "t": "화가 나면 더 크게 화를 냈지.{p:200} 불에 기름을 붓듯이." },
-      { "op": "say", "who": "faria", "t": [ "그를 식힌 건 시골 신부의 한마디였지.", "「내일은 개겠습니다, 예하.」" ] },
+      { "op": "say", "who": "faria", "t": [ "그를 식힌 건 시골 신부의 한마디였지.", "'내일은 개겠습니다, 예하.'" ] },
       { "op": "say", "who": "dantes", "t": "……날씨 얘기로요?" },
       { "op": "say", "who": "faria", "t": "화난 사람한테는 내일을 보여 주면 되네." },
       { "op": "say", "who": "faria", "t": [ "꿈속의 분노도 같네.", "첫 수업에 자네가 적은 그 이유.{p:200} 그게 자네 내일일세." ] },   // [r3 B8] 기술 「희망」→「내일」(작⑤ — 낱말 「희망」은 시리즈 끝을 위해 아낀다). 옛 「…그게 희망일세.」
@@ -52629,7 +52632,7 @@ MC.addEvents({
     ],
     "a4.prop_ink": [
       { "op": "say", "who": "narr", "t": "그을음에 포도주 찌꺼기를 갠 잉크." },
-      { "op": "if", "cond": { "flag": "a4.talk_2" }, "then": [ { "op": "say", "who": "think", "t": "맛은 보지 말라고 하셨지." } ] }
+      { "op": "if", "cond": { "flag": "a4m.p_ink" }, "then": [ { "op": "say", "who": "think", "t": "맛은 보지 말라고 하셨지." } ] }
     ],
     "a4.prop_stars": [
       { "op": "say", "who": "narr", "t": "그을음으로 그린 별 지도." },
@@ -52943,7 +52946,7 @@ MC.addEvents({
       { "op": "face", "id": "faria_m", "dir": "left" },
       { "op": "wait", "ms": 900 },
       { "op": "say", "who": "faria", "face": "sad", "t": "……창살 창.{p:400} 철문.{p:400} 짚단." },
-      { "op": "say", "who": "faria", "t": "바깥벽인 줄 알았는데.{p:300}\n남의 방이었군." },
+      { "op": "say", "who": "faria", "t": "바깥벽인 줄 알았는데.{p:300}\n정말 남의 방이군." },
       { "op": "music", "fn": "detuneTo", "args": [-40, 1.2] },
       { "op": "walkto", "id": "faria_m", "to": [6, 5], "speed": 520, "face": "down" },
       { "op": "face", "id": "player", "dir": "left" },
@@ -53031,7 +53034,7 @@ MC.addEvents({
       { "op": "emote", "id": "faria_m", "kind": "exclaim", "ms": 700 },
       { "op": "say", "who": "faria", "face": "worry", "t": "황제?{p:300} 그 사람이 왕좌에 없단 말인가?" },
       { "op": "say", "who": "dantes", "t": "1814년에 물러나 엘바 섬에 있습니다.{p:400} ……제가 갇힐 땐." },
-      { "op": "say", "who": "faria", "face": "smile", "t": "그 거인도 섬에 갇혔군.{p:300}\n……우리 셋 다 섬 신세야." },
+      { "op": "say", "who": "faria", "face": "smile", "t": "그 거인도 섬에 갇혔군.{p:300}\n……우리 셋 다 섬 신세일세." },
       { "op": "wait", "ms": 400 },
       { "op": "emote", "id": "faria_m", "kind": "dots", "ms": 900 },
       { "op": "say", "who": "faria", "face": "stern", "t": "……그런데 자네,{p:300}\n정말 죄수인가?" },
@@ -53229,7 +53232,7 @@ MC.addEvents({
       { "op": "wait", "ms": 500 },
       { "op": "move", "id": "player", "path": "D2", "speed": 280, "face": "down" }
     ], CRAWL, [
-      { "op": "narr", "t": "무릎으로 기었다.{p:400} 쉰 걸음쯤.", "ms": 2000 },
+      { "op": "narr", "t": "무릎으로 기었다.{p:400} 쉰 자쯤.", "ms": 2000 },
       { "op": "set", "var": "m4phase", "v": "n2" },
       { "op": "set", "var": "fcSeen", "v": 0 },
       { "op": "despawn", "id": "lid,hole_m" },
@@ -53427,7 +53430,7 @@ MC.addEvents({
       { "op": "light", "r": 48, "ms": 0 },
       { "op": "fade", "to": 0, "ms": 900 },
       { "op": "call", "ev": "a4c.n2_clues" },
-      { "op": "say", "who": "dantes", "t": "비뚤비뚤했습니다.{p:300}\n글을 막 배운 사람처럼." },
+      { "op": "say", "who": "dantes", "t": "비뚤비뚤했습니다.{p:300}\n글씨를 막 배운 사람처럼." },
       { "op": "say", "who": "faria", "face": "stern", "t": "검사가 편지를 태웠고?" },
       { "op": "say", "who": "dantes", "t": "예.{p:300}\n저를 위해서라고 하셨습니다." },
       { "op": "say", "who": "think", "t": "……그 이름은 잊으라 하셨지만." },
@@ -53649,7 +53652,7 @@ MC.addEvents({
       { "op": "hint", "t": "벽 너머에, 사람이 생겼다.", "ms": 3600 },
       { "op": "wait", "ms": 1600 },
       { "op": "say", "who": "faria", "t": [ "여기서 나갈 수 있을지는 모르지만,", "머릿속은 아무도 가둘 수 없네." ] },
-      { "op": "say", "who": "dantes", "t": [ "신부님,{p:200}\n저는 배운 게 없습니다.", "글도 겨우 읽습니다." ] },
+      { "op": "say", "who": "dantes", "t": [ "신부님,{p:200}\n저는 배운 게 없습니다.", "아는 건 배와 바다뿐입니다." ] },
       { "op": "say", "who": "faria", "face": "smile", "t": [ "그럼 잘됐군.{p:200}\n우리한텐 시간이 넘쳐나니까.", "자,{p:150} 불부터 두세.{p:200}\n첫 수업일세." ] },
       { "op": "sfx", "id": "candle_light", "gain": 0.3, "pitch": 1.2 },
       { "op": "toast", "t": "신부님이 초 한 도막을 건넸다." },
@@ -53733,7 +53736,7 @@ MC.addEvents({
       { "op": "walkto", "id": "faria_m", "to": [4, 5], "speed": 1, "face": "right" },
       { "op": "face", "id": "player", "dir": "left" },
       { "op": "music", "fn": "layer", "args": [ "counter", true ] },
-      { "op": "narr", "t": "여섯 달 뒤,{p:300} 에드몽은 에스파냐 말로 꿈을 꾸었다.", "ms": 2800 },
+      { "op": "narr", "t": "여섯 달 뒤,{p:300} 에드몽은 영국 말로 꿈을 꾸었다.", "ms": 2800 },
       { "op": "fade", "to": 0, "ms": 800 },
       { "op": "say", "who": "dantes", "face": "smile", "t": "꿈에서 메르세데스가{p:200} 제 말을 못 알아듣더군요." },
       { "op": "say", "who": "faria", "face": "smile", "t": "그건 말 탓이 아닐세." },
@@ -53767,7 +53770,7 @@ MC.addEvents({
       // [content-s1] S1 보강 D 선택 메아리: 파티 전날 뤼크에게 매듭을 가르쳤으면(a1e.knot)
       { "op": "if", "cond": { "flag": "a1e.knot" }, "then": [
         { "op": "say", "who": "faria", "face": "smile", "t": "항구 꼬마들한테도{p:200} 그렇게 가르쳤나?" },
-        { "op": "say", "who": "dantes", "face": "smile", "t": "꼬마는 진땀을 빼고{p:200} 한 번에 했습니다." } ] },
+        { "op": "say", "who": "dantes", "face": "smile", "t": "꼬마들은 진땀을 뺐지만,{p:200}\n결국 다 해냈습니다." } ] },
       { "op": "set", "var": "knot", "v": 0 },
       { "op": "set", "var": "m4phase", "v": "mt4" },
       { "op": "fx", "kind": "sparkle", "at": "mt_rope", "n": 3 },
@@ -54041,11 +54044,11 @@ MC.addEvents({
   "a4t.enter": [
     { "op": "if", "cond": { "flag": "s3.on" }, "then": [ { "op": "call", "ev": "s3h.hole" }, { "op": "end" } ] },   // S3 훅(content-s3a, ARCHITECTURE_S3 §A-3)
     { "op": "if", "cond": { "flag": "a4t.clear1" }, "then": [
-      { "op": "say", "who": "faria", "t": "오늘은 더 못 파네.\n{p:200}흙을 숨길 데가 없네." },
+      { "op": "say", "who": "faria", "t": "오늘은 더 못 파겠군.\n{p:200}흙을 숨길 데가 없네." },
       { "op": "end" } ] },
     { "op": "choice", "who": "think", "t": "땅굴로 내려갈까?", "var": "a4t.go", "opts": [
-      { "t": "내려간다.", "v": "go" },
-      { "t": "그만둔다.", "v": "no", "cancel": true, "do": [ { "op": "end" } ] }
+      { "t": "내려간다", "v": "go" },
+      { "t": "그만둔다", "v": "no", "cancel": true, "do": [ { "op": "end" } ] }
     ] },
     { "op": "sfx", "id": "dig" },
     { "op": "map", "id": "tunnel1", "at": "start", "trans": "fade" }
@@ -54138,8 +54141,8 @@ MC.addEvents({
   /* 위로 난 구멍(up) — 감방으로 돌아가기(주운 것·진행 유지) */
   "a4t.leave": [
     { "op": "choice", "who": "think", "t": "감방으로 돌아갈까?", "var": "a4t.go", "opts": [
-      { "t": "돌아간다.", "v": "back" },
-      { "t": "그만둔다.", "v": "stay", "cancel": true, "do": [ { "op": "end" } ] }
+      { "t": "돌아간다", "v": "back" },
+      { "t": "그만둔다", "v": "stay", "cancel": true, "do": [ { "op": "end" } ] }
     ] },
     { "op": "sfx", "id": "dig", "pitch": 1.1 },
     { "op": "map", "id": "cell", "at": "hole", "trans": "fade" },
@@ -54488,7 +54491,7 @@ MC.addEvents({
           { "op": "show", "id": "follower", "v": true },
           { "op": "fx", "kind": "ripple", "at": "follower", "n": 1 },
           { "op": "jump", "id": "follower", "h": 2, "ms": 160 },
-          { "op": "say", "who": "faria", "t": "허, 자네 꿈은 색이 짙군.{p:300}\n내 꿈은 늘 흑백인데." },
+          { "op": "say", "who": "faria", "t": "허, 자네 꿈은 색이 짙군.{p:300}\n내 꿈은 늘 잿빛인데." },
           { "op": "say", "who": "faria", "t": "자, 앞장서게.{p:200}\n여긴 자네 동네 아닌가." },
           { "op": "face", "id": "player", "dir": "right" },
           { "op": "letterbox", "on": false },
@@ -54995,7 +54998,7 @@ MC.addEvents({
         "else": [ { "op": "say", "who": "faria", "t": "……넷이라.{p:300} 삼 년 덮어 둔 얘기, 꺼낼 때가 됐군." } ] },
       { "op": "say", "who": "faria", "face": "stern", "t": "먼저 이것부터 묻지.{p:200}\n자네가 사라져 득 본 사람은?" },
       { "op": "say", "who": "dantes", "t": "저 같은 뱃사람 하나 사라진다고{p:150} 누가 득을 봅니까?" },
-      { "op": "say", "who": "faria", "t": "왕이 죽으면 세자가,{p:200} 서기가 죽으면 옆자리가 득을 보네." },
+      { "op": "say", "who": "faria", "t": "왕이 죽으면 후계자가,{p:200} 서기가 죽으면 옆자리가 득을 보네." },
       ask('자네가 선장이 되면 곤란해질 사람은?', 'halfday', {
         "*": "배 위에서 자네 셈을 트집 잡던 사람은?",
         "letter": "투서는 나중 일일세.{p:200} 그 전에, 누가 득을 보나?",
@@ -55106,7 +55109,7 @@ MC.addEvents({
       // [r3 C5] 페르낭 단서를 대사로 닫는다(C5 ②, 작가 예시 4 다듬음): [a1-plot 11-06] 되감기에서 맞춘(예전: 되감기·세 손에서 본) 「구겨 버린 투서를 페르낭이 주움」을 에드몽이 말로 확정하고,
       //   파리아가 앞의 「칼을 꽂는 사람은 편지를 안 쓰네. 쓰는 건 셈하는 사람이지.」를 두 갈래 그대로 회수한다(칼 → 종이를 쥠 · 셈하는 사람 → 버린 것도 셈).
       //   세 손 맞추기 뒤에 두어 정답을 미리 말하지 않는다. 되돌리기: 이 꼬리표 주석 세 줄과 아래 say 두 줄을 지운다
-      { "op": "say", "who": "dantes", "face": "sad", "t": "버린 종이를……{p:300} 페르낭이 주워 갔습니다." },
+      { "op": "say", "who": "dantes", "face": "sad", "t": "버린 종이를……{p:300} 페르낭이 주워 갔겠군요." },
       { "op": "say", "who": "faria", "t": "칼 대신 종이를 쥐었군.{p:300}\n버린 것도 셈일세." },
       // [a1-plot 11-06] 잉크병 단서는 되감기 ①(「……장부가 아니었다.」)로 옮겼고 여기에는 반응만 남긴다(점검 2번 (가) 원안). 끊김(cutIf)은 그대로 이 줄 바로 뒤.
       //   되돌리기: 아래 t를 "탁자에 잉크병이랑 종이가……{p:300} 왜 여태 몰랐지?"로
@@ -55121,7 +55124,7 @@ MC.addEvents({
       //   되돌리기: 아래 say 세 줄을 예전 두 줄 — dantes "카드루스는 '장난이지?' 하고 물었습니다.{p:200} 말리려던 거겠죠." · faria "그러고는 '장난'이란 말을 믿었지.{p:200} 믿고 싶었을 걸세." — 로
       { "op": "say", "who": "dantes", "t": "카드루스는 말렸을 겁니다.{p:200}\n정은 있는 사람이니까요." },
       { "op": "say", "who": "faria", "t": "당글라르라면 그럴 때{p:200}\n'장난일세' 하고 웃었겠지." },
-      { "op": "say", "who": "faria", "t": "믿고 싶었을 걸세.{p:300}\n자네를 아꼈으니까." },
+      { "op": "say", "who": "faria", "t": "카드루스는 그 말을\n믿고 싶었을 걸세.{p:300}\n자네를 아꼈으니까." },
       // (fixer-s2n) 빚을 이미 떠올렸으면(이야기 ③·꿈속 빈 찬장) 물음으로 답하고, 아직이면 신부님이 짚어 준 자리에서 처음 떠오른다 — 방금 쥐여 준 카드를 곧바로 고르게 하지 않는다
       { "op": "if", "cond": { "flag": "mem.debt" },
         "then": [
@@ -56155,7 +56158,7 @@ MC.addEvents({
         { "op": "say", "who": "dantes", "t": "잊지 않으려고요." },
         { "op": "say", "who": "faria", "t": "잊을 걱정은 없어 보이네." },
         when({ "var": "wrathN", "gte": 2 },
-          [ { "op": "say", "who": "faria", "face": "worry", "t": "꿈에서 그것에 고삐를\n몇 번 뺏기더군." } ],
+          [ { "op": "say", "who": "faria", "face": "worry", "t": "꿈에서 그 이름들한테 고삐를\n몇 번 뺏기더군." } ],
           [ { "op": "say", "who": "faria", "face": "worry", "t": "몇 년인지는 잊어도,{p:200}\n이름은 안 틀리는군." } ]),
         { "op": "say", "who": "faria", "t": "셀 거면 날을 세게.{p:300} 이름 말고." },
         { "op": "say", "who": "dantes", "t": "날은 1817년에 멈췄습니다." },
@@ -56395,7 +56398,7 @@ MC.addEvents({
       { "op": "fade", "to": 0, "ms": 1200 },
       { "op": "banner", "t": "이프 성 · 1825년" },
       { "op": "wait", "ms": 600 },
-      { "op": "say", "who": "faria", "t": [ "시간은 여기서도 흐르는구먼.", "내 머리가 더 하얘졌어." ] },
+      { "op": "say", "who": "faria", "t": [ "시간은 여기서도 흐르는군.", "내 머리가 더 하얘졌네." ] },
       { "op": "say", "who": "dantes", "t": "굴 끝 방은 거의 됐습니다." },
       { "op": "say", "who": "faria", "face": "smile", "t": [ "그럼 이제 보여 줘도 되겠군.", "침대 뒤 비밀." ] },
       call("s3e.ladder")
@@ -56802,7 +56805,7 @@ MC.addEvents({
       when(F("s3k.t2"), [ { "op": "say", "who": "faria", "t": "이제 그믐만 기다리면 되네." }, END ]),
       when({ "var": "ffT2", "gte": 1 },
         [ { "op": "say", "who": "faria", "t": "……천천히 가세.{p:200}\n굴 끝 방은 안 도망가네." }, { "op": "set", "var": "ffT2", "v": 0 } ],
-        [ { "op": "say", "who": "faria", "t": "머리 위가 간수 통로일세.{p:200}\n등불만 피하게." }, { "op": "set", "var": "ffT2", "v": 1 } ])
+        [ { "op": "say", "who": "faria", "t": "머리 위가 보초 통로일세.{p:200}\n등불만 피하게." }, { "op": "set", "var": "ffT2", "v": 1 } ])
     ],
 
     /* ---------- 굴 끝 방(t_room, 낮·!s3k.t2): 발소리 세기 ◆ → 들보 세우기 ---------- */
@@ -57144,7 +57147,7 @@ MC.addEvents({
       { "op": "jump", "id": "faria", "h": 1, "ms": 140 },
       { "op": "wait", "ms": 400 },
       { "op": "say", "who": "faria", "face": "weak", "t": "……반은 자네 걸세." },
-      { "op": "say", "who": "faria", "t": "그때는 반 시간 자고\n일어나 밥까지 먹었네." },
+      { "op": "say", "who": "faria", "t": "그때는 반 시간 만에 끝났네.\n일어나 밥까지 먹었지." },
       { "op": "say", "who": "faria", "t": "이번엔 오른쪽이 남의 것 같군.\n팔도, 다리도." },
       { "op": "say", "who": "faria", "face": "tired", "t": "아버지도 할아버지도\n세 번째를 못 넘기셨지." },
       { "op": "say", "who": "dantes", "t": "세 번째가 와도\n그땐 밖입니다." },
@@ -57567,7 +57570,7 @@ MC.addEvents({
       { "op": "say", "who": "faria", "t": "……에드몽.{p:200} 이걸 보게." },
       { "op": "sfx", "id": "page", "gain": 0.4, "pitch": 0.8 },
       { "op": "custom", "id": "s3", "args": { "stage": "paper", "lines": [ "1498년 4월 25일.", "교황이 나를……" ], "hold": true } },   // fixer-s3: 불에 쬐기(T6)·맞추기(T7)와 같은 종이 — 귀도·섬 줄은 접힌 채(공개를 지킨다)
-      { "op": "say", "who": "dantes", "t": "반쯤 탄 종이……{p:200}\n글씨가 이상합니다." },
+      { "op": "say", "who": "dantes", "t": "타다 만 종이……{p:200}\n글씨가 이상합니다." },
       { "op": "say", "who": "faria", "t": "이 종이 한 장이 내 보물일세." },
       { "op": "say", "who": "faria", "t": "절반은 이제 자네 몫이고." },
       { "op": "custom", "id": "s3", "args": { "stage": "paper", "clear": true } },
@@ -57828,7 +57831,7 @@ MC.addEvents({
     ].concat(BED_SET, [
       { "op": "fade", "to": 0, "ms": 500 },
       { "op": "wait", "ms": 300 },
-      { "op": "say", "who": "faria", "t": "첫해에 말했지.{p:200} 자네가\n날 안 미쳤다고 믿게 되면." },
+      { "op": "say", "who": "faria", "t": "저 섬 얘기는,{p:200} 자네가\n날 안 미쳤다고 믿게 되면\n하려 했네." },
       { "op": "say", "who": "faria", "t": "……기다리다간\n세 번째가 먼저 오겠더군." },
       // 메아리 1상자(n1_trust B → A → doubt B → A 순으로 하나만)
       when(V("n1_trust", "B"), [ { "op": "say", "who": "faria", "t": "첫날 물었지. 미친 신부냐고.\n오늘 대답하지." } ], [
@@ -57852,7 +57855,7 @@ MC.addEvents({
       { "op": "say", "who": "faria", "t": "스파다와 또 한 부자를 추기경으로.\n모자값을 받고." },
       when(F("a4.lesson_hist"), [ { "op": "say", "who": "faria", "t": "역사는 배신의 장부라 했지.\n여기 첫 장일세." } ]),
       { "op": "custom", "id": "s3", "args": { "stage": "shadow", "panel": 3 } },
-      { "op": "say", "who": "faria", "t": "교황 아들한텐 바늘 든 열쇠,\n악수하면 무는 사자 반지." },
+      { "op": "say", "who": "faria", "t": "교황 아들한텐 바늘 든 열쇠,\n악수하면 무는 사자 반지가 있었지." },
       { "op": "say", "who": "faria", "face": "wry", "t": "……한 손으론 사자가 이만하네." },
       { "op": "wait", "ms": 800 },                                         // fixer-s3: 빈 아래턱을 볼 한 박
       { "op": "set", "var": "s3_jaw", "v": 0 },
@@ -57863,7 +57866,7 @@ MC.addEvents({
       { "op": "say", "who": "think", "t": "……파티에서." },
       { "op": "custom", "id": "s3", "args": { "stage": "shadow", "panel": 5 } },
       { "op": "say", "who": "faria", "t": "스파다는 눈치챘지. 가기 전에\n조카에게 한 줄 남겼네." },
-      { "op": "say", "who": "faria", "t": "'내 기도서를 조카에게 준다.'\n그게 다였어." },
+      { "op": "say", "who": "faria", "t": "'내 기도서를 조카에게 준다.'\n그게 다였네." },
       { "op": "custom", "id": "s3", "args": { "stage": "shadow", "panel": 6 } },
       { "op": "say", "who": "faria", "t": "그 밤, 스파다도 조카도 죽었네.\n버섯 탓이라더군." },
       { "op": "say", "who": "faria", "t": "그 뒤 삼백 년,\n그 집안은 가난했네." },
@@ -57926,8 +57929,9 @@ MC.addEvents({
       { "op": "say", "who": "dantes", "t": "엘바와 코르시카 사이,\n염소만 사는 바위섬." },
       { "op": "say", "who": "faria", "t": "……자네는 가 봤군.\n나는 못 가 본 섬일세." },
       { "op": "say", "who": "faria", "face": "wry", "t": "그래서 벽에 엉터리로 그렸지." },
-      { "op": "say", "who": "faria", "t": "셋에 하나는 타 버렸네.\n나머진 밤마다 채웠지." },
+      { "op": "say", "who": "faria", "t": "셋에 하나는 타 버렸네." },
       { "op": "say", "who": "faria", "t": "그 길로 로마를 떴다가,\n피옴비노에서 붙잡혔지." },
+      { "op": "say", "who": "faria", "t": "탄 자리는 여기서\n밤마다 채웠네." },   // [0.9.7 통독 가10] 순서 정리: 로마를 뜬 뒤 감옥에서 채웠다
       { "op": "say", "who": "dantes", "t": "……그럼 스파다의 재산이,{p:300}\n지금도 그 바위섬에." },   // [s44-writer B3-10] 그림자극 일곱 장을 에드몽의 말로 한 줄 요약(플5·6·플2-9)
       { "op": "letterbox", "on": false, "ms": 200 },
       call("s3t.join")
@@ -57961,8 +57965,8 @@ MC.addEvents({
       { "op": "wait", "ms": 400 },
       { "op": "say", "who": "faria", "t": "발작만 아니었으면\n내가 앞장섰을 텐데." },
       { "op": "say", "who": "faria", "face": "wry", "t": "이젠 자네 등에 업혀 가야겠군." },
-      { "op": "say", "who": "dantes", "t": "그건 신부님 겁니다.\n저는 신부님 핏줄도 아닌데요." },
-      { "op": "say", "who": "faria", "t": "……첫날 그랬지.\n아버지가 내 연세쯤이라고." },
+      { "op": "say", "who": "dantes", "t": "그 보물은 신부님 겁니다.\n저는 신부님 핏줄도 아닌데요." },
+      { "op": "say", "who": "faria", "t": "……첫날 그랬지.\n아버지가 내 나이쯤이라고." },
       { "op": "say", "who": "faria", "t": "자네는 내 아들일세.", "key": true },   // [a43-ui P6] M75
       { "op": "wait", "ms": 1200 },
       { "op": "say", "who": "faria", "t": "신부라 아들이 없었고,\n죄수라 문이 없었지." },
@@ -58402,11 +58406,11 @@ MC.addEvents({
     "s3s.arrive": [
       { "op": "letterbox", "on": true, "ms": 300 },
       { "op": "face", "id": "faria", "dir": "player" },
-      { "op": "say", "who": "faria", "t": "뱃사람 얼굴은 다 빠졌군." },
+      { "op": "say", "who": "faria", "t": "뱃사람 얼굴은 이제 없군." },
       { "op": "say", "who": "faria", "t": "이젠 누가 봐도\n못 알아볼 걸세." },
       { "op": "say", "who": "dantes", "t": "신부님은 알아보시잖습니까." },
       { "op": "say", "who": "faria", "face": "smile", "t": "나야 날마다 봤으니." },
-      { "op": "say", "who": "faria", "t": "교과서가 자네 방 벽이니,\n선생이 업혀 다닐 수밖에." },
+      { "op": "say", "who": "faria", "t": "교본이 자네 방 벽이니,\n선생이 업혀 다닐 수밖에." },
       { "op": "wait", "ms": 600 },
       { "op": "custom", "id": "s3", "args": { "stage": "bread" } },         // fixer-s3: 「한 손으론 빵이 안 찢어진다.」 삭제 — 스테이지 첫 동작(한 손으로 애쓰다 못 찢음)이 보여 준다
       { "op": "say", "who": "dantes", "t": "반씩 하시죠." },
@@ -58487,7 +58491,7 @@ MC.addEvents({
       { "op": "say", "who": "faria", "t": "바다 쪽이 생각보다 가깝네." },
       { "op": "say", "who": "faria", "face": "smile", "t": "이번엔 곡선을 제대로 그렸네." },
       { "op": "say", "who": "dantes", "t": "신부님이 계신 동안은\n안 나갑니다." },
-      { "op": "say", "who": "faria", "t": "알아.{p:200} 그러니 파는 것뿐일세." },
+      { "op": "say", "who": "faria", "t": "아네.{p:200} 그러니 파는 것뿐일세." },
       { "op": "say", "who": "faria", "t": "길을 다 못 내도,\n바다가 어딘지는 알아 두게." },
       { "op": "say", "who": "faria", "t": "쇠붙이는 석공들이\n흘리고 갔을 걸세." },
       { "op": "set", "flag": "s3s.plan" },
@@ -58915,7 +58919,7 @@ MC.addEvents({
       { "op": "say", "who": "narr", "t": "1828년.{p:300} 등대는 여전히 돈다." }
     ],
     "s3s.h_island": [
-      { "op": "say", "who": "narr", "t": "둥근 섬과 원뿔 섬.{p:300}\n그 위에 비뚤한 × 하나." }
+      { "op": "say", "who": "narr", "t": "둥근 섬과 원뿔 섬.{p:300}\n그 위에 비뚤어진 × 하나." }
     ],
 
     /* ================================================================ 재개·반짝임(§A-7 — onEnter에서 불림) */
@@ -59329,7 +59333,7 @@ MC.addEvents({
       { "op": "music", "fn": "filterTo", "args": [ 500, 0.6 ] },
       { "op": "if", "cond": { "not": { "flag": "s3d.b4_intro" } }, "then": [
         { "op": "wait", "ms": 300 },
-        { "op": "narr", "t": [ "세 번째 얘기를 들은 밤부터,", "{p:600}미궁은 바다 밑까지 내려갔다." ] } ] },
+        { "op": "narr", "t": [ "세 번째 발작 얘기를 들은 밤부터,", "{p:600}미궁은 바다 밑까지 내려갔다." ] } ] },
       { "op": "map", "id": "b4", "at": "start", "trans": "cut" },
       { "op": "if", "cond": { "not": { "flag": "s3d.b4_intro" } }, "then": [ { "op": "vista", "id": "vs_b4" } ] },   // [r5 UW-3] B4 첫 하강에만 — 서술 뒤 · 페이드를 걷기 전(검정 위). ?uw2off=UW-3면 field.js가 막음. 되돌리기: 이 줄 삭제
       { "op": "fade", "to": 0, "ms": 1000 },
@@ -60042,7 +60046,7 @@ MC.addEvents({
     // 사용자 결정(2026-10-20 「권장대로」, QA Q1): S3을 막 끝낸 새 흐름(s3s.end가 s4_l27 = "live")은 장부 뒤 되풀이 없이 곧장 s4c.open —
     // 「……에드몽.」 12초 뒤 같은 두 줄이 다시 나오던 더듬음을 없앤다. S3 끝 세이브 이어하기만 s4c.rewind(이어하는 사람에겐 되감기가 필요).
     "s4c.ledger27": [
-      { "op": "custom", "id": "s4", "args": { "stage": "ledger", "ledger": [ "27번.", "1811년 입소.", "비고: 정신 이상.", "1828년 현재, 생존." ], "after": 2000 } },
+      { "op": "custom", "id": "s4", "args": { "stage": "ledger", "ledger": [ "27번.", "1811년 수감.", "비고: 정신 이상.", "1828년 현재, 생존." ], "after": 2000 } },
       when({ "var": "s4_l27", "eq": "live" }, [ { "op": "set", "var": "s4_l27", "v": 0 }, call("s4c.open"), END ]),
       call("s4c.rewind")
     ],
@@ -60441,14 +60445,14 @@ MC.addEvents({
       { "op": "grow", "pose": "kneel" },
       W(900),
       TOP("soldier", "미친 신부가 보물 지키러 갔군."),
-      TOP("soldier", "수의 값은 못 내겠고,\n자루면 싸게 먹히지."),
+      TOP("soldier", "수의 값은 아깝고,\n자루면 싸게 먹히지."),
       W(500),
       TOP("governor", "해 끼친 적 없는 노인이었네.\n제 광기 속에선 행복했지."),
       TOP("tguard", "제 마누라 열병도\n이 영감 처방으로 나았습죠."),
       W(400),
       TOP("doctor", "죽었소.{p:400} 틀림없이."),
-      TOP("governor", "새 자루에 넣게.\n사제도 없으니 밤 열 시쯤 치우고."),
-      TOP("tguard", "밤새 지킬 사람은요?"),
+      TOP("governor", "새 자루에 넣게.\n신부도 자리에 없으니 밤 열 시쯤 치우고."),
+      TOP("tguard", "그때까지 지킬 사람은요?"),
       TOP("governor", "죽은 사람이 어딜 가겠나.\n문은 산 사람 때처럼 잠그게."),   // 감옥이 믿게 되는 사슬의 첫 고리(§2-2)
       call("s4m.listen_end")
     ],
@@ -60651,7 +60655,7 @@ MC.addEvents({
     "s4m.h_candle": [ { "op": "say", "who": "narr", "t": "촛불을 켜지 않았다." } ],
     "s4m.h_lamp": [ { "op": "say", "who": "narr", "t": "꺼진 등잔." } ],
     "s4m.h_workshop": [ { "op": "say", "who": "think", "t": "……바늘." } ],    // 바늘이 있음을 알려 주는 한 줄(공방은 열지 않는다)
-    "s4m.h_island": [ { "op": "say", "who": "narr", "t": "둥근 섬과 원뿔 섬.{p:300}\n그 위에 비뚤한 × 하나." } ],
+    "s4m.h_island": [ { "op": "say", "who": "narr", "t": "둥근 섬과 원뿔 섬.{p:300}\n그 위에 비뚤어진 × 하나." } ],
     "s4m.h_ladder": [ { "op": "say", "who": "narr", "t": "한 자 짧아진 사다리." } ],
     "s4m.h_bowl": [ { "op": "say", "who": "narr", "t": "물그릇.{p:300} 아침에 받은 물이 그대로다." } ],   // fixer-s4p1: 물에 비친 얼굴은 엔딩(장면 14)에 아껴 둔다
     // 원고(신부님 방 벽난로 밑 — hearth_s4)
@@ -60999,8 +61003,8 @@ MC.addEvents({
         { "op": "set", "flag": "s4b.tip" },
         { "op": "wait", "ms": 500 },
         { "op": "if", "cond": { "flag": "bt.d2_phase2" },
-          "then": [ { "op": "say", "who": "faria_off", "pos": "top", "speed": 60, "t": "벽을 끌어당기거든,{p:300}\n그때는 버티게." } ],
-          "else": [ { "op": "say", "who": "faria_off", "pos": "top", "speed": 60, "t": "맑은 물부터 마시고{p:200}\n들어가게." } ] } ] },
+          "then": [ { "op": "say", "who": "think", "pos": "top", "t": "벽을 끌어당기면,{p:300}\n그때는 버틴다." } ],
+          "else": [ { "op": "say", "who": "think", "pos": "top", "t": "맑은 물부터 마시고{p:200}\n들어간다." } ] } ] },
       { "op": "wait", "ms": 300 },
       { "op": "if", "cond": { "flag": "bt.d2_phase2" },
         "then": [ { "op": "watch", "id": "s4b_again", "ms": 60, "ev": "s4b.refight" } ],
@@ -61718,7 +61722,7 @@ MC.addEvents({
     ], DAWN_LOOK(4000), [
       { "op": "set", "flag": "s4t.dawn" },                               // 붉은 모자·널빤지 · 수평선의 타르탄선
       W(1400),
-      SAY("think", "지금쯤, 내 침대의 신부님을 찾았겠지."),
+      SAY("think", "두세 시간 뒤면,\n내 침대의 신부님을 찾겠지."),
       // [s44-writer B3-14] 「헝겊을 풀면, 알겠지. 자루에 누가 있었는지.」 삭제 — 바로 다음 12½이 소리로 보여 준다(작11)
       SAY("think", "……배가 뜨겠지.\n무장한 배가."),
       SAY("think", "……칼마저 잃었다."),
@@ -61793,7 +61797,7 @@ MC.addEvents({
       TOP("tguard", "던진 놈들 말로는,\n평소보다 무거웠답니다."),
       TOP("governor", "추는 서른여섯 파운드짜리였지?"),
       TOP("tguard", "늘 쓰던 걸로요.\n매듭도 꽉 묶었습죠."),
-      TOP("governor", "그럼 바다 밑일세. 틀림없어."),
+      TOP("governor", "그럼 바다 밑일세. 틀림없네."),
       TOP("governor", "배는 띄울 것 없네.\n대포만 쏘게. 절차니까."),
       W(300),
       SFX("door_iron", { "cap": "철문 · 닫히는 소리" }), { "op": "shake", "p": 0.15 },
@@ -61822,6 +61826,7 @@ MC.addEvents({
       W(700),
       Object.assign(SAY("jacopo", "살았다!\n머리채 잡은 게 저예요.\n미안해요, 급해서."), { "intro": false }),   // 1막 뒤 처음 듣는 평범한 사람의 다정한 말투 · [people] 그 말이 먼저 — 소개 컷은 바로 뒤
       { "op": "intro", "id": "jacopo" },                                 // [people] 자코포 소개 컷
+      SAY("dantes", "……고맙소."),                                          // [0.9.7 통독 나3]
       { "op": "jump", "id": "player", "h": 1, "ms": 140 },
       STAND,
       W(500),
@@ -61829,7 +61834,7 @@ MC.addEvents({
       SAY("captain", "어디서 온 사람인가?"),
       { "op": "face", "id": "player", "dir": "right" },
       SAY("dantes", "몰타 뱃사람입니다.\n시라쿠사에서 곡식을\n싣고 오다,"),
-      SAY("dantes", "모르지우 곶에서 부서졌습니다."),
+      SAY("dantes", "어젯밤 폭풍에,\n모르지우 곶에서\n배가 부서졌습니다."),
       W(500),
       SAY("captain", "흠. 몰타 뱃사람이라."),
       { "op": "name", "v": "몰타 뱃사람", "anim": true },                  // [s44-writer B3-15] 그는 지금 거짓말 중이다 — 이름표도(뒤9). 엔딩 「＿＿＿＿」가 덮어쓴다
@@ -61852,6 +61857,7 @@ MC.addEvents({
       when(V("s4_helped", 1),                                            // [fixer-s4p2] QA 25: 자코포 손이 보태져 끝났으면 칭찬이 엇나가지 않게 — 말없이 본다(새 줄 없음)
         [ { "op": "emote", "id": "captain", "kind": "dots", "ms": 1000 }, W(300) ],
         [ SAY("captain", "……손은 거짓말을\n안 하는군.") ]),
+      SAY("captain", "자코포,\n셔츠 한 벌 내주게."),                                   // [0.9.7 통독 나2] 엔딩의 「자코포.」 전에 이름을 듣는다
       { "op": "face", "id": "jacopo", "dir": "player" },
       SAY("jacopo", "입어요. 젖은 옷은 벗고."),
       SFX("cloth_slip", { "gain": 0.4 }),
@@ -62025,12 +62031,12 @@ MC.addEvents({
   const FACE = (shadow, extra) => ({ "op": "custom", "id": "s4", "args": Object.assign({ "stage": "face", "shadow": shadow, "ms": 4000, "keep": true }, extra ? { "extra": extra } : {}) });
   // 엔딩 장부(사용자 확정 — 3줄, H2-5: 날짜 줄은 결정 뒤 이 배열에 한 줄) · 「익」 앞 0.8초 멈춤·clank(H2-8 — Array.from 기준 index 9) · 크레딧(제작자 줄·막·장 번호 없음)
   const ENDING = { "stage": "ending",
-    "ledger": [ "34번.", "1815년 2월 입소.", "비고: 탈옥 중 익사." ],
+    "ledger": [ "34번.", "1815년 2월 수감.", "비고: 탈옥 중 익사." ],
     "pause": [ [ 2, 9, 800 ] ], "clankAt": [ 2, 9 ],
     "credit": [ "원작", "알렉상드르 뒤마 『몬테크리스토 백작』" ], "fin": "끝",
     "cursorMs": 7000, "music": "orgel_end",                         // [s44-director B3-24] 빈 이름칸 3초 → 7초(뒤2-3: 열네 해를 닫는 빈칸에 머물 시간). 크레딧은 커서가 멎고 1.5초 뒤(스테이지)
     // [c50-cine B5-8 · 작12] 장부 위쪽에 27번 칸을 흐리게(s4c.ledger27과 같은 글자) — 쓰는 손이 먼저 넷째 줄 「생존」에 줄을 긋고(0.6초) 34번 세 줄로 내려온다. 글 추가 없음
-    "ledger27": [ "27번.", "1811년 입소.", "비고: 정신 이상.", "1828년 현재, 생존." ], "strike27": 3,
+    "ledger27": [ "27번.", "1811년 수감.", "비고: 정신 이상.", "1828년 현재, 생존." ], "strike27": 3,
     "hand": false };   // [r3] 사용자(10-30): 「손과 펜은 빼고 처음대로. 손이 너무 어색해」 — 쓰는 손(c50-cine B5-8) 없이 글자만 타자로
   // 기록(H2-16): [라벨 키, 값 키] — 값 안의 {…}는 스테이지가 채운다. 맨 아래 등급은 grade(var 이름)로
   const RECORD = { "stage": "record", "grade": "s4_grade",
@@ -65323,7 +65329,7 @@ MC.addLang('ko', {
 
     "tbc.summary": "가장 행복한 날,\n모든 것을 잃었다.",
     "tbc.name": "{name}.",
-    "tbc.admitted": "1815년 2월 입소.",
+    "tbc.admitted": "1815년 2월 수감.",
     "tbc.charge": "죄목: 기재 없음.",
     "tbc.alive": "{y}년 현재, 생존.",
     "tbc.next": "다음 이야기 · 「27번」",
@@ -65568,7 +65574,7 @@ MC.addLang('ko', {
     "vista.dream.place": "꿈",
     "vista.dream.floor": "B1 · 반복되는 감방",
     "vista.tiboulen.place": "티불랑 섬",
-    "vista.tiboulen.time": "1829년 2월 · 폭풍 치는 밤",
+    "vista.tiboulen.time": "2월 · 폭풍 치는 밤",
     "vista.tartane.place": "밀수선 갑판",
     "vista.tartane.time": "새벽",
     // [r5 UI 문구 제안] [r5 UW-3] 5차 장소 그림 넷의 이름표(data/vistas.js). 장소 = 맵 이름과 같은 말, 꿈 셋의 첫 줄은 vista.dream.place(「꿈」)를 같이 쓴다. 되돌리기: 아래 다섯 줄과 uiInfo 다섯 줄 삭제
@@ -66413,7 +66419,7 @@ MC.addLang('en', {
 
     "tbc.summary": ["On his happiest day,\nhe lost everything.", "fc2o9y"],
     "tbc.name": ["{name}.", "82eq6"],
-    "tbc.admitted": ["Committed Feb. 1815.", "5o5j2x"],
+    "tbc.admitted": ["Committed Feb. 1815.", "u21jk6"],
     "tbc.charge": ["Charge: none on file.", "1tmb87w"],
     "tbc.alive": ["Alive as of {y}.", "17nygc9"],
     "tbc.next": ["Next · “N°27”", "cdzbu0"],
@@ -66488,7 +66494,7 @@ MC.addLang('en', {
     "vista.faria.room": ["N°27", "1ai1j75"],
     "vista.tunnel.place": ["The Tunnel", "a2w3ks"],
     "vista.tiboulen.place": ["Tiboulen Island", "14ur32g"],
-    "vista.tiboulen.time": ["February 1829 · Stormy Night", "e4kfjw"],
+    "vista.tiboulen.time": ["February · Stormy Night", "9j095o"],
     "vista.tartane.place": ["The Smugglers’ Deck", "zi22h8"],
     "vista.tartane.time": ["Dawn", "wc69ry"],
     "field.placeLine": ["{place} · {year}", "5n4bhk"],
@@ -66549,7 +66555,7 @@ MC.addLang('en', {
     "어이, 파라옹호!{p:200} 깃발은 왜 반만 올렸나!": "Pharaon ahoy!{p:200} Why is your flag at half-mast?",
     "모렐 씨!": "Monsieur Morrel!",
     "……르클레르 선장님이 바다에서 돌아가셨습니다.": "...We lost Captain Leclère coming home.",
-    "……그 양반이?{p:300} 나폴리를 떠날 땐 정정했는데.": "...Old Leclère?{p:300} But he was hale and hearty when you left Naples.",
+    "……그 양반이?{p:300} 떠나던 날엔 그리 정정했는데.": "...Old Leclère?{p:300} But he was so hale the day you sailed.",
     "열병이었습니다.{p:200} 사흘 앓으시고, 그대로.": "A fever, sir.{p:200} Three days, and then he was gone.",
     "……화물은?": "And the cargo?",
     "한 상자도 안 잃었습니다. 약속보다 하루 늦었을 뿐입니다.": "Not a single crate lost. We’re only a day late.",
@@ -66565,7 +66571,7 @@ MC.addLang('en', {
     "모렐 씨……!": "...Monsieur Morrel!",
     "아직 공식은 아니니 들뜨지 말고.": "Steady, now. It isn’t signed yet.",
     "자, 그럼. 오늘은 아버님부터 찾아뵙게.": "Well, then. Go and see your father first.",
-    "카탈루냐에서 누가 아침부터 부두만 보더군.": "A certain Catalan has watched nothing but the quay since dawn.",
+    "카탈루냐 마을에서 누가 아침부터 부두만 보더군.": "A certain Catalan has watched nothing but the quay since dawn.",
     "네!{p:200} 다녀오겠습니다!": "Yes, sir!{p:200} I’m off!",
     "……축하드립니다.{p:300} 공식이 되면, 한 번 더 드리지요.": "...My congratulations.{p:300} I’ll offer them again—once it’s signed.",
     "아버지 댁은 북쪽 골목 맨 위.\n{p:200}……석 달 만이다.": ["Father’s house is at the top of the north lane.", "{p:200}...Three months since I was home."],
@@ -66580,7 +66586,7 @@ MC.addLang('en', {
 
     "숫자는 기다려 주지 않습니다.{p:200} 바쁘니 이만.": "Figures wait for no one.{p:200} If you’ll excuse me.",
     "축하드립니다, 예비 선장님.{p:300} '예비'라는 말은 참 편리하지요.": "My congratulations, Captain-to-be.{p:300} ‘To-be’—such a convenient word.",
-    "선원 열둘에 하루 반.{p:300} 열여덟 사람 몫입니다.": "Twelve hands for a day and a half.{p:300} A day’s pay for eighteen men.",
+    "선원 열둘에 하루 반.{p:300} 열여덟 날 치 품삯입니다.": "Twelve hands for a day and a half.{p:300} Eighteen days’ wages.",
     "적어 뒀습니다. 누구 앞으로 달아 둘지는 선주님이 정하시겠지요.": ["I’ve written it down.", "Monsieur Morrel will decide, I’m sure, whose account to charge."],
     "……장부 글씨는 반듯한데,{p:200} 소매 끝은 잉크로 새까맣다.": "...His ledger hand is so tidy,{p:200} yet his cuffs are black with ink.",
 
@@ -66851,7 +66857,7 @@ MC.addLang('en', {
     "……다 제 눈앞에 있었는데.{p:300}\n왜 여태 몰랐지?": "...It was all right in front of me.{p:300}\nHow did I never see it?",
     "카드루스는 말렸을 겁니다.{p:200}\n정은 있는 사람이니까요.": "Caderousse would have tried to stop them.{p:200}\nHe has a heart, at least.",
     "당글라르라면 그럴 때{p:200}\n'장난일세' 하고 웃었겠지.": "Danglars would have laughed{p:200}\nand said, ‘It’s a joke.’",
-    "믿고 싶었을 걸세.{p:300}\n자네를 아꼈으니까.": "He wanted to believe it.{p:300}\nHe was fond of you.",
+    "카드루스는 그 말을\n믿고 싶었을 걸세.{p:300}\n자네를 아꼈으니까.": "Caderousse wanted\nto believe it.{p:300}\nHe was fond of you.",
     // [SHOUT2 11-07] 전투 외침(조건별) — 한국어 원문이 키. 작가 제안 영어
     "돛에 바람이 찬다.": "Wind fills the sails.",
     "손 놓지 말라고 했지.": "Don’t let go, she said.",
@@ -66865,7 +66871,7 @@ MC.addLang('en', {
     "신부님, 이게 제 바다예요!": "Abbé, this is my sea!",
     "모렐 씨만은 달랐다.": "Only Morrel stood by me.",
     "그 찬장은 내가 채운다.": "I will fill his cupboard.",
-    "그건 내 잔치였다.": "That was my feast.",
+    "그건 내 파티였다.": "That was my feast.",
     "신부님, 보고 계십니까.": "Are you watching, Abbé?",
     "그 항구는 그대로다.": "The harbor is as it was.",
     "여기서 끝낼 순 없다.": "It does not end here.",
