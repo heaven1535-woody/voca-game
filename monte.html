@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.9.7b-read';
+  var VERSION = '0.9.7c-read';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -9279,18 +9279,22 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
         MC.text.draw(nameLabel(), nx, y + 5 + oy, { font: 'small', color: P.dim });
         g.hline(nx, y + 43 + oy, x + w - 10 - nx, g.mix(P.W, P.f, 0.55));
         const ny = y + 15 + oy;
+        // [0.9.7c] 이름이 칸(오른쪽 여백 10)을 넘으면 큰 글씨 대신 굵은 글씨(절반 크기)로, 세로 가운데
+        const avail = x + w - 10 - nx;
+        const fit = n => MC.text.width(n, 'big') <= avail ? { font: 'big', dy: 0, mid: 14, hh: 26 } : { font: 'bold', dy: 8, mid: 7, hh: 14 };
+        const fo = fit(oldN), fn = fit(newN);
         const drawOld = () => {
-          const ow = MC.text.width(oldN, 'big');
-          MC.text.draw(oldN, nx, ny, { font: 'big', color: '#f0c860' });
+          const ow = MC.text.width(oldN, fo.font), oy2 = ny + fo.dy;
+          MC.text.draw(oldN, nx, oy2, { font: fo.font, color: '#f0c860' });
           const p = MC.clamp((t - T.strike0) / (T.strike1 - T.strike0), 0, 1);
-          if (p > 0) { const lw = Math.round((ow + 4) * MC.ease.outCubic(p)); g.rect(nx - 2, ny + 14, lw, 2, P.red); g.hline(nx - 2, ny + 16, lw, '#000'); }
+          if (p > 0) { const lw = Math.round((ow + 4) * MC.ease.outCubic(p)); g.rect(nx - 2, oy2 + fo.mid, lw, 2, P.red); g.hline(nx - 2, oy2 + fo.mid + 2, lw, '#000'); }
         };
         if (t < T.blink0) drawOld();
-        else if (t < T.settle) { if ((((t - T.blink0) / 90) | 0) % 2 === 0) drawOld(); else MC.text.draw(newN, nx, ny, { font: 'big', color: '#ffffff' }); }
+        else if (t < T.settle) { if ((((t - T.blink0) / 90) | 0) % 2 === 0) drawOld(); else MC.text.draw(newN, nx, ny + fn.dy, { font: fn.font, color: '#ffffff' }); }
         else {
           const k = t - T.settle, jx = k < 200 ? ((((k / 40) | 0) % 2) ? 1 : -1) : 0;
-          if (k < 70) g.rect(nx - 3, ny + 1, MC.text.width(newN, 'big') + 6, 26, P.W);
-          MC.text.draw(newN, nx + jx, ny, { font: 'big', color: k < 70 ? P.f : '#f0c860' });
+          if (k < 70) g.rect(nx - 3, ny + fn.dy + 1, MC.text.width(newN, fn.font) + 6, fn.hh, P.W);
+          MC.text.draw(newN, nx + jx, ny + fn.dy, { font: fn.font, color: k < 70 ? P.f : '#f0c860' });
         }
       };
       MC.scene.push(s);
@@ -50299,7 +50303,7 @@ MC.addEvents({
     { "op": "say", "who": "morrel", "t": "무슨 착오요!{p:200} 이 사람은 우리 배 선장이오!" },
     { "op": "say", "who": "police", "t": "착오인지 아닌지는 검사님이 정하실 거요." },
     { "op": "say", "who": "dantes", "t": "괜찮습니다, 모렐 씨." },
-    { "op": "say", "who": "dantes", "t": "아버지, 걱정 마세요.{p:300}\n금방 다녀옵니다." },   // [0.9.7 통독 나4]
+    { "op": "say", "who": "dantes", "t": "아버지, 걱정 마세요.{p:300}\n금방 다녀오겠습니다." },   // [0.9.7 통독 나4]
     { "op": "face", "id": "player", "dir": "up" },
     { "op": "say", "who": "dantes", "face": "smile", "t": "메르세데스, 금방 올게.{p:300} 시청은 저녁에 가자." },
     { "op": "move", "id": "cop,player", "path": "L1 D3", "speed": 320, "async": true },
