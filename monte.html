@@ -176,7 +176,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 <script>/* ==== src/boot.js ==== */
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
-  var VERSION = '0.9.7-read';
+  var VERSION = '0.9.7b-read';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -62319,7 +62319,7 @@ MC.addEvents({
 <script>/* ==== data/debug_s1b.js ==== */
 /* data/debug_s1b.js — [통합 0.6.0-s1boost] S1 보강 디버그 프리셋(?debug=1에서만 동작, 일반 실행에서는 아무것도 하지 않음). debug_s2.js와 같은 틀.
    쓰는 법: 주소 ?debug=1&ev=__s1b.<이름>   또는 콘솔 MC.dbg.s1b('<이름>')   목록: MC.dbg.s1blist()
-   eve(파티 전날 a1e.start) · yard(이프 성 안뜰 a2i.yard) · dig(벽 너머 첫 밤 a3w.start) · voice(들보 앞 목소리 a3w.voice)
+   eve(파티 전날 a1e.start) · feast(건배 → 체포) · villefort(빌포르 심문) · yard(이프 성 안뜰 a2i.yard) · dig(벽 너머 첫 밤 a3w.start) · voice(들보 앞 목소리 a3w.voice)
    조리법은 docs/handoff/content-s1.md §9. eve는 port로 바로 들어가면 첫날 a1.arrive가 먼저 돌아서 reserve에서 부른다(a1e.start가 port로 옮긴다). */
 (function (MC) { 'use strict';
   if (!MC.cfg || !MC.cfg.debug) return;
@@ -62343,6 +62343,13 @@ MC.addEvents({
     Object.assign(st.vars, { toast: 'C', honest: 'A', doubt: 'B' });
     return st;
   }
+  // 파티 날(전날까지 마침, 건배 전)
+  function feastSt() {
+    const st = day1();
+    st.act = 2;
+    flags(st, ['a1e.on', 'a1e.knot', 'a1e.coin', 'a1e.swim', 'a1e.done', 'a2.feast']);
+    return st;
+  }
   // 34번 감방, 두드림 뒤(나흘째 밤 직전)
   function cell34() {
     const st = toIf();
@@ -62355,6 +62362,9 @@ MC.addEvents({
 
   const PRESETS = {
     eve:   { desc: '1막 첫날 뒤 → 파티 전날(a1e.start: 매듭·동전 잠수·부표 헤엄·해 질 녘)', map: 'reserve', at: 'default', run: 'a1e.start', make: day1 },
+    // [0.9.7 확인 링크] 파티 건배 → 체포(a2.toast) · 빌포르 심문(a2.villefort)
+    feast: { desc: '파티 건배 → 체포(a2.toast: 「잔을 든다」 → a2.arrest)', map: 'reserve', at: 'feast', run: 'a2.toast', make: feastSt },
+    villefort: { desc: '체포 뒤 → 빌포르 심문(a2.villefort)', map: 'reserve', at: 'feast', run: 'a2.villefort', make: feastSt },
     yard:  { desc: '빌포르 뒤 → 이프 성 안뜰(a2i.yard → 첫 방 → 아침 선택지 → 지하)', map: 'boat', at: 'default', run: 'a2i.yard', make: toIf },
     dig:   { desc: '34번 두드림 뒤 → 벽 너머 첫 밤(a3w.start: 파기 세 밤·냄비 꾀·들보)', map: 'cell', at: [6, 3, 'down'], run: 'a3w.start', make: cell34 },
     voice: { desc: '파기 끝(a3w_step 6) → 감방 onEnter가 a3w.resume로 목소리부터', map: 'cell', at: 'bed', run: null,
