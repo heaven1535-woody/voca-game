@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.22';
+  var VERSION = '0.9.23';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -88848,6 +88848,58 @@ MC.addLang('es', {
     ctx.drawImage(t, x | 0, y | 0);
   };
   U.spr = name => (G().hasSprite(name) ? G().getSprite(name) : null);
+  /* [land5] 가로 화면: 가운데 놓인 세로용 그림의 양옆 빈자리를 그 그림 가장자리 색으로 어둡게 잇는다(그림은 건드리지 않는다 — 바깥 칸만 칠한다).
+     옛: 양옆이 검정·단색 막대 — 세로 화면을 가운데 끼워 넣은 것처럼 보였다. 세로에서는 부르지 않는다(부르는 쪽이 g.land일 때만).
+     방식: 그림 왼쪽·오른쪽 끝 띠(폭 ew)를 세로 bh칸씩 평균한 색 → 바깥으로 갈수록 Bayer 디더로 먼 색(base, 또는 under면 원래 깔려 있던 칸)에 녹인다. 띠와 띠 사이도 디더(흐림 없음 — 픽셀 디더만).
+     ctx = 칠할 판(W×H) · img의 src 네모 [sx,sy,sw,sh]가 판의 (x,y,w,h)에 놓여 있다고 본다. o: base '#000' · under(먼 색 = 깔린 칸) · dark 0.45(가장자리에서 어둡게 섞는 정도) · fade(바깥 디더 길이, 기본 화면 끝까지)
+       · soft(그림 안쪽으로 이만큼 디더로 덮어 경계를 녹임 — 그림 칸은 그대로, 판 위에서만) · bh 8 · y0·y1(칠할 세로 범위, 기본 판 전체) · vfade 24(그림 위아래 바깥으로 녹이는 길이) */
+  U.sideFillInto = function (ctx, W, H, img, x, y, w, h, o) {
+    o = o || {};
+    if (!img || !(W > 0) || !(w > 0) || !(h > 0) || (x <= 0 && x + w >= W)) return false;
+    try {
+      const g = G(), B = g.BAYER, src = o.src || [0, 0, img.width, img.height], sw = src[2], sh = src[3];
+      const bh = Math.max(2, o.bh || 8), nb = Math.max(1, Math.ceil(h / bh)), ew = Math.max(1, Math.min(sw, Math.round(sw * (o.edge || 0.06))));
+      const tc = g.makeCanvas(ew * 2, sh), tx = tc.getContext('2d', { willReadFrequently: true });
+      tx.imageSmoothingEnabled = false;
+      tx.drawImage(img, src[0], src[1], ew, sh, 0, 0, ew, sh); tx.drawImage(img, src[0] + sw - ew, src[1], ew, sh, ew, 0, ew, sh);
+      const sd = tx.getImageData(0, 0, ew * 2, sh).data, prof = [new Float32Array(nb * 3), new Float32Array(nb * 3)];
+      for (let s = 0; s < 2; s++) for (let b = 0; b < nb; b++) {
+        const r0 = Math.floor(b * sh / nb), r1 = Math.max(r0 + 1, Math.floor((b + 1) * sh / nb));
+        let r = 0, gg = 0, bb = 0, n = 0;
+        for (let yy = r0; yy < r1 && yy < sh; yy++) for (let xx = 0; xx < ew; xx++) { const q = (yy * ew * 2 + s * ew + xx) * 4; if (sd[q + 3] < 128) continue; r += sd[q]; gg += sd[q + 1]; bb += sd[q + 2]; n++; }
+        if (n) { prof[s][b * 3] = r / n; prof[s][b * 3 + 1] = gg / n; prof[s][b * 3 + 2] = bb / n; } else prof[s][b * 3] = -1;
+      }
+      const base = g.rgb(o.base || '#000000'), dark = o.dark == null ? 0.45 : o.dark, soft = Math.max(0, o.soft | 0), vf = Math.max(1, o.vfade || 24), under = !!o.under;
+      const ya = Math.max(0, o.y0 == null ? 0 : o.y0 | 0), yb = Math.min(H, o.y1 == null ? H : o.y1 | 0);
+      if (yb <= ya) return false;
+      const id = ctx.getImageData(0, ya, W, yb - ya), d = id.data, xr = x + w;
+      for (let yy = ya; yy < yb; yy++) {
+        const fy = (yy - y) / bh - 0.5, by = (yy & 3) * 4, dv = yy < y ? y - yy : yy >= y + h ? yy - (y + h) + 1 : 0;
+        for (let xx = 0; xx < W; xx++) {
+          let s, dist, inK = 0;
+          if (xx < x) { s = 0; dist = x - xx; }
+          else if (xx >= xr) { s = 1; dist = xx - xr + 1; }
+          else if (soft && xx < x + soft) { s = 0; dist = 0; inK = (xx - x + 0.5) / soft; }
+          else if (soft && xx >= xr - soft) { s = 1; dist = 0; inK = (xr - xx - 0.5) / soft; }
+          else continue;
+          const th = B[by + (xx & 3)];
+          if (inK > 0 && inK * 16 > th) continue;             // 그림 안쪽 soft칸: 가장자리일수록 많이 덮는다
+          const fade = o.fade || (s ? W - xr : x), t = Math.min(1, dist / Math.max(1, fade) + dv / vf);
+          let bi = Math.floor(fy); const fr = fy - bi; if (fr * 16 > B[((yy >> 1) & 3) * 4 + ((xx >> 1) & 3)]) bi++;
+          bi = bi < 0 ? 0 : bi >= nb ? nb - 1 : bi;
+          const P = prof[s], q = (( yy - ya) * W + xx) * 4;
+          if (P[bi * 3] < 0) continue;
+          const fr0 = under ? d[q] : base[0], fg0 = under ? d[q + 1] : base[1], fb0 = under ? d[q + 2] : base[2];
+          // 세 단(가까운 색 · 가운데 · 먼 색)을 거리로 디더: t 0~0.5는 가까운↔가운데, 0.5~1은 가운데↔먼
+          const k = t < 0.5 ? (t * 32 > th ? 0.5 : 0) : ((t - 0.5) * 32 > th ? 1 : 0.5), m = dark + (1 - dark) * k;
+          d[q] = Math.round(P[bi * 3] + (fr0 - P[bi * 3]) * m); d[q + 1] = Math.round(P[bi * 3 + 1] + (fg0 - P[bi * 3 + 1]) * m); d[q + 2] = Math.round(P[bi * 3 + 2] + (fb0 - P[bi * 3 + 2]) * m); d[q + 3] = 255;
+        }
+      }
+      ctx.putImageData(id, 0, ya);
+      tc.width = tc.height = 0;
+      return true;
+    } catch (e) { return false; }
+  };
   U.drawSpr = function (name, x, y, level, scale) { const c = U.spr(name); if (c) U.drawDither(c, x, y, level == null ? 16 : level, scale); return !!c; };
   /* [still-c] 클로즈업 C판 고르기(data/spr_still_c.js — 칸이 dens배 촘촘한 같은 그림, 정의에 dens·base0):
      지금 키 name을 지금 배율 sOld로 그리던 자리 → { name, img, s, dens }. dens로 나누어떨어지는 판을 먼저(_c3 = 3배 컷 · _c = 2배),
@@ -94200,12 +94252,26 @@ MC.addLang('es', {
   function bedStill(g) {
     const img0 = U.spr('cu_bed_straw');
     if (!img0) return false;
-    const W = g.W, H = g.H, sOld = Math.max(1, Math.min(3, Math.floor((W + 12) / img0.width), Math.floor((H * 0.9) / img0.height)));
+    // [land5] 가로: 세로로 긴 그림(96×128)이 높이 기준(화면의 90%)에 걸려 1배로 아주 작게 떴다 → 한 단 크게(위아래는 화면 밖으로 조금 넘침 — 누운 사람은 그림 가운데라 다 보인다),
+    //   넘치면 사람 쪽(그림 높이의 54%)을 화면 가운데에 두고, 양옆 빈자리는 그림 가장자리 색으로 어둡게 잇는다. 세로는 옛 식 그대로(높이의 90% · 세로 가운데 · 옆 채움 없음)
+    const W = g.W, H = g.H, sOld = Math.max(1, Math.min(3, Math.floor((W + 12) / img0.width), Math.floor((g.land ? H * 1.45 : H * 0.9) / img0.height)));
     const pk = U.cuC('cu_bed_straw', sOld), im = softEdge(pk.img || img0, 0.07), s = pk.img ? pk.s : sOld;
+    const dw = im.width * s, dh = im.height * s, dx = (W - dw) >> 1, dy = g.land && dh > H ? Math.round(H * 0.5 - dh * 0.54) : Math.round((H - dh) / 2);
     g.ctx.imageSmoothingEnabled = false;
-    g.ctx.drawImage(im, (W - im.width * s) >> 1, Math.round((H - im.height * s) / 2), im.width * s, im.height * s);
+    if (g.land && W > dw && U.sideFillInto) {
+      const key = W + 'x' + H + '|' + dw + 'x' + dh;
+      if (!bedSide || bedSide.key !== key) {
+        const c = g.makeCanvas(W, H), cx = c.getContext('2d', { willReadFrequently: true });
+        cx.fillStyle = '#0d0b10'; cx.fillRect(0, 0, W, H);
+        U.sideFillInto(cx, W, H, pk.img || img0, dx + 8, dy, dw - 16, dh, { base: '#0d0b10', dark: 0.5, bh: 10 });
+        bedSide = { key, c };
+      }
+      g.ctx.drawImage(bedSide.c, 0, 0);
+    }
+    g.ctx.drawImage(im, dx, dy, dw, dh);
     return true;
   }
+  let bedSide = null;                                       // [land5] 짚 침대 컷 양옆 채움 판(가로만)
 })(window.MC);
 
 </script>
@@ -94428,7 +94494,8 @@ MC.addLang('es', {
   function ovGeo(g, n) {                          // 화면 크기·안전 영역이 바뀌면 다시 잰다
     const key = g.W + '|' + g.H + '|' + g.safe.top + '|' + n;
     if (geoMemo.key === key) return geoMemo.o;
-    const sw = clamp(Math.floor(156 / n), 6, 16), w = sw * n, cx = g.W >> 1, x0 = cx - (w >> 1);
+    // [land5] 가로: 회랑 단면 띠를 넓게(걸음 폭 156÷n·최대 16 → 240÷n·최대 24 — 열두 걸음이면 폭 156 → 240). 넓은 화면 가운데 가는 띠 하나만 작게 뜨던 것. 세로는 옛 값 그대로
+    const sw = clamp(Math.floor((g.land ? 240 : 156) / n), 6, g.land ? 24 : 16), w = sw * n, cx = g.W >> 1, x0 = cx - (w >> 1);
     const top = g.safe.top + clamp(Math.round(g.H * 0.17), 44, 96), p = beatPlan(n, 0);
     let k0 = n, k1 = -1;
     for (let k = 0; k < n; k++) if (p.step(k, 0).near) { if (k < k0) k0 = k; if (k > k1) k1 = k; }
@@ -95980,6 +96047,17 @@ MC.addLang('es', {
         const w = Math.min(g.W - 12, 196), h = Math.round(w * 0.78), x = (g.W - w) >> 1, y = Math.max(g.safe.top + 12, ((g.H - h) >> 1) - 14);
         return { x, y, w, h, pt: (p) => [Math.round(x + p[0] * w), Math.round(y + p[1] * h)] };
       }
+      const wallBg = () => once('islbg|' + g.W + 'x' + g.H, () => {   // [land5] 가로용 바탕 돌벽(화면 크기 — 판과 줄눈이 이어지게 28·14 격자를 판 왼쪽 위에 맞추고, 판에서 멀수록 어둡게 디더)
+        const Gm = geo(), W = g.W, H = g.H, big = bakeStones(W + 28, H + 28, ['#1a1714', '#34302c', '#3a3530', '#403a34', '#5a524a'], 93, 14, 28), c = G().makeCanvas(W, H), x = c.getContext('2d', { willReadFrequently: true });
+        x.drawImage(big, (Gm.x % 28) - 28, (Gm.y % 28) - 28);
+        const id = x.getImageData(0, 0, W, H), d = id.data, B = G().BAYER;
+        for (let yy = 0; yy < H; yy++) for (let xx = 0; xx < W; xx++) {
+          const dx = xx < Gm.x ? Gm.x - xx : xx >= Gm.x + Gm.w ? xx - (Gm.x + Gm.w) + 1 : 0, dy = yy < Gm.y ? Gm.y - yy : yy >= Gm.y + Gm.h ? yy - (Gm.y + Gm.h) + 1 : 0, dist = Math.max(dx, dy * 1.5);
+          if (dist && B[(yy & 3) * 4 + (xx & 3)] < Math.min(14, 5 + dist * 0.09)) { const q = (yy * W + xx) * 4; d[q] = 5; d[q + 1] = 4; d[q + 2] = 4; }
+        }
+        x.putImageData(id, 0, 0);
+        return c;
+      });
       const wall = () => once('isl|' + g.W + 'x' + g.H, () => {
         const Gm = geo(), c = bakeStones(Gm.w, Gm.h, ['#1a1714', '#34302c', '#3a3530', '#403a34', '#5a524a'], 93, 14, 28);
         G().withCtx(c, () => {
@@ -96003,8 +96081,11 @@ MC.addLang('es', {
       function draw() {
         const W = g.W, H = g.H, t = sc.t, T = now(), Gm = geo();
         g.clear('#050404');
+        // [land5] 가로: 벽 판 둘레 빈자리에도 같은 돌벽(줄눈을 판에 맞춤)을 깔고 판에서 멀어질수록 디더로 어둡게 — 등잔빛이 닿는 벽 한 자리로 읽힌다(코드로 그린 벽 — 그림 아님).
+        //   판 둘레 검은 테 선은 가로에서 그리지 않는다. 옛: 판 밖은 검정(#050404) + 검은 테 선. 세로는 옛 그대로
+        if (g.land) g.ctx.drawImage(wallBg(), 0, 0);
         g.ctx.drawImage(wall(), Gm.x, Gm.y);
-        g.rectO(Gm.x - 1, Gm.y - 1, Gm.w + 2, Gm.h + 2, '#000000');
+        if (!g.land) g.rectO(Gm.x - 1, Gm.y - 1, Gm.w + 2, Gm.h + 2, '#000000');
         const pts = P.map(Gm.pt);
         for (let i = 0; i < n; i++) soot(pts[i], pts[i + 1], i === n - 1 ? clamp((T - strokeT) / 420, 0, 1) : 1, 11 + i, BEND[i]);
         if (closeT >= 0) {
@@ -97153,6 +97234,7 @@ MC.addLang('es', {
   }
   const slitX = (C, y) => { for (let k = 0; k < 40; k++) { const a = C.rows[y - k], b = C.rows[y + k]; if (a >= 0) return a; if (b >= 0) return b; } return 90; };
   // ①② 자루 안(cu_sink_cut): 그림 아랫변 = 화면 아랫변(소매가 화면 오른쪽 아래 밖으로). 위로 남는 칸은 자루 속 어둠
+  let cutSide = null;                                      // [land5] 자루 속 그림 양옆 채움 판(가로만 — 화면 크기·그림 크기가 바뀌면 다시 굽는다)
   function drawCut(t, S, idle) {
     const g = G(), W = g.W, H = g.H, ctx = g.ctx, art = pick2(['cu_sink_cut']);
     const hint = S.seg === 2 && S.open2 < 0 && !S.swHeld && ((S.p2 === 0 && t - S.st > 1200) || idle >= PROMPT_IDLE);
@@ -97163,6 +97245,16 @@ MC.addLang('es', {
     const C = cutParts(art), ax = (W - art.width) >> 1, bob = Math.round(Math.sin(t * 0.0013) * 2), ay = H - art.height + 2 + bob;
     g.clear('#030203');
     ctx.drawImage(C.closed, ax, ay);
+    // [land5] 가로: 자루 그림 양옆 빈자리를 자루 천 색으로 어둡게 잇고, 그림 옆 끝 6칸은 디더로 녹인다(그림과 함께 위아래로 흔들림). 옛: 양옆 검정(#030203)
+    if (g.land && W > art.width && U.sideFillInto) {
+      const key = W + 'x' + H + '|' + art.width + 'x' + art.height;
+      if (!cutSide || cutSide.key !== key) {
+        const c = g.makeCanvas(W, H + 8), cx = c.getContext('2d', { willReadFrequently: true });
+        U.sideFillInto(cx, W, H + 8, C.closed, ax, H - art.height + 2 + 4, art.width, art.height, { base: '#030203', dark: 0.4, soft: 6, bh: 10 });
+        cutSide = { key, c };
+      }
+      ctx.drawImage(cutSide.c, 0, bob - 4);
+    }
     const p = S.seg === 1 ? 0 : (S.open2 >= 0 ? 1 : MC.clamp(S.p2, 0, 1)), yc = C.y0 + Math.round(p * (C.y1 - C.y0));
     // [c43-guide B1 · 도2-7] 그은 만큼 틈이 열려 물빛 — 직사각형(가로로 곧게 잘린 아랫변)이 아니라 칼끝을 따르는 세로 마름모(위끝·칼끝이 뾰족, 가운데가 넓음)
     //   + 경계에 풀린 천 올 1px 3~4가닥. 다 열리면(open2) 그림 그대로
@@ -98614,6 +98706,9 @@ MC.addLang('es', {
           for (let k = 0; k < len; k++) g.px(Math.round(x + Math.cos(an) * k), Math.round(y + Math.sin(an) * k), col);
         }
       }
+      // [land5] 가로: 가운데 그림 기둥(바닥·철문·짚) 양옆 빈자리를 그 기둥 가장자리 색(벽 띠·돌바닥·짚)으로 어둡게 잇고, 기둥 옆 끝 6칸은 디더로 녹인다 — 등잔빛이 닿지 않는 어두운 바닥으로 읽힌다.
+      //   옛: 양옆이 회색 단색 막대(#201e1c). 그림은 그대로(위에 덧칠만). 세로·코드 그림(F.art 아님)은 건드리지 않는다
+      if (F.art && g.land && U.sideFillInto) { const fw = art('cu_cell_floor').width; if (W > fw) U.sideFillInto(ctx, W, H, c, F.ax, 0, fw, H, { src: [F.ax, 0, fw, H], base: '#0c0b0a', dark: 0.45, soft: 6, bh: 10 }); }
     });
     floorBg = { key: F.key, c };
     return c;
@@ -99441,7 +99536,8 @@ MC.addLang('es', {
         const g = G(), W = g.W, H = g.H;
         g.clear(bg);
         // 정수 배율만(도트가 깨지지 않게). 클로즈업(≈96px)이 폭 180~216에서 1배로 작아지지 않게 양옆 12px까지는 넘쳐도 2배(가장자리는 비네트가 녹인다)
-        const sOld = Math.max(1, Math.min(maxS, Math.floor((W + 12) / img.width), Math.floor((H * 0.7) / img.height)));
+        // [land5] 가로: 높이 기준을 「화면 높이의 70%」 → 「화면 높이 + 12」로(위아래 6px씩까지는 넘쳐도 한 단 크게 — 세로에서 2배로 보이던 클로즈업이 가로에서 1배로 아주 작게 뜨던 것). 세로는 옛 식 그대로
+        const sOld = Math.max(1, Math.min(maxS, Math.floor((W + 12) / img.width), Math.floor((g.land ? H + 12 : H * 0.7) / img.height)));
         const pk = fromImg ? { img, s: sOld, dens: 1 } : U.cuC(name, sOld), im = pk.img || img, s = pk.img ? pk.s : sOld;   // [still-c] C판이면 s = sOld/dens
         const pic = tintOf(im);
         // [art-iffar] align:'top' — 그림 윗변을 화면 위에 붙인다(그림 윗변에서 잘린 소매가 곧장 화면 밖으로 — 팔 원칙, cu_hair)
@@ -99449,10 +99545,11 @@ MC.addLang('es', {
         // [c50-cine] place:"br" — 그림 오른쪽 아래를 화면 오른쪽(·아래 padB px 위)에 붙인다(오른쪽 아래로 빠지는 소매가 곧장 화면 밖으로 — cu_rock_grip)
         const w = im.width * s, h = im.height * s, br = a.place === 'br';
         if (MC.cfg && MC.cfg.debug) dbg('still', { spr: name, drawn: pk.name || name, sOld, s, dens: pk.dens || 1, w, h, W, H });
-        const x = (br ? W - w : ((W - w) >> 1)) + jx, y = br ? H - h - Math.max(0, num(a.padB, 0)) : a.align === 'top' ? 0 : Math.round(H * yk - h / 2);
+        const ykE = g.land && h > H - 8 ? 0.5 : yk;   // [land5] 가로에서 그림이 화면 높이를 거의 채우면 세로 가운데에(옛: 늘 yk — 위로 치우쳐 윗변이 많이 잘린다). 세로는 yk 그대로
+        const x = (br ? W - w : ((W - w) >> 1)) + jx, y = br ? H - h - Math.max(0, num(a.padB, 0)) : a.align === 'top' ? 0 : Math.round(H * ykE - h / 2);
         g.ctx.imageSmoothingEnabled = false;
         if (fromImg) {
-          const k = U.lvl(sc.t, 450 + fromMs, 400), fx = (W - fromImg.width * s) >> 1, fy = Math.round(H * yk - fromImg.height * s / 2);
+          const k = U.lvl(sc.t, 450 + fromMs, 400), fx = (W - fromImg.width * s) >> 1, fy = Math.round(H * ykE - fromImg.height * s / 2);
           if (k < 16) U.drawDither(fromImg, fx, fy, 16 - k, s);
           if (k > 0) U.drawDither(im, x, y, k, s);
         } else { if (bleed) drawBleed(g.ctx, x, y, sOld, W, H); g.ctx.drawImage(pic, x, y, w, h); }
@@ -101303,8 +101400,16 @@ MC.addLang('es', {
     if (L.land ? !(g.land && L.W === landPW(g)) : Wd !== g.screen.width) return;   // [land] 그림 칸 폭은 화면 폭보다 좁다                         // 크기 바뀌는 중
     if (P.vista) {                                             // [vista] 그림 칸(윗변 vy = k의 배수)만 잘라 그 안을 원점으로 — 칸 격자·열기·닫기 디더가 그림 칸에 붙는다
       s.save();
+      if (L.vw) {                                              // [land5] 가로: 그림 칸을 제 자리(vx)·제 폭(vw)으로 — 판이 그림 모서리에 겹치는 좁은 화면에서는 판 자리(테 그림자 1px까지)를 비운다(evenodd). 옛: 화면 폭 전체 칸의 가운데
+        const px = L.plateX * S, py = L.plateY * S, pw = (VS.PW + 1) * S, ph = (VS.PH + 1) * S;
+        s.beginPath(); s.rect(L.vx, L.vy, L.vw, L.vh);
+        if (px < L.vx + L.vw && py < L.vy + L.vh) s.rect(Math.max(px, L.vx), Math.max(py, L.vy), Math.min(px + pw, L.vx + L.vw) - Math.max(px, L.vx), Math.min(py + ph, L.vy + L.vh) - Math.max(py, L.vy));
+        s.clip('evenodd'); s.translate(L.vx, L.vy);
+        drawCHi(s, P, h, { W: L.vw, H: L.vh }, L.vh);
+      } else {
       s.beginPath(); s.rect(0, L.vy, Wd, L.vh); s.clip(); s.translate(0, L.vy);
       drawCHi(s, P, h, { W: Wd, H: L.vh }, L.vh);
+      }
       s.restore();
       s.imageSmoothingEnabled = false;
       P.nHi++;
@@ -101409,10 +101514,20 @@ MC.addLang('es', {
   function vLayout(P) {
     const g = G(), W = g.W, H = g.H, S = g.S, st = g.safe.top || 0, sb = g.safe.bottom || 0, only = P.vista.only;
     let k = Math.max(1, Math.round(W * S / 360)), rows = 0;
+    const land = !!g.land && !only;                          // [land5] 가로: 그림이 화면 높이를 다 쓰고(판 자리를 빼지 않는다) 이름표 판은 그림 오른쪽 아래 옆에 — 아래 land 갈래
     if (!only) {
-      const availD = Math.max(0, (H - st - sb - VS.PH - VS.GAP - 8) * S);
+      const availD = Math.max(0, (H - st - sb - (land ? 0 : VS.PH + VS.GAP + 8)) * S);
       for (;;) { rows = Math.min(480 - VS.DRIFT, Math.floor(availD / k)); if (rows >= VS.MIN_ROWS || k <= 1) break; k--; }
       rows = Math.max(1, rows);
+    }
+    if (land) {
+      /* [land5] 가로 판짜기 — 옛: 세로와 같은 「그림 위 · 판 아래」 묶음을 가운데에 둬서 그림이 작고(506×204에서 144×154) 양옆이 검정이었다.
+         그림(360칸 × k)은 화면 높이에 맞춘 k로, 판은 그 오른쪽 아래 옆(틈 10)에 놓고 둘을 한 묶음으로 가로 가운데에. 화면이 좁아 묶음이 안 들어가면 판이 그림 오른쪽 아래 모서리에 겹친다(hiDraw가 그 자리를 비운다).
+         vx·vw = 그림 칸의 왼쪽 · 폭(기기 px) — hiDraw·gridCheck·vistaSides가 읽는다(세로에는 없음 = 옛 그대로) */
+      const picWL = 360 * k / S, picL = rows * k / S, gap = Math.min(10, W - 8 - picWL - VS.PW);
+      const left = Math.max(0, Math.floor((W - (picWL + gap + VS.PW)) / 2)), topL = st + Math.max(0, (H - st - sb - picL) / 2), vy = k * Math.round(topL * S / k);
+      const plateY = Math.min(H - sb - VS.PH - 16, Math.round((vy + rows * k) / S) - VS.PH - 14);
+      return { W, H, S, k, rows, vy, vh: rows * k, vx: Math.round(left * S), vw: 360 * k, plateX: Math.round(left + picWL + gap), plateY, picH: H, bandTop: H, bandTop0: H, extra: 0, capH: 0 };
     }
     const picL = only ? 0 : rows * k / S, groupL = picL + (only ? 0 : VS.GAP) + VS.PH;
     const topL = st + Math.max(0, (H - st - sb - groupL) / 2);
@@ -101423,6 +101538,27 @@ MC.addLang('es', {
   function vCam(n, t) {
     const e = EASE.io(clamp(t / Math.max(1, n.ms), 0, 1));
     return { x: n.from.x + (n.to.x - n.from.x) * e, y: n.from.y + (n.to.y - n.from.y) * e, w: 1 };
+  }
+  /* [land5] 가로 장소 그림: 그림 칸 양옆 빈자리를 그 그림 가장자리 색으로 어둡게 잇고(ch1.u.sideFillInto — 그림마다 한 번 구워 둔다), 그림 둘레에 얇은 액자 선(창 팔레트의 흐린 색을 어둡게) 한 줄.
+     열기·닫기는 그림·판과 같은 단(lv)으로 검정 디더. 그림 자체는 건드리지 않는다(기기 판은 hiDraw가 이 위에 그린다). 세로에서는 부르지 않는다 */
+  let vsSide = null;
+  function vistaSides(P, L, lv) {
+    const g = G(), SF = ch1.u && ch1.u.sideFillInto, id = P.cuts[0].img, src = SF ? srcC(id, 0) : null;
+    if (!src) return;
+    const key = id + '|' + L.W + 'x' + L.H + '|' + L.vx + '|' + L.k + '|' + L.vy + '|' + P.vista.pal;
+    if (!vsSide || vsSide.key !== key) {
+      const c = g.makeCanvas(L.W, L.H), x = c.getContext('2d', { willReadFrequently: true });
+      const px = Math.floor(L.vx / L.S), pw = Math.ceil(L.vw / L.S), py = Math.floor(L.vy / L.S), ph = Math.ceil(L.vh / L.S);
+      x.fillStyle = '#000000'; x.fillRect(0, 0, L.W, L.H);
+      SF(x, L.W, L.H, src, px, py, pw, ph, { src: [0, Math.max(0, Math.round((src.height - L.rows) / 2)), src.width, Math.min(src.height, L.rows)], base: '#000000', dark: 0.55, bh: 10 });
+      const pal = g.pal(P.vista.pal) || {};
+      x.fillStyle = g.mix(pal.dim || '#6a6a6a', '#000000', 0.5);
+      x.fillRect(px - 1, py - 1, pw + 2, 1); x.fillRect(px - 1, py + ph, pw + 2, 1); x.fillRect(px - 1, py, 1, ph); x.fillRect(px + pw, py, 1, ph);
+      if (vsSide && vsSide.c) vsSide.c.width = vsSide.c.height = 0;
+      vsSide = { key, c };
+    }
+    g.ctx.drawImage(vsSide.c, 0, 0);
+    if (lv < 16) g.ditherRect(0, 0, L.W, L.H, '#000', 16 - lv);
   }
   // 이름표 판(논리 캔버스): 큰 창 테 164×34 — 장소(body, 가운데) · 그 아래 때(small, dim). 때가 없으면 장소 한 줄을 가운데에. 열기·닫기는 그림과 같은 단
   function renderPlate(P, L, lv) {
@@ -101542,6 +101678,7 @@ MC.addLang('es', {
         P.capFrame = g.renderId;
         P.hi = null;
         if ((P.phase === 'play' || P.phase === 'skip') && !P.vista.only) { P.hi = { c: true, key: P.cuts[0].img, lv }; P.hiFrame = g.renderId; }
+        if (L.vw && P.hi) vistaSides(P, L, lv);                // [land5] 가로: 그림 양옆 빈자리 채움 + 얇은 액자 선(논리판 — 그림은 그 위 기기 판). 옛: 검정
         renderPlate(P, L, lv);
         pushStat(stats.r, now() - t0);
         return;
@@ -101637,8 +101774,8 @@ MC.addLang('es', {
     if (!P || !P.L || !P.oNow) return null;
     if (P.style === 'C') {
       // [vista] 그림 칸(윗변 vy — k의 배수)만 읽는다 — 격자는 그 윗변 기준(같은 뜻)
-      const k = P.kNow, S = g.S, W = P.L.W * S, y0 = P.vista ? P.L.vy : 0, H = P.vista ? P.L.vh : P.L.bandTop * S, ox = P.oNow[0], oy = P.oNow[1], e = imgOf(P.cuts[P.ci].img);
-      const d = g.sctx.getImageData(0, y0, W, H).data;
+      const k = P.kNow, S = g.S, W = P.vista && P.L.vw ? P.L.vw : P.L.W * S, y0 = P.vista ? P.L.vy : 0, H = P.vista ? P.L.vh : P.L.bandTop * S, ox = P.oNow[0], oy = P.oNow[1], e = imgOf(P.cuts[P.ci].img);
+      const d = g.sctx.getImageData(P.vista && P.L.vw ? P.L.vx : 0, y0, W, H).data;   // [land5] 가로 장소 그림은 그림 칸(vx·vw)만 읽는다(옛: 0 · 화면 폭 — 세로는 그대로)
       const px = (x, y) => { const o = (y * W + x) * 4; return (d[o] << 16) | (d[o + 1] << 8) | d[o + 2]; };
       let bad = 0, n = 0;
       for (let y = 3; y < H; y += 7) for (let x = 1; x < W; x++) if (px(x, y) !== px(x - 1, y)) { n++; if (x % k) bad++; }
@@ -101894,6 +102031,7 @@ MC.addLang('es', {
       // [land2] 가로 만화: 소리 자막을 오른쪽 글 칸 안에(가운데 = 글 칸 가운데, 자리 = 「길게 눌러 건너뛰기」 줄 바로 위).
       //   옛: 화면 가운데(W/2)·맨 아래라 왼쪽 반이 기기 해상도 그림 밑에 가려 「[캡스턴… 삐걱]」 앞부분이 안 보였다. cx는 fx.renderCaps가 읽는다(세로·vista는 cx 없음 = 옛 그대로)
       if (P && P.L && P.L.land && !P.vista && P.capFrame === G().renderId) { const g2 = G(); return { top: g2.H - (g2.safe.bottom || 0) - 29, bottom: g2.H, pos: 'bottom', cx: P.L.W + ((g2.W - P.L.W) >> 1) }; }
+      if (P && P.L && P.vista && P.L.vw && P.capFrame === G().renderId) return { top: P.L.plateY + VS.PH + 3, bottom: G().H, pos: 'bottom', cx: P.L.plateX + (VS.PW >> 1) };   // [land5] 가로 장소 그림: 소리 자막은 판 아래 · 판 가운데 줄(옛: 화면 가운데 — 그림 밑에 가린다)
       if (P && P.L && P.capFrame === G().renderId) return P.vista ? { top: P.L.plateY + VS.PH + 3, bottom: G().H, pos: 'bottom' } : { top: P.L.bandTop0 - P.L.extra + 1, bottom: G().H, pos: 'bottom' };   // [vista] 판 아래
       return orig.apply(this, arguments);
     };
@@ -102954,6 +103092,9 @@ MC.addLang('es', {
         if (g.land && W > TT_GEO.w) {           // [land] 그림 양옆(수평선 아래)도 바다 — 그림의 수평선 바로 아래 색에서 어둡게(흰 빈칸 방지)
           const s0 = rowAvg(A, TT_GEO.hz + 2, TT_GEO.hz + 8), s1 = rowAvg(A, Math.min(TT_GEO.h - 8, TT_GEO.hz + 40), Math.min(TT_GEO.h - 2, TT_GEO.hz + 46));
           g.gradV(0, L.hz, W, H - L.hz, [g.mix(s0, '#03060c', 0.35), g.mix(s1, '#03060c', 0.5), '#03060c']);
+          // [land5] 그림 기둥 옆 경계가 또렷했다(그림 하늘·바다가 코드 하늘·바다보다 밝고 결이 다름) → 그림 가장자리 색(하늘 띠·수평선·바다 띠)을 양옆 코드 하늘·바다 위로 120칸에 걸쳐 디더로 녹인다
+          //   (먼 색 = 깔려 있던 코드 하늘·바다 그대로 — under). 그림 옆 끝 14칸 디더(ttPaint SIDE)가 이 위에 얹힌다. 옛: 코드 하늘·바다에 바로 14칸 디더
+          if (A.lo && U.sideFillInto) U.sideFillInto(g.ctx, W, H, A.lo, T.ix + 14, T.ty, A.w - 28, A.h, { under: true, dark: 0.12, fade: 120, bh: 6, y0: Math.max(0, T.ty), y1: Math.min(H, T.cut - TT_GEO.fade) });
         }
         ttPaint(e, T, A);
         return;                                 // 가: 코드 등대 탑 · 성 · 물그림자 없음(그림 속)
@@ -103251,6 +103392,8 @@ MC.addLang('es', {
     e = { c: g.makeCanvas(W, H), castle: null, mask: new Uint8Array(W * H), reg: null, art: A, ox, oy, hi: null, hiS: 0 };
     const x = e.c.getContext('2d');
     x.fillStyle = '#03050b'; x.fillRect(0, 0, W, H);
+    // [land5] 가로: 그림 양옆 빈자리를 그림 가장자리 색(하늘·바위·바다 띠)으로 어둡게 잇는다 — 그림 옆 6칸 디더(KS)가 이 위로 녹는다. 옛: 양옆 검정(#03050b)
+    if (g.land && W > A.w && A.lo && U.sideFillInto) U.sideFillInto(x, W, H, A.lo, ox + 6, oy, A.w - 12, A.h, { base: '#03050b', dark: 0.28 });
     const y0 = Math.max(0, oy), y1 = Math.min(H, oy + A.h), x0 = Math.max(0, ox), x1 = Math.min(W, ox + A.w);
     const KT = oy > 0 ? 8 : 0, KB = 14, KS = W > A.w ? 6 : 0, id = x.getImageData(0, y0, W, y1 - y0), d = id.data;
     for (let y = y0; y < y1; y++) for (let xx = x0; xx < x1; xx++) {
