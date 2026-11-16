@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.13';
+  var VERSION = '0.9.14';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -1352,10 +1352,18 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
 
   // [land] 가로 배치를 아는 장면(이름) — 이 밖의 장면(손으로 하는 장면 mg_* 등 세로로만 짠 것)이 쌓여 있는 동안은 세로 배치(가운데 세로 판)로 그린다.
   //   장면이 직접 가로를 알면 sc.landOk = true. 쌓기·빼기 때 scene.js가 g.landCheck()를 불러 바뀔 때만 다시 잰다
-  const LAND_OK = /^(field|dialogue|menu|settings|langpick|credits|confirm|battle|title|closeup|ev_hold_closeup|caption|timecard|learned|comic|people_page|intro_card|narr|nameplate|ev_caption|ev_closeup|ev_card|ev_info|ev_skip|ev_under)$/;
+  const LAND_OK = new RegExp('^(' + [
+    'field|dialogue|menu|settings|langpick|credits|confirm|battle|title|closeup|ev_hold_closeup|caption|timecard|learned|comic|people_page|intro_card|narr|nameplate|ev_caption|ev_closeup|ev_card|ev_info|ev_skip|ev_under',
+    // [land] 손으로 하는 장면 — 가로에서 하나씩 확인한 것(11-16). 손 안내는 가로에서 화면 맨 아래(U.guideBottom)
+    'mg_s1_knot|mg_s1_shore|mg_s1_shore_tap|mg_s1_dig',
+    'mg_s3_island|mg_s3_join|mg_s3_beam|mg_s3_bread|mg_s3_burn|mg_s3_reveal|mg_s3_pulse|mg_s3_sweep|mg_s3_order|ev_s3_patrol|ev_s3_paper',
+    'mg_s3_vial|mg_s3_swim|mg_s3_breaths|mg_s3_drops|mg_s3_hour|mg_s3_bedcut|mg_s3_lift',
+    'mg_s4_still|mg_s4_slit|mg_s4_sew|mg_s4_sea_swim|mg_s4_helm|mg_s4_fingers|mg_s4_count3|mg_s4_fall|mg_s4_sea_sink|mg_s4_pulse_fade|mg_s4_ledger|mg_s4_record|mg_s4_face|mg_s4_ending',
+    'breath|hands|letter|mg_burn|lessons|craft|candle|tbc|ev_deduce|ev_deduce_tap|ev_rewind|ev_memcard|mg_castle'
+  ].join('|') + ')$');
   function portOnly() {
     const st = MC.scene && MC.scene.stack;
-    if (!st) return false;
+    if (!st || g.landAll) return false;                 // g.landAll = 시험용(안전망 끄기)
     for (const s of st) if (s && !s.landOk && !LAND_OK.test(s.name || '')) return true;
     return false;
   }
@@ -88654,7 +88662,11 @@ MC.addLang('es', {
      o.text: 키 대신 이미 번역된 글(이벤트 인자) */
   const GUIDE_COL = '#e8dec8', GUIDE_TIP = '#c8bea8';
   U.GUIDE_COL = GUIDE_COL;
-  U.guideBottom = function () { const g = G(); return g.H - ((g.safe && g.safe.bottom) || 0) - 66 - 3; };   // 안내 글 아랫변(대화창 윗변 3도트 위)
+  U.guideBottom = function () {
+    const g = G(), sb = (g.safe && g.safe.bottom) || 0;
+    if (g.land) return g.H - sb - (MC.dialogue && MC.dialogue.open ? 66 + 3 : 6);   // [land] 가로는 낮아서 화면 맨 아래(대화창이 떠 있으면 그 위)
+    return g.H - sb - 66 - 3;
+  };   // 안내 글 아랫변(대화창 윗변 3도트 위)
   function guideIcon(kind, x, cy, col, dir, T) {
     const g = G();
     if (kind === 'hold') { g.ring(x, cy, 4, col); const k = (T % 1400) / 1400; if (k < 0.8) g.rect(x - 1, cy - 1, 3, 3, col); return; }   // 원(길게) — 가운데가 눌린 동안 차 있음
@@ -88708,14 +88720,14 @@ MC.addLang('es', {
         }
         const k = k01(t) * MC.clamp((r.lv == null ? 16 : r.lv) / 16, 0, 1);
         if (k <= 0.001) return;
-        const step = MC.clamp(Math.ceil(k * 4 - 0.001), 1, 4), col = g.mix(bg, GUIDE_COL, step / 4), cx = g.W >> 1, maxW = g.W - 22;
+        const step = MC.clamp(Math.ceil(k * 4 - 0.001), 1, 4), col = g.mix(bg, GUIDE_COL, step / 4), cx = r.cx != null ? Math.round(r.cx) : g.W >> 1, maxW = r.maxW || g.W - 22;   // [land] r.cx·r.maxW = 가운데가 아닌 칸에 세울 때
         const ls = guideLines(o.text != null ? String(o.text) : U.tf(o.key), 'body', maxW).map(l => MC.text.bake(l, 'body', col, { shadow: '#000' })).filter(Boolean);
         const tip = (r.tipOn != null ? !!r.tipOn : s.failed) && o.tip ? guideLines(U.tf(o.tip), 'small', maxW).map(l => MC.text.bake(l, 'small', g.mix(bg, GUIDE_TIP, step / 4), { shadow: '#000' })).filter(Boolean) : [];
         let y = Math.round(r.y != null ? r.y : U.guideBottom());
         y -= ls.reduce((h, im) => h + im.height, 0);
         ls.forEach((im, i) => {
           let x = cx - (im.width >> 1);
-          if (i === 0 && o.icon !== false) { const ix = Math.max(g.X0 + 5, x - 9); x = Math.max(x, ix + 9); guideIcon(o.icon, ix, y + (im.height >> 1) - 1, col, o.dir, T); }
+          if (i === 0 && o.icon !== false) { const ix = Math.max(r.cx != null ? 5 : g.X0 + 5, x - 9); x = Math.max(x, ix + 9); guideIcon(o.icon, ix, y + (im.height >> 1) - 1, col, o.dir, T); }
           g.ctx.drawImage(im, x, y); y += im.height;
         });
         y += 1;
@@ -90102,15 +90114,16 @@ MC.addLang('es', {
   // 투서 본문: 이야기 글이라 키 story.letter(번역 우선순위 높음). 구운 종이는 언어가 바뀌면 다시 굽는다
   let letterCache = null, letterRev = -1;
   function bakeLetterSheet() {
-    if (letterCache && letterRev === MC.i18n.rev) return letterCache;
-    letterRev = MC.i18n.rev;
+    const LK = MC.i18n.rev + (G().land ? 'L' + G().W : '');   // [land] 가로는 넓은 종이(줄 수가 줄어 높이 180 안에)
+    if (letterCache && letterRev === LK) return letterCache;
+    letterRev = LK;
     // [a42-ui 0.4.2 A4] 넘침·굵은 글자 정리(F17): 예전에는 폭 138로 나눈 뒤 그릴 때 글자 사이 +1px·줄 시작 +0~3px·굵은 획(14%)을 더해
     //   글자가 오른쪽 얼룩 띠 위로 넘치고 한 낱말이 통째로 굵어졌다.
     //   ① 실제로 그리는 폭(줄 시작 어긋남 + 글자 사이 + 굵은 획 1px)으로 재서 글자 칸(XR) 안에 들게 TW를 줄여 가며 나눈다
     //   ② 굵은 획은 약 4%, 앞 굵은 글자에서 6글자 안에는 다시 굵히지 않는다(한 낱말에 몰리지 않게)
     //   ③ 접힌 자국은 가운데에 가장 가까운 줄 사이 틈으로 ④ 얼룩 디더는 글자 칸 밖 가장자리에만(오른쪽 띠 9px · 아래 띠는 마지막 줄 아래)
     //   ⑤ 기울기·높이 흔들림(왼손 글씨, M34)은 그대로
-    const g = G(), PW = 156, X0 = 9, XR = PW - 12, LH = 13, TOP = 12;
+    const g = G(), PW = g.land ? Math.max(156, Math.min(250, g.W - 40)) : 156, X0 = 9, XR = PW - 12, LH = 13, TOP = 12;
     const lx0 = li => X0 + Math.floor(U.hash(li, 3, 12) * 4);
     const gap = (ci, li) => (U.hash(ci, li, 14) < 0.3 ? 1 : 0);
     const boldAt = (ln, li) => { const out = []; let last = -99; Array.from(ln).forEach((ch, ci) => { if (ch !== ' ' && U.hash(li * 50 + ci, 5, 13) > 0.96 && ci - last > 6) { out[ci] = 1; last = ci; } }); return out; };
@@ -90133,7 +90146,7 @@ MC.addLang('es', {
       // 왼손으로 쓴 글씨: 글자마다 높이·간격이 어긋나고 줄이 기운다
       let y = TOP;
       lines.forEach((ln, li) => {
-        const slope = (U.hash(li, 7, 11) - 0.5) * 0.09, bd = boldAt(ln, li);
+        const slope = (U.hash(li, 7, 11) - 0.5) * 0.09 * Math.min(1, 147 / (XR - X0)), bd = boldAt(ln, li);   // [land] 넓은 종이에서도 줄 끝 기울기는 옛 폭만큼
         let x = lx0(li);
         Array.from(ln).forEach((ch, ci) => {
           const h = U.hash(li * 50 + ci, 5, 13);
@@ -90696,6 +90709,14 @@ MC.addLang('es', {
       // 4장까지는 S2 배치 그대로. 5장 이상(S3 화학·의술)은 촘촘하게: 간격·여백을 줄이고, 카드가 낮으면 아이콘 1배·인용 1줄(넘치면 …)
       const compact = cards.length > 4;
       function layout() {
+        if (g.land) {                                // [land] 가로: 머리(파리아·제목·그만둔다)는 위 한 줄, 과목 카드는 두 열
+          const mt = MC.ui.minTouch(), x = 4 + g.safe.left, W = g.W - 8 - g.safe.left - g.safe.right, headH = 44, top = 4 + g.safe.top, gap = 3;
+          const n = Math.max(1, cards.length), rows = Math.ceil(n / 2), cw = (W - gap) >> 1, y0 = top + headH + 4;
+          const ch = MC.clamp(Math.floor((g.H - 4 - g.safe.bottom - y0 - (rows - 1) * gap) / rows), 30, 54);
+          cards.forEach((c, i) => { c.rect = [x + (i % 2) * (cw + gap), y0 + ((i / 2) | 0) * (ch + gap), cw, ch]; });
+          bStop.w = 88; bStop.h = Math.max(22, Math.min(30, mt + 2)); bStop.x = x + W - 88 - 6; bStop.y = top + ((headH - bStop.h) >> 1);
+          return { x, W, top, headH, ch, land: true, bottom: y0 + rows * ch + (rows - 1) * gap };
+        }
         const mt = MC.ui.minTouch(), x = g.X0 + 2, W = 176, headH = 44, n = Math.max(1, cards.length);
         const gap = compact ? 3 : 4, gH = compact ? 4 : 6, gB = compact ? 8 : 12;
         const bh = Math.max(26, mt + 2), top0 = 8 + g.safe.top, bot0 = g.H - 8 - g.safe.bottom;
@@ -90747,7 +90768,7 @@ MC.addLang('es', {
       sc.onBack = () => { if (sc.closing < 0 && picked < 0) { U.sfx('ui_cancel'); finish(''); } };
       sc.render = () => {
         const L = layout(), P = g.uiPal, t = sc.t, p = dimOf(sc, OPEN, CLOSE);
-        backDim(p, [[0, L.top - 3], [bStop.y + bStop.h + 3, g.H]]);   // [r5 UW-5] 창 위 · 그만둔다 아래 빈 띠. 되돌리기: g.ditherFill('#05060c', 12 * p)
+        backDim(p, [[0, L.top - 3], [L.land ? L.bottom + 3 : bStop.y + bStop.h + 3, g.H]]);   // [land] 그만둔다는 머리 줄 안 — 아래 빈 띠는 카드 아래부터   // [r5 UW-5] 창 위 · 그만둔다 아래 빈 띠. 되돌리기: g.ditherFill('#05060c', 12 * p)
         if (p < 0.25) return;
         const dy = Math.round((1 - MC.ease.outCubic(p)) * 8);
         g.offset(0, dy);
@@ -90778,14 +90799,14 @@ MC.addLang('es', {
           // 배울 수 있는 카드: 왼쪽 금빛 표시(숨쉬듯)
           if (c.open && !other) { const lv = 8 + Math.round(6 * (0.5 + 0.5 * Math.sin(t * 0.005 + i))); g.ditherRect(cx + 4, cy + 6, 2, chh - 12, P.gold, lv); }
           // 아이콘 2배(촘촘한 배치에서 카드가 낮으면 1배)
-          const is = !compact || chh >= 42 ? 2 : 1, ifr = 16 * is + 4;
+          const is = !(compact || g.land) || chh >= 42 ? 2 : 1, ifr = 16 * is + 4;
           const ix = cx + 9, iy = cy + ((chh - ifr) >> 1);
           g.frame(ix, iy, ifr, ifr, { small: true, over: other || (!c.open && !c.learned) ? { W: g.mix(P.W, P.f, 0.55) } : null });
           U.drawDither(U.lessonIcon(c.L.id), ix + 2, iy + 2, other ? 5 : (!c.open && !c.learned ? 7 : 16), is);
           // 글자
           const tx = ix + ifr + 6, dimAll = other || (!c.open && !c.learned);
           const nmCol = dimAll ? P.dim : (c.learned ? P.gold : P.text);
-          const nmY = compact ? cy + 3 : cy + 5, qY = compact ? cy + 17 : cy + 22;
+          const nmY = (compact || g.land) ? cy + 3 : cy + 5, qY = (compact || g.land) ? cy + 17 : cy + 22;
           const ex = MC.text.draw(c.name, tx, nmY, { font: 'bold', color: nmCol });
           // 기술 이름: '배웠다' 도장과 겹치면 줄여 '…'(역사의 교훈 + 배웠다가 붙어 읽히던 것)
           let skn = c.skillName || '';
@@ -90794,12 +90815,12 @@ MC.addLang('es', {
           if (sknMax > 12) MC.text.draw(skn, ex + 6, nmY + 2, { font: 'small', color: dimAll ? P.dim : g.mix(P.gold, P.text, 0.35) });
           const qw = cx + cw - 8 - tx;
           let ql = MC.text.wrap(c.quote || '', qw, 'small');
-          const maxL = Math.max(1, Math.floor((chh - (compact ? 19 : 24)) / 13));
+          const maxL = Math.max(1, Math.floor((chh - ((compact || g.land) ? 19 : 24)) / 13));
           if (ql.length > maxL) { ql = ql.slice(0, maxL); let s = ql[maxL - 1]; while (s.length > 1 && MC.text.width(s + '…', 'small') > qw) s = s.slice(0, -1); ql[maxL - 1] = s + '…'; }
           ql.forEach((l, k) => MC.text.draw(l, tx, qY + k * 13, { font: 'small', color: dimAll ? g.mix(P.dim, P.f, 0.3) : P.dim }));
           // 배웠다 도장
           if (c.learned) {
-            const stamp = U.tf('hub.learnedStamp'), sw = MC.text.width(stamp, 'small') + 8, sx2 = cx + cw - 8 - sw, sy2 = compact ? cy + 3 : cy + 5;
+            const stamp = U.tf('hub.learnedStamp'), sw = MC.text.width(stamp, 'small') + 8, sx2 = cx + cw - 8 - sw, sy2 = (compact || g.land) ? cy + 3 : cy + 5;
             g.rectO(sx2, sy2, sw, 14, P.gold); g.rect(sx2 + 1, sy2 + 1, sw - 2, 12, g.mix(P.f, P.gold, 0.12));
             MC.text.draw(stamp, sx2 + 4, sy2 + 1, { font: 'small', color: P.gold });
           }
@@ -90872,6 +90893,17 @@ MC.addLang('es', {
       }
       function bubbleOn() { return MC.time.real - fx.t0 < fx.lineMs + 250 && !!fx.line; }
       function layout() {
+        if (g.land) {                            // [land] 가로: 머리는 위 한 줄, 목록은 왼쪽 · 자세히(재료·만든다)는 오른쪽
+          const mt = MC.ui.minTouch(), hx = 4 + g.safe.left, hW = g.W - 8 - g.safe.left - g.safe.right, top = 4 + g.safe.top, headH = 40, bh = Math.max(24, mt);
+          const lw = Math.min(160, Math.floor(hW * 0.46)), y1 = top + headH + 4, bottom = g.H - 4 - g.safe.bottom;
+          list.x = hx; list.y = y1; list.w = lw; list.rowH = Math.max(26, mt + 2);
+          const fit = Math.max(1, Math.floor((bottom - y1 - 8) / list.rowH));
+          list.rows = recs.length > fit ? Math.max(1, Math.floor((bottom - y1 - 8 - 16) / list.rowH)) : Math.max(1, Math.min(fit, recs.length || 1));
+          const px = hx + lw + 4, pw = hW - lw - 4, paneH = bottom - y1;
+          bMake.w = 72; bMake.h = bh; bMake.x = px + pw - bMake.w - 6; bMake.y = y1 + paneH - bh - 6;
+          bClose.x = hx + hW - 28; bClose.y = top + 8;
+          return { x: px, W: pw, top, headH, paneY: y1, paneH, hx, hW, land: true };
+        }
         const mt = MC.ui.minTouch(), x = g.X0 + 2, W = 176, top = 8 + g.safe.top, headH = 40;
         const bh = Math.max(24, mt);
         const paneH = 6 + 16 + 2 + 26 + 3 + 26 + 4 + bh + 6;     // 이름·설명 2줄·재료 2줄·버튼
@@ -90916,12 +90948,12 @@ MC.addLang('es', {
         g.offset(0, dy);
         const x = L.x, W = L.W, top = L.top;
         // 머리
-        g.frame(x, top, W, L.headH);
-        MC.text.draw(U.tf('hub.craftTitle'), x + 10, top + 5, { color: P.gold });
+        g.frame(L.land ? L.hx : x, top, L.land ? L.hW : W, L.headH);   // [land] 머리는 화면 폭
+        MC.text.draw(U.tf('hub.craftTitle'), (L.land ? L.hx : x) + 10, top + 5, { color: P.gold });
         const nMat = ['fish_bone', 'iron_scrap', 'cloth', 'oil', 'dew', 'crumb'].reduce((s, k) => s + MC.game.count(k), 0);
-        MC.text.draw(U.tf('hub.matsCount', { n: nMat }), x + 10, top + 22, { font: 'small', color: P.dim });
+        MC.text.draw(U.tf('hub.matsCount', { n: nMat }), (L.land ? L.hx : x) + 10, top + 22, { font: 'small', color: P.dim });
         // 목록
-        if (!recs.length) { g.frame(x, list.y, W, 40); MC.text.draw(U.tf('hub.noRecipes'), x + (W >> 1), list.y + 12, { align: 'center', color: P.dim }); }
+        if (!recs.length) { g.frame(list.x, list.y, list.w, 40); MC.text.draw(U.tf('hub.noRecipes'), list.x + (list.w >> 1), list.y + 12, { align: 'center', color: P.dim }); }
         else list.render();
         // 목록과 자세히 사이 빈 자리: 공방 그림(촛불빛)
         const py = L.paneY, ph = L.paneH, gy0 = list.y + (recs.length ? list.h : 40) + 4, gh = py - 4 - gy0;
@@ -91333,6 +91365,13 @@ MC.addLang('es', {
       sc.dbg = { hands, faces, geo: () => geo() };        // 시험용
       function geo() {
         const top0 = 10 + g.safe.top, bottom = g.H - 14 - g.safe.bottom, cx = g.W >> 1;
+        if (g.land) {                              // [land] 가로: 제목 · 손 줄 · 얼굴 줄을 촘촘히(실 자리 20), 안내는 맨 아래
+          const top = 4 + g.safe.top, yh = top + 20, bL = g.H - 4 - g.safe.bottom, yf = Math.max(yh + 44 + 20, bL - 22 - 14 - 48 - 4);
+          hands.forEach((o, i) => { o.r = [cx - 84 + i * 58, yh, 52, 44]; });
+          const fx0L = nF > 3 ? cx - ((nF * 40 + (nF - 1) * (fSp - 40)) >> 1) : cx - 78;
+          faces.forEach((o, i) => { o.r = [fx0L + i * fSp, yf, 40, 48]; });
+          return { top, bottom: bL, cx, yh, yf };
+        }
         const facesBottom = bottom - 64;                      // 아래 약 60px은 안내·귀띔 자리
         const gap = MC.clamp(facesBottom - (top0 + 34 + 44) - 62, 46, 110);
         const extra = Math.max(0, facesBottom - (top0 + 34 + 44 + gap + 62));
@@ -91530,6 +91569,12 @@ MC.addLang('es', {
       sc.dbg = { cards, geo: () => geo(), bubble: () => bubble, doneAt: () => doneAt };   // 시험용
       function geo() {
         const top = 12 + g.safe.top, bottom = g.H - (hold ? 104 : 30) - g.safe.bottom, cx = g.W >> 1;
+        if (g.land) {                              // [land] 가로: 얼굴 카드를 한 줄로(대화창 자리 74는 비움), 안내는 그 아래
+          const bL = g.H - (hold ? 74 : 26) - g.safe.bottom, nL = cards.length, step = Math.min(56, Math.floor((g.W - 16 - 40) / Math.max(1, nL - 1))), span = (nL - 1) * step + 40;
+          const yL = Math.max(top + 4, Math.min((top + bL - 62) >> 1, bL - 62 - 20));
+          cards.forEach((c, i) => { c.r = [cx - (span >> 1) + i * step + c.jit[0], yL + c.jit[1], 40, 48]; });
+          return { top, bottom: yL + 62, cx };
+        }
         const n = cards.length, r1 = Math.min(3, n), r2 = n - r1;
         const rowH = 48 + 14, gapY = MC.clamp((bottom - top - 2 * rowH) / 3, 10, 30);
         const y1 = top + Math.round(gapY), y2 = y1 + rowH + Math.round(gapY);
@@ -91612,7 +91657,7 @@ MC.addLang('es', {
           const k = t - bubble.t0, a = bubble.c0 >= 0 ? 1 - (t - bubble.c0) / 160 : Math.min(1, k / 160);
           if (a > 0.1 && (a > 0.5 || ((k / 50) | 0) % 2 === 0)) {
             const r = bubble.c.r, bw = 122, bh = U.bubbleH(bubble.lines.length);
-            let bx = MC.clamp(r[0] + 20 - (bw >> 1), g.X0 + 4, g.X0 + 176 - bw), byy = r[1] - bh - 14;
+            let bx = MC.clamp(r[0] + 20 - (bw >> 1), g.land ? 4 : g.X0 + 4, g.land ? g.W - 4 - bw : g.X0 + 176 - bw), byy = r[1] - bh - 14;   // [land] 화면 폭 안
             const lowRow = cards.some(o => o !== bubble.c && o.r[1] < r[1] - 20);            // 아랫줄 카드면 말풍선을 아래에(윗줄 이름표를 덮지 않게, QA fixer-s2)
             if (lowRow && r[1] + r[3] + 18 + bh <= g.H - 4 - g.safe.bottom) byy = r[1] + r[3] + 18;
             if (byy < 6 + g.safe.top) byy = r[1] + r[3] + 18;
@@ -94815,10 +94860,12 @@ MC.addLang('es', {
     setVar(vname, 0);
     // [i18n] 카드 폭: 기본 84(글 칸 74). 한 낱말이 글 칸보다 길면(스페인어 « Montecristo » 77px) 87(글 칸 77)까지 넓힌다 — 두 장 + 틈 6 = 180 안
     const longWord = Math.max(0, ...pool.map(c => Math.max(0, ...String(c.t).split(/[\s\n]+/).map(w => MC.text.width(w, 'body')))));
-    const CW = Math.min(87, Math.max(84, longWord + 10)), CT = CW - 10;
+    // [land] 가로: 원고 종이는 왼쪽(PWL), 카드 두 줄은 오른쪽 칸에 맞춘 폭(CWL) — 시작할 때의 방향으로 글을 감는다
+    const LD0 = !!g.land, sL = g.safe.left + g.safe.right, PWL = Math.min(150, Math.floor((g.W - 24 - sL) * 0.42));
+    const CW = LD0 ? Math.max(64, Math.min(87, (g.W - 24 - sL - PWL - 6) >> 1)) : Math.min(87, Math.max(84, longWord + 10)), CT = CW - 10;
     pool.forEach(c => { c.lines = MC.text.wrap(c.t, CT, 'body').slice(0, 2); });
     const CH = Math.max(26, ...pool.map(c => c.lines.length * 16 + 10));
-    slots.forEach(s => { s.rows = MC.text.wrap(s.t, 146, 'small').slice(0, 2); s.chars = s.rows.map(r => Array.from(r)); });
+    slots.forEach(s => { s.rows = MC.text.wrap(s.t, LD0 ? PWL - 16 : 146, 'small').slice(0, 2); s.chars = s.rows.map(r => Array.from(r)); });
     const nextSlot = () => slots.findIndex(s => !s.filled);
     return new Promise(resolve => {
       const sc = makeStage({ name: 'mg_s3_order', full: true, IN: 300, OUT: 300, draw });
@@ -94829,6 +94876,12 @@ MC.addLang('es', {
         let lineGap = 4, ph = 0;
         const calc = () => { ph = 12; slots.forEach(s => { ph += s.rows.length * 13 + lineGap; }); ph += 4; };
         calc();
+        if (g.land) {                                              // [land] 종이 왼쪽 · 카드 오른쪽(세로 가운데) · 안내는 종이 아래
+          while (top + ph > bot - 22 && lineGap > 0) { lineGap--; calc(); }
+          const px = 8 + g.safe.left, pw = PWL, cx0 = px + pw + 8, cTop = top + Math.max(0, (bot - top - cardsH) >> 1);
+          pool.forEach((c, k) => { const col = k % 2, r = (k / 2) | 0; c.rect = [cx0 + col * (CW + gap), cTop + r * (CH + gap), CW, CH]; });
+          return { top, bot, px, py: top, pw, ph, lineGap, cardsTop: cTop, live, land: true, guideY: Math.min(bot, top + ph + 20) };
+        }
         while (top + ph > cardsTop - 46 && lineGap > 0) { lineGap--; calc(); }
         const pw = Math.min(g.W - 16, 164), px = (g.W - pw) >> 1;
         const cx0 = (g.W - (2 * CW + gap)) >> 1;
@@ -94872,11 +94925,11 @@ MC.addLang('es', {
           // [c43-guide B1] 오답이 두 번 쌓이면 정답 카드 테두리가 금빛으로 깜빡인다(외우기 막힘 — 영s3b모)
           if (miss >= 2 && doneT < 0 && nx >= 0 && (c.i === nx || c.t === slots[nx].t) && (((T / 260) | 0) & 1)) { g.rectO(x - 1, y - 1, w + 2, h + 2, '#ffcf4a'); g.rectO(x, y, w, h, '#ffcf4a'); }
         });
-        if (!(bubble && T - bubbleT < 2600)) gd.render({ bg: '#100c0c', y: Gm.cardsTop - 4 });   // [c43-guide B1] 안내 한 줄 — 공통 자리는 카드가 차지해서 원고와 카드 사이(오답 말풍선 자리)
+        if (!(bubble && T - bubbleT < 2600)) gd.render(Gm.land ? { bg: '#100c0c', y: Gm.guideY, cx: Gm.px + (Gm.pw >> 1), maxW: Gm.pw + 16 } : { bg: '#100c0c', y: Gm.cardsTop - 4 });   // [land] 종이 아래   // [c43-guide B1] 안내 한 줄 — 공통 자리는 카드가 차지해서 원고와 카드 사이(오답 말풍선 자리)
         // 오답 말풍선(파리아)
         if (bubble && T - bubbleT < 2600) {
           const lines = MC.text.wrap(bubble, 112, 'small').slice(0, 2), bw = 122, bh = U.bubbleH(lines.length);
-          const by = Gm.cardsTop - bh - 10, bx = Math.min(W - bw - 4, (W >> 1) - 32);
+          const by = Gm.land ? Math.min(Gm.bot - bh, Gm.py + Gm.ph + 8) : Gm.cardsTop - bh - 10, bx = Gm.land ? Gm.px + 38 : Math.min(W - bw - 4, (W >> 1) - 32);   // [land] 종이 아래
           const ptx = bx - 38, pty = by + bh - 32;
           U.portraitBox(who, null, ptx, pty, 1, null, sc);   // [r5 A1] sc = 빠른 길 검사(pt-c 32 자리 — cards.js portraitBox). 되돌리기: 뒤 두 인자를 뺀다
           U.bubble(bx, by, bw, lines, { tail: [ptx + 34, pty + 14] });
@@ -97736,7 +97789,7 @@ MC.addLang('es', {
         const slowOn = S.finT < 0 && S.slowT >= 0;
         if (slowOn && !S.slowShown) { S.slowShown = true; gd.show(); } else if (!slowOn) S.slowShown = false;
         //   자리: 공통 자리는 크게 그린 헤엄치는 당테스(밝은 살빛·물보라)가 차지해 글이 먹힌다 — 예전처럼 수평선 바로 아래 어두운 바다 위(두 줄)
-        gd.render({ bg: '#0e182a', tipOn: slowOn, y: hy + 16 + 2 * 14 });
+        gd.render({ bg: '#0e182a', tipOn: slowOn, y: G().land ? U.guideBottom() : hy + 16 + 2 * 14 });   // [land] 헤엄치는 사람 위가 아니라 화면 아래
         const showP = S.finT < 0 && (S.strokes === 0 || gd.again() || slowOn);
         if (showP) {
           const per = slowOn ? 700 : 600, leftOn = (((t / per) | 0) & 1) === 0, yh = Math.round(H * 0.6);
@@ -97749,7 +97802,7 @@ MC.addLang('es', {
         }
         band.draw(t, 16, H - 18 - g.safe.bottom);
         if (S.lucB && S.lucXY && t - S.lucB.t0 < S.lucB.ms) drawLucBubble(S.lucB, S.lucXY, t, hy);   // [stage-s1] 부두의 뤼크 「오른쪽!」
-        if (gdB && S.finT >= 0) gdB.render({ bg: DAY_SEA[1], y: hy + 16 + 2 * 14 });             // [stage-s1] 종 안내
+        if (gdB && S.finT >= 0) gdB.render({ bg: DAY_SEA[1], y: G().land ? U.guideBottom() : hy + 16 + 2 * 14 });             // [stage-s1] 종 안내
         if (bolt && (lit < 140 || (lit > 260 && lit < 380))) g.ditherFill('#ffffff', 8);   // 번개(흰 플래시 알파 ≤0.5)
         if (S.failT < 0 && t - S.hitFx < 160) U.drawVig(4, '#2a0610');
         if (S.home && S.finT >= 0) {                                   // [r3 B7] 장조 귀환 동안 천천히 어두워짐(6초 뒤부터 12초에 걸쳐 12/16 → 뺄 때 1초에 끝까지)
@@ -99307,7 +99360,7 @@ MC.addLang('es', {
         // 안내 한 줄(처음 바깥으로 비킬 때까지) · 안내 손가락(무입력 2.5초 — 손잡이를 오른쪽으로 끄는 몸짓)
         // [c43-guide B1] 공통 안내(가장 밝은 단 · 디더 없음) — 처음 비킬 때 사라지고, 바위 쪽에 4초 머물면 다시. 자코포가 오면 끝.
         //   자리: 공통 자리(화면 아래)는 키를 쥔 손 그림이 차지해서 손 그림 바로 위(예전 자리)
-        gd.render({ bg: '#24395e', y: Math.max(o.tipY + 4, o.hTop - 18) + 13 });
+        gd.render({ bg: '#24395e', y: G().land ? U.guideBottom() : Math.max(o.tipY + 4, o.hTop - 18) + 13 });   // [land] 화면 아래
         if (!S.out && S.ptr == null && S.helpT < 0 && !S.auto && t > IN + 600 && t - S.last >= HINT_AT) {
           // 손잡이 위(살색)에선 손가락이 묻혀서 — 갑판·바다 위 안내 줄 바로 위에서 오른쪽으로 끄는 몸짓 + 지나온 자리 점 셋(글 없음)
           const k = (T % 1400) / 1400, m = MC.ease.outCubic(Math.min(1, k * 1.4)), lvH = k > 0.85 ? 16 * (1 - (k - 0.85) / 0.15) : 16;
@@ -99696,7 +99749,7 @@ MC.addLang('es', {
       const g = G(), W = g.W, H = g.H;
       if (layC && layC.W === W && layC.H === H) return layC;
       const top27 = l27.length ? l27.length * LH27 + 8 : 0;
-      const ly = Math.round((H - (20 + top27 + lines.length * 16 + 40)) / 2) - 8, ly34 = ly + top27, cx = W >> 1;
+      const ly = Math.max(g.safe.top + 3, Math.round((H - (20 + top27 + lines.length * 16 + 40)) / 2) - (g.land ? 2 : 8)), ly34 = ly + top27, cx = W >> 1;   // [land] 낮은 화면에서 제목이 위로 잘리지 않게
       const pre = MC.text.bake('[ ' + U.tf('dlg.nameLabel') + ': ', 'body', INK), blank = MC.text.bake('＿＿＿＿', 'body', '#8a7a62'), post = MC.text.bake(' ]', 'body', INK);
       const nx0 = cx - ((pre.width + blank.width + post.width) >> 1), ny = ly34 + 20 + lines.length * 16 + 18;
       layC = { W, H, cx, ly, ly34, y27: ly + 20, pre, blank, post, nx0, ny };
@@ -99907,8 +99960,9 @@ MC.addLang('es', {
     let lay = null;
     function layout(g) {
       const W = g.W, H = g.H;
-      if (lay && lay.W === W && lay.H === H && lay.rev === MC.i18n.rev) return lay;
-      const mL = Math.max(8, g.X0 + 8), wid = W - mL * 2, sep = U.tf('fmt.dotSep');
+      const LD = !!g.land;   // [land] 가로: 기록 줄을 두 단(왼쪽 먼저)으로 — 단 사이 20(가운데 접힌 자국 자리)
+      if (lay && lay.W === W && lay.H === H && lay.rev === MC.i18n.rev && lay.land === LD) return lay;
+      const mL = LD ? Math.max(10, g.safe.left + 10) : Math.max(8, g.X0 + 8), CG = 20, wid = LD ? ((W - mL * 2 - CG) >> 1) : W - mL * 2, sep = U.tf('fmt.dotSep');
       // 값 줄바꿈: 가운뎃점(fmt.dotSep) 마디 단위로 채우고, 한 마디가 넘칠 때만 낱말 줄바꿈
       const wrapVal = val => {
         const segs = sep && sep.trim() ? String(val).split(sep) : [String(val)], out = [];
@@ -99936,10 +99990,19 @@ MC.addLang('es', {
         });
         return { items, h: y - gap };
       };
+      if (LD) {                                    // [land] 두 단: 앞 절반은 왼쪽, 나머지는 오른쪽(it.x)
+        const half = Math.ceil(vals.length / 2);
+        const buildL = gap => { const ys = [0, 0]; const items = vals.map(([lab, val], i) => { const c = i < half ? 0 : 1; const one = MC.text.width(lab, 'small') + 10 + MC.text.width(val, 'small') <= wid; const vl = one ? [val] : wrapVal(val); const it = { lab, vl, one, y: ys[c], x: c * (wid + CG) }; ys[c] += 13 * (one ? 1 : 1 + vl.length) + gap; return it; }); return { items, h: Math.max(ys[0], ys[1]) - gap }; };
+        const GHL = GRADE_WORD ? 56 : 32, roomL = H - g.safe.top - g.safe.bottom - 40 - GHL;
+        let bL = buildL(6); if (bL.h > roomL) bL = buildL(3); if (bL.h > roomL) bL = buildL(0);
+        const topL = Math.max(g.safe.top + 8, Math.round((H - 20 - (bL.h + 14 + GHL)) / 2));
+        lay = { W, H, rev: MC.i18n.rev, land: true, mL, wid, items: bL.items, top: topL, gy: topL + bL.h + 14 };
+        return lay;
+      }
       const GH = GRADE_WORD ? 56 : 32, room = H - g.safe.top - g.safe.bottom - 64 - GH;   // [r3 C4②] 별칭 한 줄이면 묶음 32                      // 아래 30px는 nextMark 자리 · [s44-director] 등급 묶음 72 → 56(금색 글자를 본문 크기로)
       let b = build(6); if (b.h > room) b = build(3); if (b.h > room) b = build(0);
       const top = Math.max(g.safe.top + 10, Math.round((H - 30 - (b.h + 16 + GH)) / 2));
-      lay = { W, H, rev: MC.i18n.rev, mL, wid, items: b.items, top, gy: top + b.h + 16 };
+      lay = { W, H, rev: MC.i18n.rev, land: false, mL, wid, items: b.items, top, gy: top + b.h + 16 };
       return lay;
     }
     return mount({
@@ -99965,8 +100028,8 @@ MC.addLang('es', {
           const gaps = [], cover = (img, x0, y0) => { if (x0 - 1 <= cx && cx <= x0 + img.width) gaps.push([y0 - 2, y0 + img.height + 2]); };
           L2.items.forEach((it, i) => {
             if (U.lvl(t, tRow0 + i * ROW, 300) <= 0) return;
-            const y = L2.top + it.y; cover(MC.text.bake(it.lab, 'small', LAB), L2.mL, y);
-            it.vl.forEach((v, j) => { const img = MC.text.bake(v, 'small', INK); cover(img, L2.mL + L2.wid - img.width, y + (it.one ? 0 : 13 * (j + 1))); });
+            const y = L2.top + it.y, ix = L2.mL + (it.x || 0); cover(MC.text.bake(it.lab, 'small', LAB), ix, y);
+            it.vl.forEach((v, j) => { const img = MC.text.bake(v, 'small', INK); cover(img, ix + L2.wid - img.width, y + (it.one ? 0 : 13 * (j + 1))); });
           });
           if (t >= tGrade) gaps.push(GRADE_WORD ? [L2.gy - 10, L2.gy + 46] : [L2.gy - 10, L2.gy + 24]);   // [r3 C4②] 별칭 한 줄만이면 묶음이 낮다
           gaps.sort((p, q) => p[0] - q[0]);
@@ -99976,9 +100039,9 @@ MC.addLang('es', {
         }
         L2.items.forEach((it, i) => {
           const lv = U.lvl(t, tRow0 + i * ROW, 300); if (lv <= 0) return;
-          const y = L2.top + it.y, lab = MC.text.bake(it.lab, 'small', LAB);
-          U.drawDither(lab, L2.mL, y, lv);
-          it.vl.forEach((v, j) => { const img = MC.text.bake(v, 'small', INK); U.drawDither(img, L2.mL + L2.wid - img.width, y + (it.one ? 0 : 13 * (j + 1)), lv); });
+          const y = L2.top + it.y, lab = MC.text.bake(it.lab, 'small', LAB), ix = L2.mL + (it.x || 0);   // [land] it.x = 둘째 단
+          U.drawDither(lab, ix, y, lv);
+          it.vl.forEach((v, j) => { const img = MC.text.bake(v, 'small', INK); U.drawDither(img, ix + L2.wid - img.width, y + (it.one ? 0 : 13 * (j + 1)), lv); });
         });
         if (t >= tGrade) {
           const lv = U.lvl(t, tGrade, 500), gy = L2.gy;
