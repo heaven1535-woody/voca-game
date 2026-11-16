@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.20';
+  var VERSION = '0.9.21';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -1315,9 +1315,12 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   //   폴드 겉화면(5@3)·125·150% 노트북(3@1.25~1.5)은 내리면 글이 작아져(1.33) 그대로 두고 RES2(ptcPresent·ilPresent)가 맡는다.
   //   되돌리기: ?uw2off=RES1 또는 아래 'if (dpr && …) S--;' 줄을 지운다(인자 dpr은 남아도 무해)
   // [land] 가로 배치: 높이 180 기준 정수배(1080p 6배 · 스팀 덱 1280×800 = 320×200 4배 · 폰 가로는 넓은 폭이 더 보임). 폭 320~432, 높이 180~240
+  // [land3] 폭 상한 432 → 520: 아이폰 사파리 가로(CSS 844×340 · dpr 3)는 배율 5에서 폭 506이 필요해 432로는 좌우에 장식 띠가 남았다(21:9 폰은 조금 더 넓다).
+  //   높이 범위 180~240은 그대로. 옛: Math.min(432, …). 세로(fitIn)는 건드리지 않음
+  const LAND_MAXW = 520;
   function fitInLand(rw, rh) {
     const S = Math.max(1, Math.min(Math.floor(rw / 320), Math.floor(rh / 180)));
-    return { S, W: Math.max(320, Math.min(432, Math.floor(rw / S))), H: Math.max(180, Math.min(240, Math.floor(rh / S))) };
+    return { S, W: Math.max(320, Math.min(LAND_MAXW, Math.floor(rw / S))), H: Math.max(180, Math.min(240, Math.floor(rh / S))) };
   }
   function fitIn(rw, rh, dpr) {
     if (g.landNow) return fitInLand(rw, rh);
@@ -94965,7 +94968,9 @@ MC.addLang('es', {
       const sc = makeStage({ name: 'mg_s3_join', full: true, IN: 300, OUT: 300, draw });
       function geo() {
         if (g.land) {   // [land-join] 가로: 반쪽 편지 왼쪽(위아래 가운데) · 쪽지 더미 오른쪽(두 칸, 좁으면 살짝 겹쳐 쌓음) · 안내는 더미 아래. 옛: 세로 식이라 더미가 바닥 한 줄에 몰려 편지와 겹쳤다(제미나이 argon 0.9.18)
-          const L0 = 8 + g.safe.left, R0 = g.W - 6 - g.safe.right, top = 6 + g.safe.top, bot = g.H - 6 - g.safe.bottom;
+          // [land3] 폭이 432보다 넓으면(가로 상한 520) 432 폭 배치를 그대로 가운데로 — 좌우 기준(L0·R0)을 같은 만큼 안으로. 옛: 왼쪽 8에 붙어 넓은 화면에서 오른쪽만 휑했다. 432 이하는 옛 그대로(ox3 = 0)
+          const ox3 = g.W > 432 ? (g.W - 432) >> 1 : 0;
+          const L0 = 8 + g.safe.left + ox3, R0 = g.W - 6 - g.safe.right - ox3, top = 6 + g.safe.top, bot = g.H - 6 - g.safe.bottom;
           const sheetH = n * RH + 12, x0 = L0, y0 = Math.max(top, (g.H - sheetH) >> 1);
           const slots = []; for (let j = 0; j < n; j++) slots.push([x0 + HW - 2, y0 + 6 + j * RH, SW, RH - 4]);
           const pw = SW, ph = RH - 4, pX = x0 + HW + SW + 10, cols = n > 1 ? 2 : 1, colOff = Math.min(pw + 8, Math.max(24, R0 - pX - pw)), rowsN = Math.ceil(n / cols);
@@ -95174,7 +95179,8 @@ MC.addLang('es', {
         calc();
         if (g.land) {                                              // [land] 종이 왼쪽 · 카드 오른쪽(세로 가운데) · 안내는 종이 아래
           while (top + ph > bot - 22 && lineGap > 0) { lineGap--; calc(); }
-          const px = 8 + g.safe.left, pw = PWL, cx0 = px + pw + 8, cTop = top + Math.max(0, (bot - top - cardsH) >> 1);
+          // [land3] 폭이 432보다 넓으면 종이 + 카드 묶음(432 폭 배치)을 그대로 가운데로 옮긴다. 옛: 왼쪽 8에 붙어 넓은 화면에서 오른쪽만 휑했다. 432 이하는 옛 그대로
+          const px = 8 + g.safe.left + (g.W > 432 ? (g.W - 432) >> 1 : 0), pw = PWL, cx0 = px + pw + 8, cTop = top + Math.max(0, (bot - top - cardsH) >> 1);
           pool.forEach((c, k) => { const col = k % 2, r = (k / 2) | 0; c.rect = [cx0 + col * (CW + gap), cTop + r * (CH + gap), CW, CH]; });
           return { top, bot, px, py: top, pw, ph, lineGap, cardsTop: cTop, live, land: true, guideY: Math.min(bot, top + ph + 20) };
         }
@@ -95744,28 +95750,32 @@ MC.addLang('es', {
       const sc = makeStage({ name: 'mg_s3_sweep', full: true, IN: 400, OUT: 500, draw });
       function geo() {
         const s = PH * 2 <= g.H * 0.62 ? 2 : 1, vw = g.W / s, y = Math.round((g.H - PH * s) / 2) - 16;
-        return { s, vw, y };
+        // [land3] 가로에서 벽 그림(360)이 화면보다 좁으면(폭 361~520) 벽을 화면 가운데에 둔다(ox). 옛: 왼쪽 0에 붙어 오른쪽만 비었다(432에서 72 · 506에서 146 — 432는 비네트에 가려 덜 보였을 뿐).
+        //   화면이 벽보다 좁으면(320 등·세로) ox = 0 = 옛 그대로(카메라가 따라감)
+        const ox = g.land && g.W > PW * s ? (g.W - PW * s) >> 1 : 0;
+        return { s, vw, y, ox };
       }
       function draw() {
-        const W = g.W, H = g.H, Gm = geo(), s = Gm.s, t = sc.t;
+        const W = g.W, H = g.H, Gm = geo(), s = Gm.s, t = sc.t, ox = Gm.ox;
         g.clear('#040305');
         const dark = panDark(), bright = panLit();
         const ctx = g.ctx;
-        ctx.drawImage(dark, cam, 0, Gm.vw, PH, 0, Gm.y, W, PH * s);
+        if (ox) ctx.drawImage(dark, 0, 0, PW, PH, ox, Gm.y, PW * s, PH * s);   // [land3] 벽 전체를 가운데에
+        else ctx.drawImage(dark, cam, 0, Gm.vw, PH, 0, Gm.y, W, PH * s);
         const edge = lit;                             // 드러난 곳(왼쪽부터) — 가장자리는 디더로
         if (edge > cam) {
-          const wv = Math.min(edge, cam + Gm.vw) - cam;
-          ctx.drawImage(bright, cam, 0, wv, PH, 0, Gm.y, wv * s, PH * s);
-          const ex = Math.round((edge - cam) * s);
+          const wv = Math.min(edge, cam + Gm.vw, PW) - cam;
+          ctx.drawImage(bright, cam, 0, wv, PH, ox, Gm.y, wv * s, PH * s);
+          const ex = Math.round((edge - cam) * s) + ox;
           if (ex < W) for (let k = 0; k < 4; k++) g.ditherRect(ex - 12 + k * 3, Gm.y, 3, PH * s, '#040306', 3 + k * 3);   // 불빛 가장자리: 어둠 쪽으로 디더가 짙어짐
           for (let i = 0; i < Z; i++) if (zoneT[i] >= 0) {  // 구역이 밝아질 때 한 번 반짝
             const k = t - zoneT[i]; if (k > 600) continue;
-            const zx0 = (PW * i / Z - cam) * s, zw = PW / Z * s;
+            const zx0 = (PW * i / Z - cam) * s + ox, zw = PW / Z * s;
             g.ditherRect(zx0, Gm.y, zw, PH * s, '#ffe0a0', Math.round((1 - k / 600) * 3));
           }
         }
         // 손끝의 불빛
-        const lx = Math.round((prog - cam) * s), ly = Gm.y + ((PH * s) >> 1);
+        const lx = Math.round((prog - cam) * s) + ox, ly = Gm.y + ((PH * s) >> 1);
         if (doneT < 0) addGlow(lx, ly, 48, '#5a3a18', 8, 0.8);
         if (fingerX >= 0) addGlow(fingerX, fingerY, 12, '#6a5a3a', 8, 0.6);
         g.rect(0, Gm.y - 1, W, 1, '#000000'); g.rect(0, Gm.y + PH * s, W, 1, '#000000');
@@ -95794,7 +95804,7 @@ MC.addLang('es', {
         if (kd === 'right' && doneT < 0) advance(dt * 0.12);
         lit = Math.max(lit, Math.min(PW, prog + 10));
         for (let i = 0; i < Z; i++) if (zoneT[i] < 0 && lit >= PW * (i + 0.5) / Z) { zoneT[i] = sc.t; }
-        const target = clamp(prog - Gm.vw * 0.45, 0, PW - Gm.vw);
+        const target = Gm.ox ? 0 : clamp(prog - Gm.vw * 0.45, 0, PW - Gm.vw);   // [land3] 벽이 화면보다 좁으면 카메라는 움직이지 않는다(옛: clamp 상한이 음수)
         cam += (target - cam) * Math.min(1, dt / 160);
         if (prog >= PW && doneT < 0) doneT = sc.t;
         if (doneT >= 0 && sc.t - doneT > 1500) close();
