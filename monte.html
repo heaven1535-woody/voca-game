@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.17';
+  var VERSION = '0.9.18';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -763,7 +763,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       dev: !RELEASE && (local || q.debug === '1'),
       test: RELEASE ? null : (q.test || null),
       // [land] 가로 배치(스팀판·폰 가로 — 만드는 중): ?land=1 일 때만, 창이 가로로 넓으면 논리 화면 320×180 이상 가로로. 다 만들면 스팀 빌드는 늘 켜고 폰은 돌리면 켠다
-      land: !RELEASE && q.land === '1',
+      land: !RELEASE && q.land === '1' ? true : (!RELEASE && q.land === '0' ? false : null),   // [orient] 주소는 개발판 시험용 덮어쓰기 — 평소엔 설정 「화면 방향」(gfx.js landWanted)
       tapHold: !RELEASE && q.hold === 'tap',   // [taphold] 시험용(?hold=tap): 손으로 하는 장면에서 한 번 탭하면 누름이 걸려 있고 다시 탭하면 뗀다(길게 누르기를 못 하는 브라우저 자동 조작·시험자용)
       ev: RELEASE ? null : (q.ev || null),
       map: RELEASE ? null : (q.map || null), x: !RELEASE && q.x != null ? +q.x : null, y: !RELEASE && q.y != null ? +q.y : null,
@@ -1368,13 +1368,21 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     for (const s of st) if (s && !s.landOk && !LAND_OK.test(s.name || '')) return true;
     return false;
   }
-  g.landCheck = () => { if (MC.cfg && MC.cfg.land) resize(); };
+  // [orient] 가로 배치를 쓸까: 주소 ?land=1 / ?land=0(개발판 시험)이 먼저, 없으면 설정 「화면 방향」(자동 = 창·폰이 가로면 가로, 세로 고정 = 늘 세로)
+  function landWanted() {
+    const c = MC.cfg && MC.cfg.land;
+    if (c === true) return true;
+    if (c === false) return false;
+    const s = MC.save && MC.save.settings;
+    return !(s && s.orient === 'port');
+  }
+  g.landCheck = () => { resize(); };
   g.portOnly = portOnly;
   function resize() {
     const dpr = Math.min(3, window.devicePixelRatio || 1);
     const iw = window.innerWidth, ih = window.innerHeight;
     const devW = Math.floor(iw * dpr), devH = Math.floor(ih * dpr);
-    g.landNow = !!(MC.cfg && MC.cfg.land) && iw > ih && !portOnly();   // [land] 가로 배치 켜짐(설정 + 창이 가로). 장면들은 g.land를 보고 배치를 고른다
+    g.landNow = landWanted() && iw > ih && !portOnly();   // [land] 가로 배치 켜짐(설정 + 창이 가로). 장면들은 g.land를 보고 배치를 고른다
     const full = fitIn(devW, devH, dpr);                   // [r5 RES1] dpr을 넘김(옛: fitIn(devW, devH))
     const seg = pickSeg(readSegs(), dpr, full.S);
     let rx = 0, ry = 0, rw = devW, rh = devH;              // 게임을 놓을 기기 px 영역
@@ -4502,11 +4510,18 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   //   장면이 바뀌면 저절로 풀린다(대사 빨리감기·다른 화면에 새지 않게). 버티기 장면들은 매 프레임 isDown()을 보므로 그대로 동작
   let latch = null;
   const HAND_RE = /^(mg_|breath$|hands$|candle$|ev_s3_)/;
+  // [assist-tap] 설정 「손놀림 보조」를 켜도 걸어 두기(일반 플레이 — 사용자 11-16 「응」). 단 「길게 누르기」 안내(손가락 hold·안내 아이콘 hold)가
+  //   최근 4초 안에 떠 있던 장면에서만 건다 — 톡톡 여러 번 누르는 장면(매듭·바늘·물방울)에서 탭이 걸어 두기로 바뀌어 다음 탭이 빠지지 않게.
+  //   길게 눌렀다 떼면 옛 그대로(짧은 탭만 걸어 둠). 풀기(다시 탭)는 언제나
+  const assistOn = () => !!(MC.save && MC.save.settings && MC.save.settings.assist === true);
+  const holdHinted = top => { const u = MC.ch1 && MC.ch1.u; return !!(u && u.holdHintSc === top && now() - (u.holdHintT || -1e9) < 4000); };   // 그 장면에서 뜬 안내만
   function latchTap(t0) {
-    if (!(MC.cfg && MC.cfg.tapHold)) return;
+    const test = !!(MC.cfg && MC.cfg.tapHold);
+    if (!test && !assistOn()) return;
     const top = MC.scene && MC.scene.top && MC.scene.top();
     if (!top || !HAND_RE.test(top.name || '')) { latch = null; return; }
-    latch = latch && latch.sc === top ? null : { sc: top, t0: t0 || now() };
+    if (latch && latch.sc === top) { latch = null; return; }
+    if (test || holdHinted(top)) latch = { sc: top, t0: t0 || now() };
   }
   function latchOn() {
     if (!latch) return false;
@@ -6057,7 +6072,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   // [l45-light B7-1] bright = 밝기 보정 0 / 15 / 30(%) — gfx.present가 최종 화면에 감마로
   // [s46-sound B4-2] phoneBass = 폰 스피커 저음 보강(음악 베이스 한 옥타브 위 겹침 — music.js). 기본 켬(이어폰이면 끌 수 있다)
   // [u51 B8-7] sndCap = 소리 자막 ''(자동: 소리 끄기·효과음 0이면 켬) | 'on' | 'off' — 설정 줄을 처음 누르면 'on'/'off'로 정해진다(sfx.js capOn)
-  const DEF = { mus: 7, sfx: 8, voice: true, mute: false, textSpeed: 1, battleSpeed: 1, moveMs: 200, shake: 1, vibrate: true, hand: 'right', lang: '', assist: false, oneHand: false, bright: 0, phoneBass: true, sndCap: '', tone: 'sfc' };   // [snd75] tone = 음악 음색 'sfc'(16비트, 기본) | 'nes'(클래식 8비트 — 비교·회귀용, music.js)
+  const DEF = { mus: 7, sfx: 8, voice: true, mute: false, textSpeed: 1, battleSpeed: 1, moveMs: 200, shake: 1, vibrate: true, hand: 'right', lang: '', assist: false, oneHand: false, orient: 'auto', bright: 0, phoneBass: true, sndCap: '', tone: 'sfc' };   // [snd75] tone = 음악 음색 'sfc'(16비트, 기본) | 'nes'(클래식 8비트 — 비교·회귀용, music.js)
   const GRADE_RANK = { S: 3, A: 2, B: 1 };
   const gradeOf = r => (r && r.escape && typeof r.escape.grade === 'string' ? r.escape.grade : (r && typeof r.grade === 'string' ? r.grade : null));
   let warned = false;
@@ -6121,6 +6136,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     settings: loadSettings(),
     init() {
       SV.settings = Object.assign(SV.settings, loadSettings());
+      if (MC.gfx && MC.gfx.landCheck) { try { MC.gfx.landCheck(); } catch (_) {} }   // [orient] 저장된 화면 방향으로 다시 잰다
       // [r3 A10④] 판이 바뀌면 지난 판의 마지막 오류(mc34.lastError)를 지운다(QA B11 — 0.6.1 오류가 0.7.x에도 남아 있었다).
       //   알아차리는 법: 오류 기록에 적힌 판(ver, core.js)이 지금 VERSION과 다르거나 ver가 없는 옛 기록이면. 새 키는 만들지 않는다
       try { const raw = get('mc34.lastError'); if (raw) { let o = null; try { o = JSON.parse(raw); } catch (_) {} if (!o || o.ver !== (MC.VERSION || '')) del('mc34.lastError'); } } catch (_) {}
@@ -66034,6 +66050,9 @@ MC.addLang('ko', {
     "set.shake": "흔들림",
     "set.vibrate": "진동",
     "set.fullscreen": "전체 화면",
+    "set.orient": "화면 방향",
+    "set.orientAuto": "자동",
+    "set.orientPort": "세로",
     "set.lang": "언어",
     "set.slow": "느림",
     "set.normal": "보통",
@@ -66509,8 +66528,6 @@ MC.addLang('ko', {
     "rec.subject": "과목",
     "rec.tenth": "할",
     "rec.hpNone": "거의 없음",
-    "rec.assist": "손놀림 보조",
-    "rec.assistV": "받음",
     "rec.grade": "등급",
     "rec.gradeS": "파도가 등을 밀어 주었다.",
     "rec.gradeA": "거친 바다를 끝내 건넜다.",
@@ -66597,6 +66614,9 @@ MC.addLang('ko', {
     "set.shake": { "w": 66, "font": "body", "lines": 1, "note": "설정 행(화면 흔들림) — ◀ 값 ▶ 줄, 이름 칸 약 66px" },
     "set.vibrate": { "w": 96, "font": "body", "lines": 1, "note": "설정 행(진동, 안드로이드만) — 켬/끔 줄, 이름 칸 약 96px" },
     "set.fullscreen": { "w": 96, "font": "body", "lines": 1, "note": "설정 진행 탭 켬/끔 줄(브라우저 전체 화면). 이름 칸 약 96px" },
+    "set.orient": { "w": 96, "font": "body", "lines": 1, "note": "설정 진행 탭 ◀ ▶ 줄 — 화면 방향(자동: 폰·창이 가로면 가로 배치 / 세로 고정: 늘 세로 배치, 폰을 돌리면 「세로로 돌려 주세요」). 이름 칸 약 96px" },
+    "set.orientAuto": { "w": 44, "font": "body", "lines": 1, "note": "화면 방향 값 — 자동(돌리면 가로). 값 칸 44px, 38px를 넘으면 그 줄 값 전부 small" },
+    "set.orientPort": { "w": 44, "font": "small", "lines": 1, "note": "화면 방향 값 — 세로(폰을 가로로 들어도 세로 배치 그대로). 값 칸 44px — 번역이 38px를 넘으면(Portrait 등) 그 줄 값은 small로 그리므로 small 기준" },
     "set.lang": { "w": 64, "font": "body", "lines": 1, "note": "설정 행(언어) — 앞에 지구본 아이콘, 오른쪽에 지금 언어의 자기 이름. 고를 언어가 2개 이상일 때만 보인다" },
     "set.slow": { "w": 44, "font": "body", "lines": 1, "note": "설정 값(◀ ▶ 사이 가운데) — 대사·전투 속도" },
     "set.normal": { "w": 44, "font": "body", "lines": 1, "note": "설정 값 — 속도·흔들림 기본" },
@@ -67007,7 +67027,7 @@ MC.addLang('ko', {
     "story.beamNearFaria": { "w": 170, "font": "small", "lines": 2, "note": "들보 세우기에서 보초가 바로 위일 때 눌렀을 때 한 번, 파리아(하게체 노학자)의 속삭임: 쉿, 지금 바로 머리 위다" },
     "story.beamNearSelf": { "w": 170, "font": "small", "lines": 2, "note": "들보 빼기(혼자, 발작 뒤 밤)에서 같은 실수 때 에드몽의 속마음: 아직이다, 바로 위다" },
 
-    "set.assist": { "w": 96, "font": "body", "lines": 1, "note": "설정 '진행' 탭 켬/끔 줄(S4 탈출 손놀림 보조 — 켜면 물속 손놀림이 한 번에 성공, 헤엄 체력이 줄지 않음, 등급은 그대로 · 기록에 「손놀림 보조」 줄(0.9.17)). 이름 칸 약 96px" },
+    "set.assist": { "w": 96, "font": "body", "lines": 1, "note": "설정 '진행' 탭 켬/끔 줄(S4 탈출 손놀림 보조 — 켜면 손으로 하는 장면의 버티기(길게 누르기)를 짧게 한 번 탭해 걸어 두고 다시 탭해 뗄 수 있음(0.9.18), 물속 손놀림이 한 번에 성공, 헤엄 체력이 줄지 않음, 등급은 그대로 · 기록에 「손놀림 보조」 줄(0.9.17)). 이름 칸 약 96px" },
     "set.oneHand": { "w": 96, "font": "body", "lines": 1, "note": "설정 '진행' 탭 켬/끔 줄(S4 헤엄: 누르고만 있으면 저절로 젓고 방향만 쓴다). 이름 칸 약 96px" },
     "set.bright": { "w": 66, "font": "body", "lines": 1, "note": "설정 '진행' 탭 ◀ 값 ▶ 줄(밝기 보정 — 어두운 장면이 폰에서 안 보일 때 화면 전체를 밝힘). 이름 칸 약 66px" },
     "set.bright0": { "w": 44, "font": "body", "lines": 1, "note": "밝기 보정 값 — 보정 없음(만든 그대로)" },
@@ -67071,8 +67091,6 @@ MC.addLang('ko', {
     "rec.none": { "w": 40, "font": "small", "lines": 1, "note": "기록 값 안의 0(「없음」) — 싸운 밤·과목·약점 수가 0일 때" },
     "rec.subject": { "w": 30, "font": "small", "lines": 1, "note": "기록 값 rec.learnedV의 {a} 뒤 단위(「다섯 과목」)" },
     "rec.tenth": { "w": 20, "font": "small", "lines": 1, "note": "기록 값 rec.escapeV의 {hp} 단위 — 열에 몇(「칠 할」 = 70%)" },
-    "rec.assist": { "w": 86, "font": "small", "lines": 1, "note": "기록 라벨 — 손놀림 보조를 켜고 탈출했을 때만 보이는 줄(설정 set.assist와 같은 말)" },
-    "rec.assistV": { "w": 120, "font": "small", "lines": 1, "note": "기록 값 — 손놀림 보조를 받았다는 짧은 말(장부 말투)" },
     "rec.hpNone": { "w": 60, "font": "small", "lines": 1, "note": "기록 값 rec.escapeV의 {hp}가 5% 미만일 때(「남은 숨 거의 없음」)" },
     "rec.grade": { "w": 60, "font": "small", "lines": 1, "note": "기록 맨 아래 등급 라벨(값은 금색 S/A/B — 0.4.4부터 본문 크기, 라벨 오른쪽)" },
     "rec.gradeS": { "w": 168, "font": "small", "lines": 1, "note": "탈출 등급 S 문구(바다가 도왔다 — 담담하게)" },
@@ -67184,6 +67202,9 @@ MC.addLang('en', {
     "set.shake": ["Shake", "9rmwwr"],
     "set.vibrate": ["Vibration", "1xeqo3i"],
     "set.fullscreen": ["Full screen", "1l47idb"],
+    "set.orient": ["Orientation", "zs2aet"],
+    "set.orientAuto": ["Auto", "4xwr6q"],
+    "set.orientPort": ["Portrait", "15ixdhd"],
     "set.lang": ["Language", "r8cphl"],
     "set.slow": ["Slow", "xdt6x"],
     "set.normal": ["Normal", "ohe7mq"],
@@ -67666,8 +67687,6 @@ MC.addLang('en', {
     "rec.timeV": ["{h} h {m} min", "6950fk"],
     "rec.timeV0": ["{m} min", "1wrlf1g"],
     "rec.timeVh": ["{h} h", "26zzij"],
-    "rec.assist": ["Assist", "b8b2id"],
-    "rec.assistV": ["Used", "mfkdtu"],
     "rec.none": ["None", "1mvjjxr"],
     "rec.subject": ["subj.", "151i4wm"],
     "rec.tenth": ["/10", "1reo5hb"],
@@ -70791,6 +70810,9 @@ MC.addLang('ja', {
     "set.shake": ["画面揺れ", "9rmwwr"],
     "set.vibrate": ["振動", "1xeqo3i"],
     "set.fullscreen": ["全画面", "1l47idb"],
+    "set.orient": ["画面の向き", "zs2aet"],
+    "set.orientAuto": ["自動", "4xwr6q"],
+    "set.orientPort": ["縦固定", "15ixdhd"],
     "set.lang": ["言語", "r8cphl"],
     "set.slow": ["遅い", "xdt6x"],
     "set.normal": ["普通", "ohe7mq"],
@@ -71255,8 +71277,6 @@ MC.addLang('ja', {
     "rec.timeV": ["{h}時間{m}分", "6950fk"],
     "rec.timeV0": ["{m}分", "1wrlf1g"],
     "rec.timeVh": ["{h}時間", "26zzij"],
-    "rec.assist": ["手さばき補助", "b8b2id"],
-    "rec.assistV": ["あり", "mfkdtu"],
     "rec.none": ["なし", "1mvjjxr"],
     "rec.subject": ["科目", "151i4wm"],
     "rec.tenth": ["割", "1reo5hb"],
@@ -74348,6 +74368,9 @@ MC.addLang('fr', {
     "set.shake": ["Secousse", "9rmwwr"],
     "set.vibrate": ["Vibration", "1xeqo3i"],
     "set.fullscreen": ["Plein écran", "1l47idb"],
+    "set.orient": ["Orientation", "zs2aet"],
+    "set.orientAuto": ["Auto", "4xwr6q"],
+    "set.orientPort": ["Portrait", "15ixdhd"],
     "set.lang": ["Langue", "r8cphl"],
     "set.slow": ["Lent", "xdt6x"],
     "set.normal": ["Normal", "ohe7mq"],
@@ -74812,8 +74835,6 @@ MC.addLang('fr', {
     "rec.timeV": ["{h} h {m} min", "6950fk"],
     "rec.timeV0": ["{m} min", "1wrlf1g"],
     "rec.timeVh": ["{h} h", "26zzij"],
-    "rec.assist": ["Assistance", "b8b2id"],
-    "rec.assistV": ["Utilisée", "mfkdtu"],
     "rec.none": ["Aucun", "1mvjjxr"],
     "rec.subject": ["cours", "151i4wm"],
     "rec.tenth": ["/10", "1reo5hb"],
@@ -77910,6 +77931,9 @@ MC.addLang('zh-Hans', {
     "set.shake": ["画面晃动", "9rmwwr"],
     "set.vibrate": ["振动", "1xeqo3i"],
     "set.fullscreen": ["全屏", "1l47idb"],
+    "set.orient": ["屏幕方向", "zs2aet"],
+    "set.orientAuto": ["自动", "4xwr6q"],
+    "set.orientPort": ["竖屏", "15ixdhd"],
     "set.lang": ["语言", "r8cphl"],
     "set.slow": ["慢", "xdt6x"],
     "set.normal": ["普通", "ohe7mq"],
@@ -78374,8 +78398,6 @@ MC.addLang('zh-Hans', {
     "rec.timeV": ["{h}小时{m}分钟", "6950fk"],
     "rec.timeV0": ["{m}分钟", "1wrlf1g"],
     "rec.timeVh": ["{h}小时", "26zzij"],
-    "rec.assist": ["操作辅助", "b8b2id"],
-    "rec.assistV": ["已使用", "mfkdtu"],
     "rec.none": ["无", "1mvjjxr"],
     "rec.subject": ["门", "151i4wm"],
     "rec.tenth": ["成", "1reo5hb"],
@@ -81473,6 +81495,9 @@ MC.addLang('zh-Hant', {
     "set.shake": ["畫面晃動", "9rmwwr"],
     "set.vibrate": ["震動", "1xeqo3i"],
     "set.fullscreen": ["全螢幕", "1l47idb"],
+    "set.orient": ["螢幕方向", "zs2aet"],
+    "set.orientAuto": ["自動", "4xwr6q"],
+    "set.orientPort": ["直向", "15ixdhd"],
     "set.lang": ["語言", "r8cphl"],
     "set.slow": ["慢", "xdt6x"],
     "set.normal": ["普通", "ohe7mq"],
@@ -81937,8 +81962,6 @@ MC.addLang('zh-Hant', {
     "rec.timeV": ["{h}小時{m}分鐘", "6950fk"],
     "rec.timeV0": ["{m}分鐘", "1wrlf1g"],
     "rec.timeVh": ["{h}小時", "26zzij"],
-    "rec.assist": ["操作輔助", "b8b2id"],
-    "rec.assistV": ["已使用", "mfkdtu"],
     "rec.none": ["無", "1mvjjxr"],
     "rec.subject": ["門", "151i4wm"],
     "rec.tenth": ["成", "1reo5hb"],
@@ -85034,6 +85057,9 @@ MC.addLang('es', {
     "set.shake": ["Temblor", "9rmwwr"],
     "set.vibrate": ["Vibración", "1xeqo3i"],
     "set.fullscreen": ["Maximizar", "1l47idb"],
+    "set.orient": ["Orientación", "zs2aet"],
+    "set.orientAuto": ["Auto", "4xwr6q"],
+    "set.orientPort": ["Vertical", "15ixdhd"],
     "set.lang": ["Idioma", "r8cphl"],
     "set.slow": ["Lento", "xdt6x"],
     "set.normal": ["Normal", "ohe7mq"],
@@ -85498,8 +85524,6 @@ MC.addLang('es', {
     "rec.timeV": ["{h} h {m} min", "6950fk"],
     "rec.timeV0": ["{m} min", "1wrlf1g"],
     "rec.timeVh": ["{h} h", "26zzij"],
-    "rec.assist": ["Asistencia", "b8b2id"],
-    "rec.assistV": ["Usada", "mfkdtu"],
     "rec.none": ["Nada", "1mvjjxr"],
     "rec.subject": ["temas", "151i4wm"],
     "rec.tenth": ["/10", "1reo5hb"],
@@ -88721,6 +88745,7 @@ MC.addLang('es', {
   U.hintHand = function (x, y, lv, kind, bg, dir) {
     if (!(lv > 0)) return;
     const g = G(), step = MC.clamp(Math.ceil(lv / 16 * 4 - 0.01), 1, 4), hold = kind === 'hold', T = performance.now();
+    if (hold) { U.holdHintT = T; U.holdHintSc = MC.scene && MC.scene.top ? MC.scene.top() : null; }                           // [assist-tap] 「길게 누르기」 손가락이 떠 있었다(input.js latchTap — 손놀림 보조의 걸어 두기는 이런 장면에서만)
     bg = bg || '#05060c';
     x = Math.round(x); y = Math.round(y);
     if (kind === 'drag') {                               // [tap3] 끌기 시범: 손끝이 눌린 채 dir 쪽으로 18도트 미끄러지고(지나온 자리에 점선), 끝에서 잠깐 머문다. 'h' = 좌우로 오감(외부 평가 GPT)
@@ -88819,6 +88844,7 @@ MC.addLang('es', {
         }
         const k = k01(t) * MC.clamp((r.lv == null ? 16 : r.lv) / 16, 0, 1);
         if (k <= 0.001) return;
+        if (o.icon === 'hold') { U.holdHintT = performance.now(); U.holdHintSc = MC.scene && MC.scene.top ? MC.scene.top() : null; }   // [assist-tap] 길게 누르기 안내가 떠 있다
         const step = MC.clamp(Math.ceil(k * 4 - 0.001), 1, 4), col = g.mix(bg, GUIDE_COL, step / 4), cx = r.cx != null ? Math.round(r.cx) : g.W >> 1, maxW = r.maxW || g.W - 22;   // [land] r.cx·r.maxW = 가운데가 아닌 칸에 세울 때
         const ls = guideLines(o.text != null ? String(o.text) : U.tf(o.key), 'body', maxW).map(l => MC.text.bake(l, 'body', col, { shadow: '#000' })).filter(Boolean);
         const tip = (r.tipOn != null ? !!r.tipOn : s.failed) && o.tip ? guideLines(U.tf(o.tip), 'small', maxW).map(l => MC.text.bake(l, 'small', g.mix(bg, GUIDE_TIP, step / 4), { shadow: '#000' })).filter(Boolean) : [];
@@ -100062,7 +100088,6 @@ MC.addLang('es', {
       else if (vk === 'rec.timeV' && prm && prm.rawM === 0) vk = 'rec.timeVh';  // [s44-director] 「두 시간 영 분」 대신 「두 시간」
       return [U.tf(String(r[0])), U.tf(vk, prm)];
     });
-    if ((+getVar('s4_assist') || 0) === 1) vals.push([U.tf('rec.assist'), U.tf('rec.assistV')]);   // [tap3] 보조를 받은 판만
     // [s44-director C2③] back:true = 타이틀 「＿＿＿＿ · 끝」에서 연 기록 — 닫으면 검정이 아니라 타이틀 위로 디더로 걷힌다(엔딩 흐름에서는 더 부르지 않는다)
     const back = a.back === true;
     const IN = 400, tRow0 = 600, ROW = 160, tGrade = tRow0 + rows.length * ROW + 500, tMark = tGrade + 900, OUT_MS = 600;
@@ -103747,6 +103772,7 @@ MC.addLang('es', {
       { k: 'shake', label: L('set.shake'), type: 'opt', opts: [[0, L('set.off')], [0.5, L('set.weak')], [1, L('set.normal')]] },
       { k: 'bright', label: L('set.bright'), type: 'opt', opts: [[0, L('set.bright0')], [15, L('set.bright15')], [30, L('set.bright30')]] },   // [l45-light B7-1] 밝기 보정(최종 화면 감마 — gfx.present). 바꾸는 즉시 보인다
       { k: 'fullscreen', label: L('set.fullscreen'), type: 'bool', show: canFs, get: () => !!fsEl(), set: setFs },   // [FULL1]
+      { k: 'orient', label: L('set.orient'), type: 'opt', opts: [['auto', L('set.orientAuto')], ['port', L('set.orientPort')]] },   // [orient] 화면 방향(자동 / 세로 고정) — 바꾸면 곧바로 다시 잰다(change)
       { k: 'vibrate', label: L('set.vibrate'), type: 'bool', show: canVib },
       { k: 'assist', label: L('set.assist'), type: 'bool' },          // S4 손놀림 보조(탈출 토막 1회 성공·헤엄 체력 감소 없음·키 잡기 5초 — 등급 상한 A, 계약 §D-4)
       { k: 'oneHand', label: L('set.oneHand'), type: 'bool' },        // S4 한 손 조작(헤엄: 누르고 있으면 0.9초 박자로 저절로 젓기)
@@ -103803,6 +103829,7 @@ MC.addLang('es', {
       s[r.k] = opts[ni][0]; MC.save.saveSettings();
       U.sfx('ui_ok');
       if (r.k === 'shake' && s.shake > 0) MC.fx.shake(0.5);
+      if (r.k === 'orient' && MC.gfx && MC.gfx.landCheck) MC.gfx.landCheck();   // [orient]
     }
     layout(x, y, w, h) {
       this.x = x; this.y = y; this.w = w; this.h = h;
@@ -103816,12 +103843,24 @@ MC.addLang('es', {
       this.per = per;
       const avail = Math.floor((h - tabH - 14 - 18) / Math.max(1, per));
       this.rowH = MC.clamp(avail, Math.min(mt + 4, Math.max(20, avail)), Math.max(mt + 8, 30));
-      const bh = Math.max(20, Math.min(this.rowH - 6, mt));
+      let bh = Math.max(20, Math.min(this.rowH - 6, mt));
+      if (two) bh = Math.min(bh, this.rowH - 2);   // [land-fit] 줄이 낮으면(320×180) 단추가 위아래 줄과 겹치지 않게(누르는 자리는 minTouch로 넓어진다)
+      // [land-fit] 칸이 좁으면(가로 320 폭 = 칸 146) ◀ ▶ 를 16폭으로, 값 칸은 그 칸(열)에서 가장 긴 값만큼만 — 이름 자리를 넓힌다(오른쪽 끝 ▶ 는 열마다 한 줄로 맞춤)
+      const narrow = two && cw < 170, vw = [0, 0];
+      if (narrow) this.rb.forEach((e, i) => {
+        if (e.r.type !== 'opt') return;
+        const c = Math.floor(i / per), vf = e.r.opts.some(o => MC.text.width(String(o[1]), 'body') > 38) ? 'small' : 'body';
+        for (const o of e.r.opts) vw[c] = Math.max(vw[c], MC.text.width(String(o[1]), vf) + 6);
+      });
       this.rb.forEach((e, i) => {
         const k = i % per, cx = x + Math.floor(i / per) * (cw + 8), ry = y + tabH + 10 + k * this.rowH, by = ry + ((this.rowH - bh) >> 1);
         e.y = ry; e.k = k; e.cx = cx; e.cw = cw;
         if (e.r.type === 'lang' || e.r.type === 'link') { e.tog.x = cx + 4; e.tog.y = by; e.tog.w = cw - 8; e.tog.h = bh; }   // 행 전체가 단추
         else if (e.tog) { e.tog.x = cx + cw - 92; e.tog.y = by; e.tog.w = 88; e.tog.h = bh; }
+        else if (narrow) {
+          const bw = 16, gap = e.r.type === 'vol' ? 44 : Math.max(30, vw[Math.floor(i / per)]);
+          e.inc.x = cx + cw - 4 - bw; e.dec.x = e.inc.x - gap - bw; e.dec.w = e.inc.w = bw; e.dec.y = e.inc.y = by; e.dec.h = e.inc.h = bh;
+        }
         else { e.dec.x = cx + cw - 92; e.dec.y = by; e.dec.w = 22; e.dec.h = bh; e.inc.x = cx + cw - 26; e.inc.y = by; e.inc.w = 22; e.inc.h = bh; }
       });
     }
@@ -103844,18 +103883,25 @@ MC.addLang('es', {
         }
         if (r.type === 'link') {                  // 라이선스·크레딧 ········ ▶
           e.tog.render();
-          const dy = e.tog.pressed ? 1 : 0;
-          MC.text.draw(r.label, x + 8, cy + dy, { color: P.text });
+          const dy = e.tog.pressed ? 1 : 0, lf = MC.text.width(r.label, 'body') > w - 26 ? 'small' : 'body';   // [land-fit] ▶ 에 닿으면 작은 글씨
+          MC.text.draw(r.label, x + 8, cy + dy + (lf === 'small' ? 1 : 0), { color: P.text, font: lf });
           tri(x + w - 12, e.tog.y + (e.tog.h >> 1) - 3 + dy, 1, P.text);
           return;
         }
-        MC.text.draw(r.label, x + 8, cy, { color: P.text });
+        let hideOn = false;
+        { // [land-fit] 이름이 오른쪽 조절 칸에 가리면 작은 글씨로(가로 320 폭 두 칸, 긴 번역) — 켬/끔 줄은 그래도 넘치면 '켬/끔' 글자를 빼고 스위치만
+          const onW = r.type === 'bool' ? MC.text.width(tf((r.get ? !!r.get() : !!s[r.k]) ? 'set.on' : 'set.off'), 'body') : 0;
+          const room = r.type === 'vol' ? (e.dec.x - x) - 22 : r.type === 'opt' ? (e.dec.x - x) - 11 : w - 51 - onW;
+          const bw0 = MC.text.width(r.label, 'body'), lf = bw0 > room ? 'small' : 'body';
+          if (r.type === 'bool' && lf === 'small' && MC.text.width(r.label, 'small') > room) hideOn = true;
+          MC.text.draw(r.label, x + 8, cy + (lf === 'small' ? 1 : 0), { color: P.text, font: lf });
+        }
         if (r.type === 'vol') {
           const v = s[r.k] | 0;
-          MC.text.draw(String(v), x + w - 97, cy + 1, { font: 'small', color: P.dim, align: 'right' });
+          MC.text.draw(String(v), e.dec.x - 5, cy + 1, { font: 'small', color: P.dim, align: 'right' });
           e.dec.enabled = v > 0; e.inc.enabled = v < 10;
           e.dec.render(); e.inc.render();
-          const px0 = x + w - 67, pyy = e.dec.y + (e.dec.h >> 1) - 3;
+          const px0 = e.dec.x + e.dec.w + 3 - (e.dec.w < 22 ? 1 : 0), pyy = e.dec.y + (e.dec.h >> 1) - 3;
           for (let k = 0; k < 10; k++) g.rect(px0 + k * 4, pyy + (k < v ? 0 : 2), 3, k < v ? 6 : 2, k < v ? (s.mute ? P.dim : P.gold) : g.mix(P.D, P.f, 0.2));
         } else if (r.type === 'opt') {
           let i2 = r.opts.findIndex(o => o[0] === s[r.k]); if (i2 < 0) i2 = 1;
@@ -103863,15 +103909,15 @@ MC.addLang('es', {
           e.dec.render(); e.inc.render();
           // 값 칸(◀ ▶ 사이 44px): 그 줄 값 중 하나라도 38px를 넘으면(영어 'Normal'·'Instant' 등) 그 줄 값 전부 small — ko(최대 36px)는 늘 body(i18n-pilot, docs/requests/i18n-pilot.md)
           const vf = r.opts.some(o => MC.text.width(String(o[1]), 'body') > 38) ? 'small' : 'body';
-          MC.text.draw(r.opts[MC.clamp(i2, 0, r.opts.length - 1)][1], x + w - 48, cy + (vf === 'small' ? 1 : 0), { color: P.gold, align: 'center', font: vf });
+          MC.text.draw(r.opts[MC.clamp(i2, 0, r.opts.length - 1)][1], (e.dec.x + e.dec.w + e.inc.x) >> 1, cy + (vf === 'small' ? 1 : 0), { color: P.gold, align: 'center', font: vf });   // ◀ ▶ 사이 가운데(예전 x+w-48과 같은 자리, 좁은 칸은 그 사이)
         } else {
           e.tog.render();
           const on = r.get ? !!r.get() : !!s[r.k], tx = x + w - 34, ty = e.tog.y + (e.tog.h >> 1) - 5;
           g.rect(tx, ty, 26, 10, '#000000'); g.rect(tx + 1, ty + 1, 24, 8, on ? g.mix(P.gold, P.f, 0.45) : '#15141c');
           g.rect(on ? tx + 14 : tx + 2, ty + 2, 10, 6, on ? P.gold : P.dim);
-          MC.text.draw(tf(on ? 'set.on' : 'set.off'), tx - 6, cy, { color: on ? P.text : P.dim, align: 'right' });
+          if (!hideOn) MC.text.draw(tf(on ? 'set.on' : 'set.off'), tx - 6, cy, { color: on ? P.text : P.dim, align: 'right' });
         }
-        if (e.dec) { tri(e.dec.x + 8, e.dec.y + (e.dec.h >> 1) - 3 + (e.dec.pressed ? 1 : 0), -1, e.dec.enabled ? P.text : P.dim); tri(e.inc.x + 9, e.inc.y + (e.inc.h >> 1) - 3 + (e.inc.pressed ? 1 : 0), 1, e.inc.enabled ? P.text : P.dim); }
+        if (e.dec) { const o1 = e.dec.w < 22 ? 6 : 8, o2 = e.inc.w < 22 ? 6 : 9; tri(e.dec.x + o1, e.dec.y + (e.dec.h >> 1) - 3 + (e.dec.pressed ? 1 : 0), -1, e.dec.enabled ? P.text : P.dim); tri(e.inc.x + o2, e.inc.y + (e.inc.h >> 1) - 3 + (e.inc.pressed ? 1 : 0), 1, e.inc.enabled ? P.text : P.dim); }
       });
       const rowsEnd = this.y + this.tabH + 10 + (this.per || this.rb.length) * this.rowH, hintY = rowsEnd + 6, verY = this.y + this.h - 11;
       if (this.tab === 0) MC.text.draw(tf('set.silentHint'), x + (w >> 1), hintY, { font: 'small', color: P.dim, align: 'center' });
