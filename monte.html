@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.27';
+  var VERSION = '0.9.28';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -1353,6 +1353,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   // [fold] 가로로 든 터치 기기라도 높이가 넉넉하고 거의 정사각형이면(펼친 갤럭시 Z 폴드8·아이폰 듀오의 가로 4:3 안쪽 화면, 태블릿) 세로 게임을 가운데 두고 그대로 한다.
   //   폰을 가로로 든 것(높이 480 미만 또는 가로:세로 1.75 넘음)만 '세로로 돌려 주세요'
   const wideOk = (iw, ih) => ih >= 480 && iw / ih <= 1.75;
+  // [bigdev 11-17] 기기 화면 자체의 짧은 변이 600 CSS px 이상(아이패드·갤럭시 탭·펼친 폴드·아이폰 듀오 안쪽 화면)이면 창이 아무리 납작해도 '세로로 돌려 주세요'를 띄우지 않는다.
+  //   iPadOS 26부터 앱 창 크기를 마음대로 바꿀 수 있어(창은 돌릴 수 없다) 작은 가로 창에서 게임이 멈춰 버렸다. 세로 게임을 가운데에 그대로 둔다. 폰(짧은 변 < 600)은 옛 그대로
+  //   되돌리기: landscape 줄의 '&& !bigDev()' 를 지운다
+  const bigDev = () => { try { const a = +screen.width || 0, b = +screen.height || 0; return a > 0 && b > 0 && Math.min(a, b) >= 600; } catch (_) { return false; } };
 
   // [land] 가로 배치를 아는 장면(이름) — 이 밖의 장면(손으로 하는 장면 mg_* 등 세로로만 짠 것)이 쌓여 있는 동안은 세로 배치(가운데 세로 판)로 그린다.
   //   장면이 직접 가로를 알면 sc.landOk = true. 쌓기·빼기 때 scene.js가 g.landCheck()를 불러 바뀔 때만 다시 잰다
@@ -1406,7 +1410,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const key = [g.maxW || 216, dpr, iw, ih, sf.join(','), seg ? [seg.x, seg.y, seg.w, seg.h].join(',') : '', g.landNow ? 'L' : ''].join('|') + (MC.uw2 ? '|' + (MC.uw2('RES1') ? 1 : 0) + (MC.uw2('RES3') ? 1 : 0) : '');
     // [r5 RES6] '세로로 돌려 주세요'는 짧은 변이 600 CSS px 미만인 터치 기기(폰)만 — 터치 노트북·16:9 큰 화면(1280×720 등)은 돌릴 수 없거나 돌릴 까닭이 없다.
     //   폰 가로(짧은 변 < 600)는 옛 그대로 wideOk로 가린다. 되돌리기: ?uw2off=RES6 또는 '&& (…RES6…)' 갈래를 지운다
-    const landscape = !g.landNow && isTouch && iw > ih && !wideOk(iw, ih) && (!(MC.uw2 && MC.uw2('RES6')) || Math.min(iw, ih) < 600);   // [land] 가로 배치면 돌려 달라고 하지 않는다
+    const landscape = !g.landNow && isTouch && iw > ih && !wideOk(iw, ih) && !bigDev() && (!(MC.uw2 && MC.uw2('RES6')) || Math.min(iw, ih) < 600);   // [land] 가로 배치면 돌려 달라고 하지 않는다
     if (rotateEl) rotateEl.style.display = landscape ? 'flex' : 'none';
     if (MC.core && MC.core.pause) MC.core.pause(landscape, 'rotate');
     if (key === lastKey) return;
@@ -104439,9 +104443,10 @@ MC.addLang('es', {
       this.tabH = tabH; this.rowTop = rowTop; this.two = two;
       this.per = per;
       const avail = Math.floor((h - rowTop - 4 - foot) / Math.max(1, per));
-      this.rowH = MC.clamp(avail, Math.min(mt + 4, Math.max(two ? 14 : 20, avail)), Math.max(mt + 8, 30));   // [land-fit] 가로 두 칸은 높이 180 폰에서도 넘치지 않게 14까지(누르는 자리는 minTouch로 넓어진다)
+      // [short 11-17] 세로 한 칸도 자리가 모자라면 17까지(옛 20 — 아이폰 듀오 겉화면 216×339에 위아래 안전 여백이 크면 마지막 줄 「라이선스·크레딧」이 창 밖으로 잘렸다). 넉넉하면 옛 그대로
+      this.rowH = MC.clamp(avail, Math.min(mt + 4, Math.max(two ? 14 : 17, avail)), Math.max(mt + 8, 30));   // [land-fit] 가로 두 칸은 높이 180 폰에서도 넘치지 않게 14까지(누르는 자리는 minTouch로 넓어진다)
       let bh = Math.max(20, Math.min(this.rowH - 6, mt));
-      if (two) bh = Math.min(bh, this.rowH - 2);   // [land-fit] 줄이 낮으면(320×180) 단추가 위아래 줄과 겹치지 않게(누르는 자리는 minTouch로 넓어진다)
+      if (two || this.rowH < 22) bh = Math.min(bh, this.rowH - 2);   // [land-fit] 줄이 낮으면(320×180) 단추가 위아래 줄과 겹치지 않게(누르는 자리는 minTouch로 넓어진다) · [short] 세로 낮은 줄도
       // [land-fit] 칸이 좁으면(가로 320 폭 = 칸 146) ◀ ▶ 를 16폭으로, 값 칸은 그 칸(열)에서 가장 긴 값만큼만 — 이름 자리를 넓힌다(오른쪽 끝 ▶ 는 열마다 한 줄로 맞춤)
       const narrow = two && cw < 170, vw = [0, 0];
       if (narrow) this.rb.forEach((e, i) => {
