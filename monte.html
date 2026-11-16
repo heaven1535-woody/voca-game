@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.19';
+  var VERSION = '0.9.20';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -5918,9 +5918,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const g = G(), n = caps.length, z = MC.dialogue && MC.dialogue.capZone ? MC.dialogue.capZone() : null;
     let y = z ? (z.pos === 'top' ? z.bottom + 3 : z.top - 2 - n * CAP_LH) : g.H - (g.safe.bottom || 0) - 22 - n * CAP_LH;
     y = Math.max((g.safe.top || 0) + 2, Math.round(y));
+    const capCx = g.land && z && z.cx != null ? z.cx : g.W >> 1;   // [land2] 가로: 자리 주인이 가운데를 정해 주면 그 자리(만화 = 오른쪽 글 칸). 옛: 늘 화면 가운데
     for (let i = 0; i < n; i++) {
       const left = CAP_MS - (t - caps[i].t0), alpha = left >= 240 ? 1 : left >= 160 ? 0.66 : 0.33;
-      MC.text.draw(caps[i].s, g.W >> 1, y + i * CAP_LH, { font: 'small', color: CAP_COL, align: 'center', outline: '#000', alpha });
+      MC.text.draw(caps[i].s, capCx, y + i * CAP_LH, { font: 'small', color: CAP_COL, align: 'center', outline: '#000', alpha });
     }
   }
 
@@ -12921,12 +12922,45 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     GLOW.on = false;
     if (!LT.tint || !LT.tc) return;
     const g = G(), ctx = g.ctx;
+    // [land2] 가로의 작은 방(지도가 화면보다 좁거나 낮음): 빛 색을 바깥 테두리 천장 칸('^' — 지도 가장자리에서 이어진 것)에는 얹지 않는다.
+    //   옛: 지도 네모 전체에 얹어 방 벽 바깥 한 칸이 갈색 네모로 번져 보였다(독방 촛불). 세로·큰 지도는 옛 그대로(지도 네모)
+    const runs = g.land && (map.w * TS < g.W || map.h * TS < g.H) ? innerRuns() : null;
+    if (runs && runs.length) {
+      const ox = Math.round(GLOW.ox), oy = Math.round(GLOW.oy);
+      ctx.save(); ctx.beginPath();
+      for (const r of runs) ctx.rect(r[0] - ox, r[1] - oy, r[2], r[3]);
+      ctx.clip();
+      ctx.globalCompositeOperation = 'multiply';
+      if (ctx.globalCompositeOperation === 'multiply') ctx.drawImage(LT.tc, 0, 0);
+      ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(LT.ac, 0, 0);
+      ctx.restore();
+      ctx.globalCompositeOperation = 'source-over';
+      return;
+    }
     g.pushClip(Math.round(-GLOW.ox), Math.round(-GLOW.oy), map.w * TS, map.h * TS);
     ctx.globalCompositeOperation = 'multiply';
     if (ctx.globalCompositeOperation === 'multiply') ctx.drawImage(LT.tc, 0, 0);
     ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(LT.ac, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
     g.popClip();
+  }
+  // [land2] 빛 색을 얹을 칸(가로 줄 묶음 [x, y, w, h] — 지도 px): 지도 가장자리에서 '^'(천장·바깥 덩어리)로만 이어진 칸을 뺀 나머지. 지도마다 한 번 셈
+  function innerRuns() {
+    if (map._innerRuns) return map._innerRuns;
+    const w = map.w, h = map.h, rows = map.rows || [], out = new Uint8Array(w * h), st = [];
+    const top = (x, y) => (rows[y] || '')[x] === '^' || (rows[y] || '')[x] == null;
+    const push = (x, y) => { if (x < 0 || y < 0 || x >= w || y >= h || out[y * w + x] || !top(x, y)) return; out[y * w + x] = 1; st.push(x, y); };
+    for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); }
+    for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+    while (st.length) { const y = st.pop(), x = st.pop(); push(x - 1, y); push(x + 1, y); push(x, y - 1); push(x, y + 1); }
+    const runs = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (out[y * w + x]) continue;
+      let x1 = x; while (x1 + 1 < w && !out[y * w + x1 + 1]) x1++;
+      runs.push([x * TS, y * TS, (x1 - x + 1) * TS, TS]); x = x1;
+    }
+    map._innerRuns = runs;
+    return runs;
   }
   const drawGlowPost = drawGlow;
 
@@ -13508,7 +13542,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   function bannerBox() {                                  // [x,y,visible] 현재 배너 위치
     const g = G(), el = nowR() - ban.t0;
     if (!ban.cv || el < 0 || el > 2700) return null;
-    const x = g.X0 + 2, y0 = 2 + g.safe.top;
+    const x = g.land ? 4 + g.safe.left : g.X0 + 2, y0 = 2 + g.safe.top;   // [land2] 가로: 왼쪽 위 4 + safe.left(오른쪽 위 ☰ 와 대칭). 옛: 세로 칸 기준 X0 + 2 = 가운데보다 왼쪽에 어정쩡하게 뜸
     const y = el < 220 ? Math.round(y0 - (1 - MC.ease.outCubic(el / 220)) * (ban.cv.height + 4)) : y0;
     const lvl = el < 2220 ? 16 : Math.round(16 * (1 - (el - 2220) / 480));
     return [x, y, lvl];
@@ -13547,7 +13581,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       placeTx.text = showYear && MC.i18n ? MC.i18n.tf('field.placeLine', { place, year: MC.i18n.tf('fmt.year', { y: yr }) }) : place;
       placeTx.key = key;
     }
-    MC.text.draw(placeTx.text, g.X0 + 5, g.safe.top + 4, { font: 'small', color: '#a8a4b4', shadow: '#000' });
+    MC.text.draw(placeTx.text, g.land ? 7 + g.safe.left : g.X0 + 5, g.safe.top + 4, { font: 'small', color: '#a8a4b4', shadow: '#000' });   // [land2] 가로: 왼쪽 위(이름표와 같은 줄 맞춤). 옛: X0 + 5
   }
   /* [r3 B5-2] 작은 방 위 빈 검정에 이미 있는 장소 그림(data/vistas.js)을 어둡게 깐다 — 새 그림 없이 하는 첫 시도(IMPROVEMENT_PLAN_3 B5 · 도 E · 편 E8 · 감 #3).
      그림 360×480칸에서 짝수 칸만 집어 180×240(논리 1px = 1칸 — 방 타일과 같은 도트 결). 형태는 그대로, 색만 바꾼다(채도 ↓ · 빈칸 색 쪽 안개 · 어둡게).
@@ -13629,7 +13663,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (!hudOn || !map.maze || !MC.state || !MC.state.party || !MC.state.party[0]) return;
     const g = G(), m = MC.state.party[0], mx = maxHp(m), k = MC.clamp((m.hp || 0) / mx, 0, 1);
     const b = bannerBox();
-    const x = g.X0 + 2, y = b && b[2] > 0 ? b[1] + ban.cv.height + 3 : 4 + g.safe.top;
+    const x = g.land ? 4 + g.safe.left : g.X0 + 2, y = b && b[2] > 0 ? b[1] + ban.cv.height + 3 : 4 + g.safe.top;   // [land2] 가로: 왼쪽 위(이름표 아래). 옛: X0 + 2
     if (hpShow.v >= 0 && m.hp < hpShow.v) hpShow.flash = nowR() + 300;
     hpShow.v = m.hp;
     const low = k <= 0.3;
@@ -13689,7 +13723,9 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (rcam.x < 0 || rcam.y < 0 || rcam.x + g.W > mw || rcam.y + g.H > mh) {
       ctx.fillStyle = map.voidPat || map.dark;
       ctx.fillRect(rcam.x, rcam.y, g.W, g.H);
-      if (g.land && map.edgeFill !== false && map.cache) edgeFill(ctx, mw, mh, g);   // [land] 가로 화면: 지도 가장자리 줄을 화면 끝까지 이어 그리고 바깥으로 갈수록 어둡게
+      // [land2] 지도 데이터의 edgeFill:false를 실제로 읽는다(옛: map.edgeFill만 봤는데 지도 객체에는 그 값이 실리지 않아 끌 수 없었다 — 실내 지도의 아래 문이
+      //   가장자리 줄 반복으로 여러 개가 됐다: 아버지 집 문 3개·검사실 문 2개). 실내 여섯 곳(house·villefort·if_room·cell·faria_cell·s4_despair)에 edgeFill:false
+      if (g.land && map.edgeFill !== false && !(map.def && map.def.edgeFill === false) && map.cache) edgeFill(ctx, mw, mh, g);   // [land] 가로 화면: 지도 가장자리 줄을 화면 끝까지 이어 그리고 바깥으로 갈수록 어둡게
     }
     // 1) 정적 타일(보이는 부분만)
     const sx = MC.clamp(rcam.x, 0, mw), sy = MC.clamp(rcam.y, 0, mh);
@@ -14953,7 +14989,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     renderHud() {
       if (!ST.active || !I.hudOn()) return;
       if (!ST.alert && !ST.caught && !liveGuards().length) return;   // S3: 간수가 모두 빠진 모드(땅굴 2 밤·메우기)엔 경계 표시를 숨긴다
-      const gg = G(), t = I.nowR(), x = gg.X0 + 2, ty = I.hudY();
+      const gg = G(), t = I.nowR(), x = gg.land ? 4 + gg.safe.left : gg.X0 + 2, ty = I.hudY();   // [land2] 가로: 왼쪽 위(이름표·HP 줄 아래, ☰ 와 대칭). 옛: X0 + 2
       if (ST.hudY == null || Math.abs(ST.hudY - ty) > 60) ST.hudY = ty;   // 배너가 걷히면 부드럽게 올라간다
       else ST.hudY += (ty - ST.hudY) * Math.min(1, (t - (ST.hudT || t)) / 90);
       ST.hudT = t;
@@ -17638,7 +17674,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   const typeMs = () => TYPE[bs()] * typeMul();          // 로그 한 글자 ms(쓰는 곳 셋이 같은 값을 써야 한다)
   function logPush(text, style, fam, instant) {
     const v = V, tm = typeMs();
-    const lines = MC.text.wrap(String(text), 160, 'body');
+    // [land2] 가로: 기록 줄은 가로 창 폭(logW − 16)으로 접는다 — 옛: 세로 창 폭 160으로 접어 두고 가로 한 줄 창은 마지막 줄만 보여 줘 긴 문장(영어)의 앞 줄이 사라졌다. 세로는 160 그대로
+    const lines = MC.text.wrap(String(text), G().land ? Math.max(160, (v.logW || 176) - 16) : 160, 'body');
     let start = Math.max(v.t, v.log.end);
     const t0 = v.t, sid = v.log.sid = (v.log.sid || 0) + 1;            // [r5 B-07] 문장 번호(한 번 부른 글 = 한 문장) · k = 그 문장의 몇째 줄 — drawLog가 잘린 앞 문장 조각을 흐리게. 되돌리기: sid·k를 지운다
     let k = 0;
@@ -20046,7 +20083,14 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   }
   // [land] 가로 기록: 무대 아래에 걸친 한 줄 창 — 가장 새 줄만(아래에서 밀려 올라옴), 대상 고르기는 한 줄 안내
   function drawLogLand() {
-    const g = G(), x = V.LX, y = V.logY, w = V.logW, h = V.logH, P = g.uiPal;
+    const g = G(), x = V.LX, w = V.logW, P = g.uiPal;
+    let y = V.logY, h = V.logH;
+    const tm = typeMs(); let l = null, prev = null;
+    if (!(V.mode === 'target' && V.pend)) for (const q of V.log.lines) if (q.start <= V.t) { prev = l; l = q; }
+    // [land2] 가로 폭으로도 두 줄이 되는 긴 문장: 둘째 줄이 나올 때 창을 위로 한 줄(16) 키워 앞 줄을 그대로 둔다(아랫변은 그대로 — 상태 칸·명령 단추와 안 겹침).
+    //   옛: 늘 한 줄 — 앞 줄이 밀려 나가 문장 끝만 남았다(영어 「…acts on his own.」). 셋째 줄부터는 옛처럼 한 줄씩 밀려 올라간다
+    const two = !!(l && prev && l.sid != null && l.sid === prev.sid && l.k > 0);
+    if (two) { y -= 16; h += 16; }
     g.frame(x, y, w, h, { small: true });
     if (V.mode === 'target' && V.pend) {
       const head = cmdLabel(V.pend) + ' → ' + T('chooseTarget'), hw = MC.text.width(head, 'body');
@@ -20054,19 +20098,19 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       if (V.tpress) MC.text.draw(labelOf(V.tpress), x + 16 + hw, y + 3, { color: P.text });
       return;
     }
-    const tm = typeMs(); let l = null, prev = null;
-    for (const q of V.log.lines) if (q.start <= V.t) { prev = l; l = q; }
     if (!l) return;
+    if (two) { MC.text.draw(prev.s, x + 8, y + 3, { color: lineColor(prev) }); y += 16; h -= 16; }
     const p = clamp((V.t - l.start) / 100, 0, 1), dy = Math.round((1 - p) * 14);
     g.pushClip(x + 3, y + 3, w - 6, h - 6);
-    if (prev && dy > 0) MC.text.draw(prev.s, x + 8, y + 3 + dy - 14, { color: P.dim });
+    if (prev && dy > 0 && !two) MC.text.draw(prev.s, x + 8, y + 3 + dy - 14, { color: P.dim });   // [land2] 두 줄일 때 앞 줄은 윗줄에 그대로 있다(밀려 나가는 흐린 글 없음)
     const n = Math.min(l.n, Math.floor((V.t - l.start) / tm) + 1), col = lineColor(l), shake = l.shakeUntil > V.t;
     if (n >= l.n && !shake) MC.text.draw(l.s, x + 8, y + 3 + dy, { color: col });
     else { let cx = x + 8; for (let k = 0; k < n; k++) { const sx = shake ? (((V.t / 33) | 0) + k) % 3 - 1 : 0; cx += MC.text.drawChar(l.chars[k], cx + sx, y + 3 + dy, 'body', col); } }
     g.popClip();
   }
   function drawLog() {
-    if (G().land) { drawLogLand(); return; }
+    // [land2] 가로: 승리 카드(V.panel)가 떠 있는 동안은 기록 한 줄 창을 그리지 않는다 — 카드(100~)와 한 줄 창이 무대 높이에 함께 들어가지 않아 2~14칸 겹쳤다(얻은 것·경험치는 카드 안에 있다). 옛: 늘 그림
+    if (G().land) { if (!V.panel) drawLogLand(); return; }
     const g = G(), x = V.X0 + 2, y = V.logY, P = g.uiPal;
     g.frame(x, y, 176, 58);
     if (V.mode === 'target' && V.pend) {
@@ -48097,6 +48141,7 @@ MC.addMaps({
 MC.addMaps({
   "villefort": {
     "name": "검사 대리의 집무실", "tileset": "indoor", "ui": "act2",
+    "edgeFill": false,   // [land2] 가로 화면: 방 바깥은 어둠 그대로(옛: 가장자리 줄 반복 — 아래 문이 둘로 보였다). field.js render가 읽는다
     "tiles": [
       "^^^^^^^^^^^^",
       "^SSW#D#WF#S^",
@@ -48269,6 +48314,7 @@ MC.addMaps({
   MC.addMaps({
     "if_room": {
       "name": "이프 성 · 위층 방", "tileset": "prison", "ui": "act2",
+      "edgeFill": false,   // [land2] 가로 화면: 방 바깥은 어둠 그대로(옛: 가장자리 줄 반복). field.js render가 읽는다
       "tiles": [
         "^^^^^^^",
         "^#W#D#^",
@@ -48364,6 +48410,7 @@ MC.addMaps({
 MC.addMaps({
   "house": {
     "name": "아버지의 집", "tileset": "house", "ui": "act1",
+    "edgeFill": false,   // [land2] 가로 화면: 방 바깥은 어둠 그대로(옛: 가장자리 줄 반복 — 아래 문이 셋으로 보였다). field.js render가 읽는다
     "tiles": [
       "^^^^^^^^^",
       "^#W#F#W#^",
@@ -48431,6 +48478,7 @@ MC.addMaps({
     "cell": {
       "name": "이프 성 · 독방",
       "tileset": "prison",
+      "edgeFill": false,   // [land2] 가로 화면: 방 바깥은 어둠 그대로(옛: 가장자리 줄 반복). field.js render가 읽는다
       "base": true,
       "vignette": 0.4,
       "camAnchor": { "center": { "minDark": 0.7 } },   // [r5 UW-4] 방 어둠 0.7 이상(촛불 밤 — 첫 만남·세 번째 발작·결심 등)이면 방을 화면 가운데로(field.js anchorY · ?uw2off=UW-4면 예전). 낮(0.4)·새벽(0.6)은 그대로 대화창 위. 되돌리기: 이 줄 삭제
@@ -48536,6 +48584,7 @@ MC.addMaps({
     "faria_cell": {
       "name": "이프 성 · 27번의 방",
       "tileset": "prison",
+      "edgeFill": false,   // [land2] 가로 화면: 방 바깥은 어둠 그대로(옛: 가장자리 줄 반복). field.js render가 읽는다
       "vignette": 0.4,
       // [fix 11-10 UW4] 27번의 방도 독방처럼: 방 어둠 0.7 이상(S3·S4 밤 장면 — 세 번째 발작 앞뒤·결심 등 등잔 0.8)이면 방을 화면 가운데로(field.js anchorY · [r5 UW-4] 조건부 가운데).
       //   등잔 켠 보통 때(0.5)는 그대로 대화창 위(위에 방 그림 vs_faria). 되돌리기: ?uw2off=UW4(이 방만 예전) · ?uw2off=UW-4(독방까지 예전) 또는 아래 한 줄 삭제
@@ -49384,6 +49433,7 @@ MC.addMaps({
   MC.addMaps({
     "s4_despair": {
       "tileset": "prison",
+      "edgeFill": false,   // [land2] 가로 화면: 방 바깥은 어둠 그대로(옛: 가장자리 줄 반복). field.js render가 읽는다
       "ui": "despair",
       "save": false,
       "bgm": null,
@@ -88895,6 +88945,18 @@ MC.addLang('es', {
         const tip = (r.tipOn != null ? !!r.tipOn : s.failed) && o.tip ? guideLines(U.tf(o.tip), 'small', maxW).map(l => MC.text.bake(l, 'small', g.mix(bg, GUIDE_TIP, step / 4), { shadow: '#000' })).filter(Boolean) : [];
         let y = Math.round(r.y != null ? r.y : U.guideBottom());
         y -= ls.reduce((h, im) => h + im.height, 0);
+        // [land2] 가로: 요령 줄(tip)은 본문 아래에 이어 그리는데 본문 아랫변이 화면 맨 아래(guideBottom = H − 6)라 화면 밖으로 잘렸다 —
+        //   요령 줄이 떠 있는 동안만, 넘치는 만큼 묶음 전체를 위로 올린다(스테이지가 준 y도 같은 규칙 · 안 넘치면 그대로). 옛: 올리지 않음. 세로는 그대로
+        if (g.land && tip.length) {
+          const tipH = 1 + tip.reduce((h, im) => h + im.height, 0), mainH = ls.reduce((h, im) => h + im.height, 0);
+          const over = y + mainH + tipH - (g.H - ((g.safe && g.safe.bottom) || 0) - 2);
+          if (over > 0) y -= over;
+        }
+        // [land2] r.plate(가로에서만): 글 뒤에 어두운 디더 판 — 밝은 그림 위에 글이 겹쳐 안 읽히는 장면(바다 헤엄)용. 옛: 판 없음
+        if (g.land && r.plate) {
+          const pw = Math.max(0, ...ls.map(im => im.width), ...tip.map(im => im.width)) + 24, ph = ls.reduce((h, im) => h + im.height, 0) + (tip.length ? 1 + tip.reduce((h, im) => h + im.height, 0) : 0) + 3;
+          if (pw > 24) g.ditherRect(cx - (pw >> 1), y - 2, pw, ph, typeof r.plate === 'string' ? r.plate : bg, Math.round(11 * MC.clamp(k, 0, 1)));
+        }
         // [tap3] 끌기 안내: 스테이지가 손 자리를 따로 주지 않으면 글 바로 위에서 손가락이 그 방향으로 미끄러지는 시범(처음 뜰 때·다시 뜰 때)
         if (o.icon === 'drag' && !r.hand) { const hy = y - 16 - (o.dir === 'down' ? 18 : 0); if (hy > 4) U.hintHand(cx, hy, Math.min(12, k * 16), 'drag', bg, o.dir); }
         ls.forEach((im, i) => {
@@ -92612,7 +92674,7 @@ MC.addLang('es', {
         const img = MC.text.bake(label, 'body', '#f0f0f0', { shadow: '#000' });
         // 위쪽 대화창(초상 포함)이 떠 있으면 왼쪽 아래로 비킨다
         const dTop = MC.dialogue && MC.dialogue.open && MC.dialogue.boxRect && MC.dialogue.boxRect().pos === 'top';   // [u51 B2-6] 선택지 질문으로 올린 아래 창도 화면 위쪽 절반에 올 수 있어 y 대신 pos로
-        if (img) U.drawDither(img, g.X0 + 8, dTop ? H - 24 - g.safe.bottom : 8 + g.safe.top, 16 * a);
+        if (img) U.drawDither(img, g.land ? 8 + g.safe.left : g.X0 + 8, dTop ? H - 24 - g.safe.bottom : 8 + g.safe.top, 16 * a);   // [land2] 가로: 왼쪽 위(옛: X0 + 8 = 가운데보다 왼쪽에 어정쩡하게)
       }
     };
     MC.scene.push(sc);
@@ -98029,7 +98091,7 @@ MC.addLang('es', {
         const slowOn = S.finT < 0 && S.slowT >= 0;
         if (slowOn && !S.slowShown) { S.slowShown = true; gd.show(); } else if (!slowOn) S.slowShown = false;
         //   자리: 공통 자리는 크게 그린 헤엄치는 당테스(밝은 살빛·물보라)가 차지해 글이 먹힌다 — 예전처럼 수평선 바로 아래 어두운 바다 위(두 줄)
-        gd.render({ bg: '#0e182a', tipOn: slowOn, y: G().land ? U.guideBottom() : hy + 16 + 2 * 14 });   // [land] 헤엄치는 사람 위가 아니라 화면 아래
+        gd.render({ bg: '#0e182a', tipOn: slowOn, y: G().land ? U.guideBottom() : hy + 16 + 2 * 14, plate: !!G().land });   // [land] 헤엄치는 사람 위가 아니라 화면 아래 · [land2] 가로는 글 뒤에 어두운 판(옛: 판 없이 헤엄치는 그림·물보라 위에 글이 겹침)
         const showP = S.finT < 0 && (S.strokes === 0 || gd.again() || slowOn);
         if (showP) {
           const per = slowOn ? 700 : 600, leftOn = (((t / per) | 0) & 1) === 0, yh = Math.round(H * 0.6);
@@ -98828,6 +98890,14 @@ MC.addLang('es', {
           const ec = edgeCols(cs);                          // 위·아래로 남는 칸: 맨 윗줄·맨 아랫줄에서 가장 많은 색(늘이면 세로 줄무늬가 생겨서)
           if (ay > 0) g.rect(0, 0, Q.W, ay, ec[0]);
           ctx.drawImage(cs, ax, ay, aw, ah);
+          // [land2] 가로 넓은 폰(화면 폭 > 그림 폭 384): 그림 오른쪽 끝이 직선으로 잘려 보였다 — 맨 오른쪽 한 줄을 화면 끝까지 늘여 잇고(하늘·지붕 윤곽·바다 띠가 이어짐),
+          //   그림 끝에서 화면 끝으로 갈수록 어둠(#020308)에 성기게 녹인다. 옛: 그림 밖은 코드 그라데이션이 그대로 보였다. 세로·320 폭은 그림이 화면보다 넓어 해당 없음
+          if (g.land && ax + aw < Q.W) {
+            const gx = ax + aw, gw = Q.W - gx, n = 6, bw = Math.ceil(gw / n);
+            ctx.drawImage(cs, cs.width - 1, 0, 1, cs.height, gx, ay, gw, ah);
+            for (let i = 0; i < n; i++) g.ditherRect(gx + i * bw, ay, Math.min(bw, gw - i * bw), ah, '#020308', 3 + i * 2);
+            for (let i = 0; i < 3; i++) g.ditherRect(gx - (i + 1) * 4, ay, 4, ah, '#020308', 2 - Math.min(1, i));   // 이음매 바로 안쪽 12칸도 살짝(경계가 한 줄로 서지 않게)
+          }
           if (ay + ah < Q.H) g.rect(0, ay + ah, Q.W, Q.H - ay - ah, ec[1]);
           const w = d.window ? [(d.window[0] + d.window[2] + 1) / 2, (d.window[1] + d.window[3] + 1) / 2] : artWin(cs);
           if (w) win = [ax + Math.round(w[0] * s), ay + Math.round(w[1] * s)];
@@ -99390,7 +99460,7 @@ MC.addLang('es', {
         const W = g.W, H = g.H, t = sc.t, cx = W >> 1;
         g.clear('#030306');
         dust.render(t, 0.7);
-        const ly = Math.round((H - (20 + lines.length * 16)) / 2) - 12 + (g.safe.top >> 1);
+        const ly = Math.round((H - (20 + lines.length * 16)) / 2) - (g.land ? 0 : 12) + (g.safe.top >> 1);   // [land2] 가로: 장부 묶음을 위아래 한가운데(옛: 가운데에서 12 위 — 낮은 화면에서 위로 쏠려 보였다). 세로는 −12 그대로
         if (t >= tHead) {
           const lv = U.lvl(t, tHead, 400), hd = MC.text.bake(head, 'small', '#8a8898');
           U.drawDither(hd, cx - (hd.width >> 1), ly, lv);
@@ -101681,6 +101751,9 @@ MC.addLang('es', {
     const orig = DL.capZone;
     DL.capZone = function () {
       const P = cur;
+      // [land2] 가로 만화: 소리 자막을 오른쪽 글 칸 안에(가운데 = 글 칸 가운데, 자리 = 「길게 눌러 건너뛰기」 줄 바로 위).
+      //   옛: 화면 가운데(W/2)·맨 아래라 왼쪽 반이 기기 해상도 그림 밑에 가려 「[캡스턴… 삐걱]」 앞부분이 안 보였다. cx는 fx.renderCaps가 읽는다(세로·vista는 cx 없음 = 옛 그대로)
+      if (P && P.L && P.L.land && !P.vista && P.capFrame === G().renderId) { const g2 = G(); return { top: g2.H - (g2.safe.bottom || 0) - 29, bottom: g2.H, pos: 'bottom', cx: P.L.W + ((g2.W - P.L.W) >> 1) }; }
       if (P && P.L && P.capFrame === G().renderId) return P.vista ? { top: P.L.plateY + VS.PH + 3, bottom: G().H, pos: 'bottom' } : { top: P.L.bandTop0 - P.L.extra + 1, bottom: G().H, pos: 'bottom' };   // [vista] 판 아래
       return orig.apply(this, arguments);
     };
@@ -102328,7 +102401,10 @@ MC.addLang('es', {
         }
       }
       // 명패·시기 표시·뒤로 단추 자리(그림 위 UI → 촘촘한 패스에서 뺀다)
-      const rise = Math.round(enter * 6), plY = LD ? top + 6 + rise : slotY + top + ph - 12 + rise, plX = LD ? L0.RX : X0 + 4, plW = LD ? L0.RW : 172, plH = 30;   // [land] 명패는 오른쪽 칸 위
+      // [land2] 가로 첫 소개 카드(INTRO): 명패 + 소개 글 묶음을 오른쪽 칸 세로 가운데에(옛: 맨 위에 붙어 아래 2/3가 비었다). 「인물」 쪽 본문(여러 줄·넘김)은 옛 그대로 위에서부터
+      let introDY = 0;
+      if (LD && INTRO) { let th = 0; for (const it of textItems()) th += it.kind === 'intro' ? it.ls.length * 16 + 10 : it.kind === 'bio' ? itemH(it) : 22; introDY = Math.max(0, ((H - top - bot - (30 + 6 + th)) >> 1) - 6); }
+      const rise = Math.round(enter * 6), plY = LD ? top + 6 + introDY + rise : slotY + top + ph - 12 + rise, plX = LD ? L0.RX : X0 + 4, plW = LD ? L0.RW : 172, plH = 30;   // [land] 명패는 오른쪽 칸 위
       const spr = dotSprite(id, sc.era), ss = spr ? g.spriteSize(spr) : { w: 0, h: 0 };
       const sprY = plY + plH - 4 - ss.h;
       holes.push([plX, Math.min(plY, sprY) - 1, plW, plH + Math.max(0, plY - sprY) + 2]);
@@ -103938,15 +104014,18 @@ MC.addLang('es', {
     }
     layout(x, y, w, h) {
       this.x = x; this.y = y; this.w = w; this.h = h;
-      const mt = MC.ui.minTouch(), tabH = Math.max(22, mt), tw = (w - 12) >> 1;
-      this.tabs.forEach((b, i) => { b.x = x + 4 + i * (tw + 4); b.y = y + 4; b.w = tw; b.h = tabH; b.style = i === this.tab ? 'primary' : 'normal'; });
-      this.tabH = tabH;
+      const mt = MC.ui.minTouch(), tw = (w - 12) >> 1;
       const n = this.rb.length;
       // [scenes-s4b2] 진행 탭 8줄(S4 설정 2줄 더함)이 180×320 창(높이 제한)에 들어가게: 자리가 모자랄 때만 줄 높이를 20까지 줄인다(넉넉하면 예전 그대로)
       // [land] 가로 화면에서 폭이 넉넉하면(280 이상) 줄을 두 칸으로 나눈다(왼쪽 칸 먼저 채움)
       const two = !!G().land && w >= 280, per = two ? Math.ceil(n / 2) : n, cw = two ? ((w - 8) >> 1) : w;
+      // [land2] 가로 두 칸: 창 높이를 줄에 다 쓴다 — 탭 높이 22 → 18 · 탭과 첫 줄 사이 6 → 2 · 아래 남김 18 → 소리 탭만 18(무음 안내 줄 자리), 진행 탭은 2.
+      //   옛: 탭 22 + 14 + 아래 18을 늘 빼서 진행 탭 여섯 줄이 줄 높이 약 15·◀▶ 약 12(폰에서 누르기 작음). 이제 폰 19 · 320×180 18. 세로·한 칸은 옛 값 그대로(rowTop = tabH + 10, foot 18)
+      const tabH = two ? 18 : Math.max(22, mt), rowTop = two ? tabH + 6 : tabH + 10, foot = two ? (this.tab === 0 ? 18 : 2) : 18;
+      this.tabs.forEach((b, i) => { b.x = x + 4 + i * (tw + 4); b.y = y + 4; b.w = tw; b.h = tabH; b.style = i === this.tab ? 'primary' : 'normal'; });
+      this.tabH = tabH; this.rowTop = rowTop; this.two = two;
       this.per = per;
-      const avail = Math.floor((h - tabH - 14 - 18) / Math.max(1, per));
+      const avail = Math.floor((h - rowTop - 4 - foot) / Math.max(1, per));
       this.rowH = MC.clamp(avail, Math.min(mt + 4, Math.max(two ? 14 : 20, avail)), Math.max(mt + 8, 30));   // [land-fit] 가로 두 칸은 높이 180 폰에서도 넘치지 않게 14까지(누르는 자리는 minTouch로 넓어진다)
       let bh = Math.max(20, Math.min(this.rowH - 6, mt));
       if (two) bh = Math.min(bh, this.rowH - 2);   // [land-fit] 줄이 낮으면(320×180) 단추가 위아래 줄과 겹치지 않게(누르는 자리는 minTouch로 넓어진다)
@@ -103958,7 +104037,7 @@ MC.addLang('es', {
         for (const o of e.r.opts) vw[c] = Math.max(vw[c], MC.text.width(String(o[1]), vf) + 6);
       });
       this.rb.forEach((e, i) => {
-        const k = i % per, cx = x + Math.floor(i / per) * (cw + 8), ry = y + tabH + 10 + k * this.rowH, by = ry + ((this.rowH - bh) >> 1);
+        const k = i % per, cx = x + Math.floor(i / per) * (cw + 8), ry = y + rowTop + k * this.rowH, by = ry + ((this.rowH - bh) >> 1);   // [land2] rowTop(세로·한 칸은 옛 tabH + 10)
         e.y = ry; e.k = k; e.cx = cx; e.cw = cw;
         if (e.r.type === 'lang' || e.r.type === 'link') { e.tog.x = cx + 4; e.tog.y = by; e.tog.w = cw - 8; e.tog.h = bh; }   // 행 전체가 단추
         else if (e.tog) { e.tog.x = cx + cw - 92; e.tog.y = by; e.tog.w = 88; e.tog.h = bh; }
@@ -104030,8 +104109,13 @@ MC.addLang('es', {
         }
         if (e.dec) { const o1 = e.dec.w < 22 ? 6 : 8, o2 = e.inc.w < 22 ? 6 : 9; tri(e.dec.x + o1, e.dec.y + (e.dec.h >> 1) - 3 + (e.dec.pressed ? 1 : 0), -1, e.dec.enabled ? P.text : P.dim); tri(e.inc.x + o2, e.inc.y + (e.inc.h >> 1) - 3 + (e.inc.pressed ? 1 : 0), 1, e.inc.enabled ? P.text : P.dim); }
       });
-      const rowsEnd = this.y + this.tabH + 10 + (this.per || this.rb.length) * this.rowH, hintY = rowsEnd + 6, verY = this.y + this.h - 11;
+      const rowsEnd = this.y + (this.rowTop != null ? this.rowTop : this.tabH + 10) + (this.per || this.rb.length) * this.rowH, hintY = rowsEnd + (this.two ? 3 : 6), verY = this.y + this.h - 11;   // [land2] rowTop · 가로 두 칸은 안내 줄을 3 아래(옛 6)
       if (this.tab === 0) MC.text.draw(tf('set.silentHint'), x + (w >> 1), hintY, { font: 'small', color: P.dim, align: 'center' });
+      // [land2] 가로 두 칸: 버전 글씨는 소리 탭의 무음 안내 줄 오른쪽 끝에(안내 글과 6칸 넘게 떨어질 때만). 옛: 창 맨 아래 오른쪽(verY) — 줄 높이를 늘리면서 그 자리가 없어졌다
+      if (this.two) {
+        if (MC.VERSION && this.tab === 0) { const vs = 'v' + MC.VERSION, hw = MC.text.width(tf('set.silentHint'), 'small'); if (x + (w >> 1) + (hw >> 1) + 6 <= x + w - 6 - MC.text.width(vs, 'small')) MC.text.draw(vs, x + w - 6, hintY, { font: 'small', color: P.dim, align: 'right' }); }
+        return;
+      }
       // [a42-ui 0.4.2 A7] 버전 글씨: 타이틀 왼쪽 위에서 설정 창 맨 아래 오른쪽으로(스토어 첫 화면에 개발 흔적이 남지 않게). 숫자라 번역 키 없음
       //   줄·무음 안내와 겹칠 만큼 창이 낮으면(180×320 소리 탭, 디버그의 언어 줄) 그 탭에서는 그리지 않는다(다른 탭에서 보인다)
       if (MC.VERSION && verY >= rowsEnd + 1 && !(this.tab === 0 && verY < hintY + 13)) MC.text.draw('v' + MC.VERSION, x + w - 6, verY, { font: 'small', color: P.dim, align: 'right' });   // [r3 A8] 옛 g.mix(P.dim, P.f, 0.35)
@@ -104153,8 +104237,14 @@ MC.addLang('es', {
       if (p < 0.2) return;
       const P = pal ? g.pal(pal) : g.uiPal, [x, y, w, h] = sc.box;
       g.frame(x, y, w, h, { pal: pal || undefined });
+      if (g.land) {   // [land2] 가로: 창 제목(지구본 + 글)을 설정 창처럼 가운데로(옛: 왼쪽 x + 8 — 설정은 가운데라 창마다 달랐다). 세로는 그대로
+        const lt = tf('lang.title'), lx = x + ((w - (12 + MC.text.width(lt, 'body'))) >> 1);
+        ch1.drawGlobe(lx, y + 9, P.gold);
+        MC.text.draw(lt, lx + 12, y + 6, { color: P.gold });
+      } else {
       ch1.drawGlobe(x + 8, y + 9, P.gold);
       MC.text.draw(tf('lang.title'), x + 20, y + 6, { color: P.gold });
+      }
       rows.forEach((r, i) => {
         const b = r.b, on = r.l.code === MC.i18n.lang, dy = b.pressed ? 1 : 0, ty = b.y + ((b.h - 16) >> 1) + 1 + dy;
         b.render();
@@ -104244,7 +104334,8 @@ MC.addLang('es', {
       if (p < 0.2) return;
       const P = pal ? g.pal(pal) : g.uiPal, [x, y, w, h] = sc.box, [vx, vy, vw, vh] = sc.view;
       g.frame(x, y, w, h, { pal: pal || undefined });
-      MC.text.draw(tf('credits.title'), x + 8, y + 6, { color: P.gold });
+      if (g.land) MC.text.draw(tf('credits.title'), x + (w >> 1), y + 6, { color: P.gold, align: 'center' });   // [land2] 가로: 창 제목을 설정 창처럼 가운데로(옛: 왼쪽 x + 8). 세로는 그대로
+      else MC.text.draw(tf('credits.title'), x + 8, y + 6, { color: P.gold });
       g.hline(x + 6, y + 22, w - 12, g.mix(P.f, P.D, 0.6));
       let cy = vy - sc.sy;
       for (const l of build(vw - 4)) {
@@ -104476,6 +104567,11 @@ MC.addLang('es', {
         cmd.rowH = Math.max(14, Math.min(Math.max(28, mt + 4), Math.floor((h - 8) / cmd.rows)));
         const iw = Math.min(160, Math.max(130, (w >> 1) - 2)), fit = Math.max(2, Math.floor((h - 8) / items.rowH));
         items.w = iw; items.rows = Math.max(2, fit - (items.items.length > fit ? 1 : 0));
+        // [land2] 도구 쪽: 목록 틀과 오른쪽 설명 틀의 아랫변을 맞춘다 — 줄 높이를 남는 높이만큼 늘리고(쪽 넘김 칸 16 포함), 설명 틀·[사용한다] 단추는 목록 틀 높이를 따른다.
+        //   옛: 줄 높이 고정이라 목록 틀이 (h − 8)을 줄 높이로 나눈 나머지만큼(약 18) 짧았다
+        items.rowH = Math.max(items.rowH, Math.floor((h - 8 - (items.items.length > items.rows ? 16 : 0)) / items.rows));
+        sc.itemsDH = items.items.length ? Math.min(h, items.h) : h;
+        bUse.y = y + sc.itemsDH - bUse.h - 6;
         if (sc.page === 'status') { const sw = landSW(w), tw2 = (sw - 4) >> 1; tabs.forEach((b, i) => { b.x = x + i * (tw2 + 4); b.w = tw2; }); }
       }
     }
@@ -104642,6 +104738,7 @@ MC.addLang('es', {
       }
     }
     function renderItemsLand(x, y, w, h) {           // [land] 왼쪽 목록 · 오른쪽 설명(높이 전체)
+      if (sc.itemsDH > 0 && sc.itemsDH <= h) h = sc.itemsDH;   // [land2] 설명 틀 높이 = 목록 틀 높이(lay()가 잰 값 · 옛: 화면 높이 전체라 두 틀 아랫변이 어긋남)
       const P = g.uiPal, iw = items.w, dx = x + iw + 4, dw = x + w - dx;
       if (!items.items.length) { g.frame(x, y, iw, 48); MC.text.draw(tf('menu.noItems'), x + (iw >> 1), y + 16, { align: 'center', color: P.dim }); }
       else items.render();
@@ -104685,10 +104782,13 @@ MC.addLang('es', {
     }
     // [story-clues] 기억: 맨 위 '신부님의 물음'(열린 물음과 어디서) → 목록(아이콘·이름·새 표시) → 누르면 본문
     // [l45-guide B8-8] '네 이름' 쪽: 넷 한 줄씩(초상 + 이름 + 혐의). 밝히기 전 줄은 빈 액자와 빈 밑줄뿐
-    function renderNames(x, y, w, h) {
-      const P = g.uiPal, rh = Math.min(58, Math.floor((h - 4) / NAMES4.length));
+    function renderNames(x0, y, w0, h) {
+      // [land2] 가로: 넷을 2×2 격자로(왼쪽 위부터 가로 순서) — 옛: 한 줄씩 넷이라 줄 높이가 약 27로 줄어 초상(36)·둘째 줄 글이 아래 줄 테와 겹쳤다. 세로는 그대로(한 칸 · 줄 넷)
+      const LD = !!g.land, cols = LD ? 2 : 1, w = LD ? (w0 - 4) >> 1 : w0;
+      const P = g.uiPal, rh = Math.min(58, Math.floor((h - 4) / Math.ceil(NAMES4.length / cols)));
       NAMES4.forEach((e, i) => {
-        const ry = y + i * rh, fh = rh - 4, line = nameLine(e), sp = (MC.data.speakers || {})[e.id] || {};
+        const x = LD ? x0 + (i % 2) * (w + 4) : x0;
+        const ry = y + (LD ? (i >> 1) : i) * rh, fh = rh - 4, line = nameLine(e), sp = (MC.data.speakers || {})[e.id] || {};
         g.frame(x, ry, w, fh, { small: true });
         const px = x + 6, py = ry + ((fh - 36) >> 1);
         g.frame(px, py, 36, 36, { small: true });
@@ -104842,9 +104942,9 @@ MC.addLang('es', {
       }
     }
     // 위 칸: 초상 2배 + 이름·Lv + (EXP 또는 설명) + HP·MP
-    function topBlock(x, y, w, m, who, name, color) {
+    function topBlock(x, y, w, m, who, name, color, nf) {   // [land2] nf = 바깥 틀은 부른 쪽이 그린다(가로 상태 쪽 — 틀만 화면 아래까지 늘림). 세로는 인자 없음 = 옛 그대로
       const mx = maxOf(m), P = g.uiPal;
-      g.frame(x, y, w, 86);
+      if (!nf) g.frame(x, y, w, 86);
       g.frame(x + 6, y + 8, 70, 70, { small: true });
       g.gradV(x + 8, y + 10, 66, 66, [g.mix(P.f, P.D, 0.6), g.mix(P.f, P.D, 0.3), P.f]);
       const pt = U.portrait(who);
@@ -104887,10 +104987,16 @@ MC.addLang('es', {
       let yy = y;
       if (showTabs()) { tabs[0].render(); tabs[1].render(); yy += tabH() + 4; }
       const fa = faria(), isF = sc.who === 'faria' && fa, m = isF ? fa : (MC.game.lead() || { id: 'dantes', lv: 1, hp: 0, mp: 0, exp: 0, skills: [] });
-      const mx = topBlock(x, yy, sw, m, isF ? 'faria' : 'dantes', isF ? fariaName() : dispName(), isF ? '#e8d49a' : '#f0c860');
-      const S = [[tf('stat.str'), mx.str], [tf('stat.def'), mx.def], [tf('stat.spd'), mx.spd], [tf('stat.wis'), mx.wis]], shh = 10 + S.length * 14;
+      // [land2] 가로 상태 쪽이 화면 높이를 채우게(옛: 왼쪽 카드 86·오른쪽 두 칸 132 고정이라 아래 25%가 비고 그 사이로 필드가 비쳤다):
+      //   ① 왼쪽 카드 = 틀만 화면 아래까지 늘리고 내용(초상·이름·HP 86)은 그 안 세로 가운데 ② 능력치 줄 간격 14 → 최대 18(파리아가 있으면 14 그대로 — 파리아 쪽 아래 안내 칸 두 줄 자리를 지킨다) ③ 장비 칸은 남은 높이 전부
+      const lfh = Math.max(86, y + h - yy), loff = (lfh - 86) >> 1;
+      g.frame(x, yy, sw, lfh);
+      const mx = topBlock(x, yy + loff, sw, m, isF ? 'faria' : 'dantes', isF ? fariaName() : dispName(), isF ? '#e8d49a' : '#f0c860', true);
+      const stMax = hasFaria() ? 14 : 18;
+      const stp = Math.max(14, Math.min(14 + MC.clamp(Math.floor((h - 132) / 8), 0, 4), stMax));
+      const S = [[tf('stat.str'), mx.str], [tf('stat.def'), mx.def], [tf('stat.spd'), mx.spd], [tf('stat.wis'), mx.wis]], shh = 10 + S.length * stp;
       g.frame(rx, y, rw, shh, { small: true });
-      S.forEach((s, i) => { MC.text.draw(s[0], rx + 8, y + 5 + i * 14, { font: 'small', color: P.dim }); MC.text.draw(String(s[1]), rx + rw - 8, y + 5 + i * 14, { font: 'small', color: P.text, align: 'right' }); });
+      S.forEach((s, i) => { const sy = y + 5 + ((stp - 14) >> 1) + i * stp; MC.text.draw(s[0], rx + 8, sy, { font: 'small', color: P.dim }); MC.text.draw(String(s[1]), rx + rw - 8, sy, { font: 'small', color: P.text, align: 'right' }); });
       let ey = y + shh + 4;
       if (isF) {
         const ah = Math.max(40, MC.ui.minTouch() + 14);
@@ -104911,11 +105017,12 @@ MC.addLang('es', {
         }
         return;
       }
-      const eq = [[tf('menu.weapon'), m.weapon], [tf('menu.armor'), m.armor]], eh = 8 + eq.length * 27;
-      if (ey + eh > y + h) return;
+      const eq = [[tf('menu.weapon'), m.weapon], [tf('menu.armor'), m.armor]], eh0 = 8 + eq.length * 27;
+      if (ey + eh0 > y + h) return;
+      const eh = Math.max(eh0, y + h - ey), es = Math.floor((eh - 8) / eq.length);   // [land2] 장비 칸 = 남은 높이 전부(줄 간격 27 → es, 줄 안에서 세로 가운데). 옛: 높이 62 고정
       g.frame(rx, ey, rw, eh, { small: true });
       eq.forEach((e, i) => {
-        const ry = ey + 4 + i * 27, d = e[1] ? itemDef(e[1]) : null;
+        const ry = ey + 4 + i * es + ((es - 27) >> 1), d = e[1] ? itemDef(e[1]) : null;
         MC.text.draw(e[0], rx + 8, ry, { font: 'small', color: P.dim });
         MC.text.draw(d ? fitText(tr(d.name, 'item'), rw - 48, 'small') : tf('menu.none'), rx + 40, ry, { font: 'small', color: d ? P.text : P.dim });
         if (d) MC.text.draw(bonusText(d), rx + rw - 8, ry + 13, { font: 'small', color: g.mix(P.gold, P.text, 0.4), align: 'right' });
