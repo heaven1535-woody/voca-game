@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.23';
+  var VERSION = '0.9.24';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -1363,6 +1363,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     'mg_s3_island|mg_s3_join|mg_s3_beam|mg_s3_bread|mg_s3_burn|mg_s3_reveal|mg_s3_pulse|mg_s3_sweep|mg_s3_order|ev_s3_patrol|ev_s3_paper',
     'mg_s3_vial|mg_s3_swim|mg_s3_breaths|mg_s3_drops|mg_s3_hour|mg_s3_bedcut|mg_s3_lift',
     'ev_s3_shadow|mg_s3_shadow',   // [land-shadow] 그림자극(마지막 세로 전용 — 11-16 가로 배치)
+    'sackweave',                   // [land7] 자루 속 천 결 덧판(프롤로그 첫 장면·S4 장면 9) — 화면 크기대로 깔리는 그림이라 가로 그대로 된다. 옛: 목록에 없어 새 게임 첫 장면이 세로로 떨어지고, 폰 가로에서는 「세로로 돌려 주세요」가 떴다(가로 자동 플레이로 찾음, 11-17)
     'mg_s4_still|mg_s4_slit|mg_s4_sew|mg_s4_sea_swim|mg_s4_helm|mg_s4_fingers|mg_s4_count3|mg_s4_fall|mg_s4_sea_sink|mg_s4_pulse_fade|mg_s4_ledger|mg_s4_record|mg_s4_face|mg_s4_ending',
     'breath|hands|letter|mg_burn|lessons|craft|candle|tbc|ev_deduce|ev_deduce_tap|ev_rewind|ev_memcard|mg_castle'
   ].join('|') + ')$');
@@ -12626,7 +12627,11 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
      정수 배율로 화면 가득 옮긴다(컷신 줌 Z와 같은 후처리 zoomPost). 방이 그 창보다 작은 축은 방을 가운데에 둔다.
      컷신 줌(Z)이 켜지면 둘 중 큰 배율 · 컷신 초점(zoomCrop)으로 그리고, 컷신이 1로 돌아가면(잠금이 풀리면) 방 배율로 돌아온다.
      옛: 가로에서도 1배 — 작은 방이 넓은 화면 가운데 작게 떴다. 세로 · landZoom 없는 지도는 roomK() = 1 = 옛 그대로. 되돌리기: 지도 데이터의 landZoom 줄을 지운다 */
-  function roomK() {
+  /* [land6] 넓게 보기(RZ.wide): 2배 방에서 대화하는 화자가 주인공과 세로로 멀어(대화창 위 칸에 둘이 함께 안 들어감) 화자가 화면 밖이 되는 줄이 있었다(예: 집 문간의 에드몽 ↔ 안쪽 아버지).
+     그런 줄이 나오면 둘이 다시 가까워지거나 그 대화가 끝날 때까지 방 배율을 1배로 내려 방 전체를 보여 준다(세로 화면처럼 둘 다 보임) — 바뀌는 순간은 컷신 줌과 같은 디더 컷(rzCut). 방은 대화창 위 칸의 가운데에(camClamp).
+     roomK0 = 지도 표시대로의 배율 · roomK = 지금 실제 배율(넓게 보기 중이면 1). 옛: roomK 하나(늘 지도 표시대로) */
+  function roomK() { return RZ.wide ? 1 : roomK0(); }
+  function roomK0() {
     if (!map || !map.def || !G().land) return 1;
     const k = map.def.landZoom | 0;
     return k >= 3 ? 3 : k === 2 ? 2 : 1;
@@ -12638,7 +12643,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   //   대화창이 위에 뜨는 줄(pos top — 아래쪽을 보여 주려는 연출)은 거꾸로: 아래를 비우지 않고 위 대화창 밑으로 방을 내린다(RZ.pT · RZ.p).
   const RZ = { t: 0, fy: null, talk: -1e9, p: 0, pT: 0, top: 82, bot: 68 }, RZ_BOX = 68, RZ_LINGER = 1500, RZ_PAD = 10;   // RZ_BOX = 대화창 높이 62 + 아래 4 + 틈 2(화면 px — 이름표 16은 왼쪽 일부만 가려 넣지 않았다) · RZ.bot/top = 지금 대화창이 가리는 아래/위 높이(화면 px — 올린 질문 상자도 반영)
   const rzWant = () => {
-    if (!(roomK() > 1 && extLock > 0 && !free && !evFree())) { RZ.talk = -1e9; RZ.pT = 0; RZ.bot = RZ_BOX; return 0; }
+    if (!(roomK0() > 1 && extLock > 0 && !free && !evFree())) { RZ.talk = -1e9; RZ.pT = 0; RZ.bot = RZ_BOX; return 0; }   // [land6] roomK0(옛: roomK — 넓게 보기 중에도 대화 여부는 계속 잰다)
     if (MC.dialogue && MC.dialogue.active) {
       RZ.talk = nowR();
       try { const L = MC.dialogue.boxRect(); if (L.pos === 'top') { RZ.pT = 1; RZ.top = L.y + L.h + 2; } else { RZ.pT = 0; RZ.bot = Math.max(RZ_BOX, G().H - L.y + 2); } } catch (_) { RZ.pT = 0; RZ.bot = RZ_BOX; }
@@ -12678,8 +12683,31 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (!(x1 > x0 && y1 > y0)) { x0 = 0; y0 = 0; x1 = map.w * TS; y1 = map.h * TS; }
     return (map._roomBox = [x0, y0, x1 - x0, y1 - y0]);
   }
+  // [land6] 넓게 보기 판정: 지금 말하는 사람(주인공 아님)이 지도 위에 있고, 주인공과 함께 2배 화면의 대화창 위 칸에 들어가지 않으면 true
+  function rzFits(o) {                                     // 그 인물과 주인공이 2배 화면의 대화창 위 칸에 함께 들어가는가
+    const k = roomK0(), ins = rzIns(1, RZ.pT), bot = Math.round(ins[1] / k), top = Math.round(ins[0]) / k, vis = Math.ceil(G().H / k) - bot - top, soft = RZ.pT ? bot : top;
+    return Math.max(apy(pl), apy(o)) + 16 - (Math.min(apy(pl), apy(o)) - 6) <= vis + soft + 2;
+  }
+  function rzFar() {                                       // 먼 화자(그 인물)를 돌려준다 — 없으면 null
+    const who = MC.dialogue && MC.dialogue.who;
+    if (!who || who === 'narr' || who === 'think' || who === 'dantes' || !map) return null;
+    for (const o of map.objs) if (o !== pl && o.present && o.visible !== false && o.sprite && (o.type === 'npc' || o.type === 'guard') && (o.id === who || String(o.sprite).indexOf('ch_' + who) === 0))
+      return rzFits(o) ? null : o;
+    return null;
+  }
+  // [land6] 방 배율이 바뀌는 순간(넓게 보기 켜고 끌 때)을 컷신 줌과 같은 디더 컷으로 — 앞 프레임(Z.last)을 280ms 동안 Bayer로 걷어 낸다(zoomTo와 같은 길)
+  function rzCut() {
+    if (!Z.last || nowR() - Z.lastT >= 200) return;
+    if (!Z.old || Z.old.width !== Z.last.width || Z.old.height !== Z.last.height) Z.old = G().makeCanvas(Z.last.width, Z.last.height);
+    const x = Z.old.getContext('2d'); x.globalCompositeOperation = 'copy'; x.drawImage(Z.last, 0, 0); x.globalCompositeOperation = 'source-over';
+    Z.t0 = nowR(); Z.ms = 280;
+  }
   function camClamp(x, y) {
     const g = G(), mw = map.w * TS, mh = map.h * TS;
+    if (RZ.wide && g.land) {                               // [land6] 넓게 보기(1배): 방 안쪽을 대화창 위(레터박스 아래) 칸의 세로 가운데에 — 옛 1배 가로는 방 아래 두 줄이 대화창에 가렸다. 방이 그 칸보다 크면 주인공을 따라가되 방 안에서
+      const b = roomBox(), ins = rzIns(1, RZ.pT), top = Math.round(ins[0]), vis = g.H - Math.round(ins[1]) - top;
+      return [mw <= g.W ? (mw - g.W) / 2 : MC.clamp(x, 0, mw - g.W), b[3] <= vis ? b[1] - top - (vis - b[3]) / 2 : MC.clamp(y, b[1] - top, b[1] + b[3] - top - vis)];
+    }
     if (roomK() > 1) {                                     // [land4] 방 배율: 창이 방 안쪽을 벗어나지 않게(방이 창보다 작은 축은 가운데)
       const vw = vpW(), vh = vpH(), b = roomBox(), ti = rzTop();   // ti = 위 레터박스 띠·위 대화창(대화 동안만 — 평소 0)
       return [b[2] <= vw ? b[0] + (b[2] - vw) / 2 : MC.clamp(x, b[0], b[0] + b[2] - vw), b[3] <= vh - ti ? b[1] - ti - (vh - ti - b[3]) / 2 : MC.clamp(y, b[1] - ti, b[1] + b[3] - vh)];
@@ -12724,7 +12752,15 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     ancStep(dt);                                           // [r5 UW-4] 조건부 가운데 옮겨 가기
     { // [land4] 방 배율: ① 대화·컷신 동안 창 높이 줄이기(RZ.t)를 0.25초에 걸쳐 옮긴다(페이드로 덮인 동안은 바로) ② 고정 카메라(cam [x,y])는 방 배율인 동안 매 프레임 다시 잰다
       //   (창 크기가 ①이나 가로 ↔ 세로로 바뀌어도 맞게 — 따라가기·track은 아래에서 원래 매 프레임 잰다). 방 배율이 없으면 아무것도 하지 않는다
-      const rk = roomK(), w = rzWant();
+      const w = rzWant();
+      // [land6] 넓게 보기 켜기·끄기: 먼 화자가 말하면 켜고, 그 인물이 주인공 곁으로 와(또는 주인공이 다가가) 둘이 2배 화면에 함께 들어가거나 대화가 끝나면(w 0) 끈다
+      //   (그 인물이 먼 채로 있는 동안은 유지 — 줄마다 오락가락하지 않게 · 켠 뒤 0.6초는 그대로). 바뀌는 순간은 디더 컷
+      if (roomK0() > 1) {
+        const far = !RZ.wide && w ? rzFar() : null;
+        if (far) { RZ.wide = true; RZ.farO = far; RZ.wideT = nowR(); rzCut(); }
+        else if (RZ.wide && (!w || (nowR() - RZ.wideT > 600 && !pl.moving && RZ.farO && (!RZ.farO.present || rzFits(RZ.farO))))) { RZ.wide = false; RZ.farO = null; rzCut(); }
+      } else if (RZ.wide) { RZ.wide = false; RZ.farO = null; }
+      const rk = roomK();
       const covered = !!(MC.fx && MC.fx.fadeLevel && MC.fx.fadeLevel() >= 0.99);
       if (RZ.p !== RZ.pT) RZ.p = (RZ.t <= 0 || covered) ? RZ.pT : (RZ.pT > RZ.p ? Math.min(1, RZ.p + dt / 250) : Math.max(0, RZ.p - dt / 250));   // 대화창 위 ↔ 아래 자리 바꿈도 0.25초에 걸쳐
       if (RZ.t !== w) RZ.t = (rk <= 1 || covered) ? w : (w > RZ.t ? Math.min(1, RZ.t + dt / 250) : Math.max(0, RZ.t - dt / 250));
@@ -12762,7 +12798,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       done();
     });
   }
-  function snapCamera() { RZ.t = rzWant(); RZ.fy = RZ.t > 0 ? rzFocusY() : null; ANC.k = ancWant(); cam.mode = 'follow';   /* [land4] RZ.t = rzWant() — 맵을 들면 창 높이도 바로(방 배율이 없으면 0) */ cam.track = null; cam.lookX = 0; cam.lookY = 0; const p = followPos(); cam.x = p[0]; cam.y = p[1]; camTok++; }   // [r5 UW-4] ANC.k = ancWant() — 맵을 들면 바로(되돌리기: 그 문장 삭제)
+  function snapCamera() { RZ.wide = false; /* [land6] 맵을 들면 넓게 보기는 끈다 */ RZ.t = rzWant(); RZ.fy = RZ.t > 0 ? rzFocusY() : null; ANC.k = ancWant(); cam.mode = 'follow';   /* [land4] RZ.t = rzWant() — 맵을 들면 창 높이도 바로(방 배율이 없으면 0) */ cam.track = null; cam.lookX = 0; cam.lookY = 0; const p = followPos(); cam.x = p[0]; cam.y = p[1]; camTok++; }   // [r5 UW-4] ANC.k = ancWant() — 맵을 들면 바로(되돌리기: 그 문장 삭제)
 
   /* ================================================================ [c50-cine B5-1] 컷신 정수 줌 — op {cam, zoom:1|2|3, at:[x,y]|id|'player', ms?, y?}
      잠긴 컷신(이벤트 잠금 · player free 아님)에서만 켜진다 — 조작이 풀리면(unlocked)·맵이 바뀌면 1로 돌아온다.
@@ -17935,7 +17971,9 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       V.gridY = g.H - sb - 4 - (rh * 3 + 4);
       V.statY = g.H - sb - 4 - V.statH;
       V.SX = 2 + sl;
-      V.logH = 22; V.logW = Math.min(g.W - 16, 248); V.LX = (g.W - V.logW) >> 1;
+      // [land6] 기록 창 폭 248 → 최대 400: 가로 창이 좁아 긴 문장이 두 줄이 되면 창이 위로 한 줄 자라 적 HP 막대 줄을 가렸다 — 넓혀서 대부분 한 줄에 들어가게(무대 아래·상태 칸과 명령 단추 위 줄이라 다른 것과 안 겹친다). 옛: min(W − 16, 248)
+      //   (그래도 두 줄이 되는 좁은 화면 320 폭의 긴 문장은 옛처럼 위로 자란다. 높이를 못 넘기는 한 줄 판 승리 카드는 명령 단추 왼쪽으로 비켜 둔다 — drawPanel)
+      V.logH = 22; V.logW = Math.min(g.W - 16, 400); V.LX = (g.W - V.logW) >> 1;
       V.logY = Math.min(V.gridY, V.statY) - 4 - V.logH;
       V.stageH = V.logY + 8;                                             // 적 발(stageH - 24)·체력 막대가 기록 줄 위에 오게
       V.spX = (g.W - 176) >> 1; V.spY = V.logY + V.logH - 58;           // 말풍선(3줄)은 기록 줄 자리에서 위로 — 상태 칸에 가리지 않게
@@ -20849,15 +20887,18 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const g = G(), pal = g.uiPal, t = V.t;
     const lvUp = P.lvT0 >= 0, rows = (P.mp ? 1 : 0) + P.drops.length, au = lvUp ? P.allyUp.length : 0;
     const PF = P.face, fc = !!(PF && !PF.chip), FH = fc ? 38 : 0;       // [r5 B-10] 얼굴 줄(52 테)이 더하는 높이 — 아래 글 배치는 옛 그대로 FH만큼 내려간다(이름 PF: 아래 F() 문구 함수와 겹치지 않게)
-    const h = 62 + FH + rows * 13 + (lvUp ? 64 : 0) + (lvUp && P.ups.some(u => u.rank) ? 13 : 0) + au * 13;
-    const w = 164, x = V.X0 + 8;
+    /* [land6] 가로 레벨업 판: 세로용 한 줄 판(폭 164)은 레벨업이면 높이 177~216이라 가로(높이 180~204)에서 아래 상태 칸·명령 단추 위로 내려오거나 아랫줄(단계 오름·동료 레벨)이 화면 밖으로 잘렸다.
+       → 가로에서 레벨업이면 두 단으로: 왼쪽 = 승리·경험치·얻은 것(옛 그대로), 오른쪽 = 레벨 업·능력치·단계·동료(가운데 세로 줄로 나눔). 글·순서·박자는 그대로. 세로와 가로의 레벨업 아닌 판은 옛 그대로 */
+    const split = !!g.land && lvUp, rkUp = lvUp && P.ups.some(u => u.rank);
+    const h = split ? Math.max(62 + FH + rows * 13, 10 + 18 + 42 + (rkUp ? 13 : 0) + au * 13 + 12) : 62 + FH + rows * 13 + (lvUp ? 64 : 0) + (rkUp ? 13 : 0) + au * 13;
+    const w = 164, w2 = split ? Math.min(g.W - 8, 322) : w, x = split ? (g.W - w2) >> 1 : (g.land && g.safe.top + 2 + h > V.gridY - 4 ? Math.min(V.X0 + 8, V.gx - 6 - w) : V.X0 + 8), lx = split ? x + w - 4 : x, lw = split ? w2 - w + 4 : w;   // lx·lw = 레벨업 단의 왼쪽·폭(한 단이면 판 그대로)
     let y = Math.max(g.safe.top + 6, (V.stageH - h) >> 1);
     if (y + h > V.gridY - 4) y = Math.max(g.safe.top + 2, V.gridY - 4 - h);
     const q = clamp((t - P.t0) / 180, 0, 1);
     y += Math.round((1 - EZ.outCubic(q)) * 10);
     P.y = y;
     const flash = lvUp && t - P.lvT0 < 720 && (((t - P.lvT0) / 120) | 0) % 2 === 0;
-    g.frame(x, y, w, h, { over: flash ? { W: COL.gold } : null });
+    g.frame(x, y, w2, h, { over: flash ? { W: COL.gold } : null });   // [land6] w2(두 단이면 넓은 판 — 한 단이면 w 그대로)
     if (fc) drawPanelFaces(PF, x, y, w);                                 // [r5 B-10] 얼굴 + 그 오른쪽에 「승리」
     else MC.text.draw(T('win'), x + (w >> 1), y + 6, { font: 'bold', color: COL.gold, align: 'center' });
     if (PF && PF.chip) drawPanelChips(PF, x, y);                         // [r5 B-10] 레벨업 판: 칩 크기
@@ -20877,10 +20918,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (P.mp) { MC.text.draw(T('mpRecover') + ' ' + tf('stat.mp') + '+' + P.mp, x + 10, yy, { font: 'small', color: COL.mpHi }); yy += 13; }
     for (const d of P.drops) { MC.text.draw(F('gotItem', { item: d }), x + 10, yy, { font: 'small', color: COL.gold }); yy += 13; }
     if (lvUp) {
-      yy += 3;
-      g.hline(x + 8, yy - 2, w - 16, pal.D);
+      if (split) { yy = y + 10; g.vline(lx + 1, y + 6, h - 12, pal.D); }   // [land6] 두 단: 오른쪽 단 맨 위에서 시작 · 가운데 세로 줄(옛: 아래로 이어 붙이고 가로 줄)
+      else { yy += 3; g.hline(x + 8, yy - 2, w - 16, pal.D); }
       const txt = Array.from(T('levelUp')), tw = MC.text.width(T('levelUp'), 'bold');
-      let cx = x + ((w - tw) >> 1);
+      let cx = lx + ((lw - tw) >> 1);
       txt.forEach((ch, i) => { const dy = Math.round(1.5 * Math.sin(t * 0.012 + i * 0.7)); cx += MC.text.drawChar(ch, cx, yy + dy, 'bold', COL.gold); });
       yy += 18;
       const a = P.ups[0].before, b = P.ups[P.ups.length - 1].after;
@@ -20888,24 +20929,24 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       st.forEach((s, i) => {
         const at = P.lvT0 + 400 + i * 300;
         if (t < at) return;
-        const cx2 = x + 10 + (i % 2) * 76, cy2 = yy + ((i / 2) | 0) * 13;
+        const cx2 = lx + 10 + (i % 2) * (split ? Math.min(76, (lw - 16) >> 1) : 76), cy2 = yy + ((i / 2) | 0) * 13;   // [land6] lx(한 단이면 x 그대로 · 간격 76 그대로)
         MC.text.draw(s[0], cx2, cy2, { font: 'small', color: pal.dim });
         const up = b[s[1]] > a[s[1]];
         MC.text.draw(a[s[1]] + '→' + b[s[1]], cx2 + 24, cy2, { font: 'small', color: up ? COL.gold : pal.text });
       });
       yy += 42;
       const rk = P.ups.find(u => u.rank);
-      if (rk) { MC.text.draw(tf('battle.rankUp', { r: rk.rank + 1 === 2 ? 'II' : 'III' }), x + 10, yy, { font: 'small', color: COL.mpHi }); yy += 13; }
+      if (rk) { MC.text.draw(tf('battle.rankUp', { r: rk.rank + 1 === 2 ? 'II' : 'III' }), lx + 10, yy, { font: 'small', color: COL.mpHi }); yy += 13; }
       if (au && t >= P.lvT0 + 400 + 6 * 300) {                          // 파리아도 함께(레벨 동기화)
         for (const a2 of P.allyUp) {
           const ci = iconName('ic_chip_' + a2.id) || (has('bt_chip_' + a2.id) ? 'bt_chip_' + a2.id : null);
-          if (ci) g.sprite(ci, x + 10, yy - 1);
-          MC.text.draw(a2.name + ' ' + tf('fmt.lvTight', { n: a2.from }) + '→' + a2.to, x + 25, yy, { font: 'small', color: COL.faria });
+          if (ci) g.sprite(ci, lx + 10, yy - 1);
+          MC.text.draw(a2.name + ' ' + tf('fmt.lvTight', { n: a2.from }) + '→' + a2.to, lx + 25, yy, { font: 'small', color: COL.faria });
           yy += 13;
         }
       }
     }
-    if (P.ready && ((t - P.readyT) > 300)) MC.ui.nextMark(x + w - 12, y + h - 11);
+    if (P.ready && ((t - P.readyT) > 300)) MC.ui.nextMark(x + w2 - 12, y + h - 11);   // [land6] w2(한 단이면 w 그대로)
   }
   function drawOverwhelm() {
     const ow = V.ow;
@@ -103873,6 +103914,19 @@ MC.addLang('es', {
         let rx = (W - tot) >> 1;
         row.forEach(b => { b.x = rx; b.y = ry; rx += b.w + gap; });
         sc.two = false;
+        /* [land6] 가로 요약 자리(sc.iL — render·inInfo가 읽는다). 세로에는 요약 아래 「지난 이야기 한 줄」(둘째 줄 — 끝낸 뒤에는 이어하기가 하는 일 한 줄)이 있는데 가로에는 빠져 있었고,
+           요약 판이 단추 줄 위 가운데에 떠 성 섬 밑동을 가렸다. → 둘째 줄을 넣고, 자리가 되면 요약 판(두 줄)을 단추 줄 왼쪽 옆에 나란히([요약][이어하기][처음부터][설정] — 수평선 아래라 그림을 가리지 않는다).
+           화면이 좁거나 단추 글이 길어 한 줄에 안 들어가면 예전처럼 단추 줄 위 가운데에 두되 두 줄로. 옛: 한 줄 · 단추 줄 위 가운데(bCont.y − 19) · sc.two 늘 false */
+        sc.iL = null;
+        if (sc.info) {
+          const two = !!sc.info2, tw = Math.max(MC.text.width(sc.info, 'small'), two ? MC.text.width(sc.info2, 'small') : 0), pw = Math.min(W - 2, tw + 20) & ~1, ph = two ? 17 + INFO2_H : 17;
+          if (pw + 10 + tot <= W - 12) {
+            let x0 = (W - (pw + 10 + tot)) >> 1;
+            sc.iL = { x: x0, dy: (h2 - ph) >> 1, w: pw, h: ph, side: true };
+            x0 += pw + 10; row.forEach(b => { b.x = x0; x0 += b.w + gap; });
+          } else sc.iL = { x: (W - pw) >> 1, dy: -(ph + 2), w: pw, h: ph, side: false };
+          sc.two = two;
+        }
       } else if (sc.info) {
         bNew.w = 112; bNew.h = bh; y -= bNew.h; bNew.x = cx - (bNew.w >> 1); bNew.y = y;
         // [r3 B3] 둘째 줄 자리. 둘째 줄을 넣어도 이어하기 단추 위 어두운 띠(render: 단추 22px 위부터, 수평선 아래일 때만 깐다)가 깔릴 때만 넣는다 —
@@ -103983,6 +104037,7 @@ MC.addLang('es', {
     // 「＿＿＿＿ · 끝」 줄의 누름 칸: 이어하기 단추 아래 ~ 처음부터 단추 위(사이 25px 전부), 폭은 글자 + 양옆 20px(최소 120)
     function inInfo(ev) {
       if (ev.x == null || ev.y == null) return false;
+      if (g.land && sc.iL) { const q = sc.iL, qy = bCont.y + q.dy; return ev.x >= q.x - 4 && ev.x < q.x + q.w + (q.side ? 2 : 4) && ev.y >= qy - 4 && ev.y < qy + q.h + 4; }   // [land6] 가로 누름 칸 = 요약 판 둘레(옛: 단추 줄 위 가운데 띠 — 판을 옮기면 어긋난다)
       const w = Math.max(120, MC.text.width(sc.info, 'small') + 40), x0 = (g.W - w) >> 1, y0 = g.land ? bCont.y - 20 : bCont.y + bCont.h + 1, y1 = g.land ? bCont.y - 1 : bNew.y - 1;   // [land] 요약 줄은 단추 줄 위
       return ev.x >= x0 && ev.x < x0 + w && ev.y >= y0 && ev.y < y1;
     }
@@ -104002,7 +104057,8 @@ MC.addLang('es', {
       drawWorld(t, L, { isle: sc.cleared });                                // [s44-director] 바다·성 한 장(B5-3 컷과 같은 함수) · C1③ 클리어 뒤 바위섬
       // 글자가 물결에 묻히지 않게 아래쪽 바다를 디더 계단으로 어둡게(1단계 안내 → 2단계 버튼 영역)
       {
-        const y0 = sc.stage >= 1 ? (sc.info ? bCont.y - (g.land ? 18 : 0) : bNew.y) - 22 : H - (g.land ? 52 : 104) - g.safe.bottom;   // [land] 아래 띠만
+        // [land6] 가로 요약이 단추 줄 옆이면 띠는 단추 줄 기준, 위(두 줄)이면 그 판 위부터(옛: 늘 bCont.y − 18)
+        const y0 = sc.stage >= 1 ? (sc.info ? bCont.y - (g.land ? (sc.iL ? Math.max(0, -sc.iL.dy) : 18) : 0) : bNew.y) - 22 : H - (g.land ? 52 : 104) - g.safe.bottom;   // [land] 아래 띠만
         const k = sc.stage >= 1 ? 0.6 + 0.4 * MC.clamp((t - sc.st1) / 300, 0, 1) : U.lvl(t, 1000, 500) / 16;
         if (y0 > L.hz) {
           for (let i = 0; i < 5; i++) g.ditherRect(0, y0 + i * 5, W, 5, '#03050b', Math.round((2 + i * 2) * k));
@@ -104030,20 +104086,22 @@ MC.addLang('es', {
         for (const b of [bCont, bNew, bSet]) { if (b === bCont && !sc.info) continue; b.y += dy; }
         for (const b of buttons()) if (b !== bMute) b.render();
         if (sc.info) {
-          const iy0 = g.land ? bCont.y - 19 : bCont.y + bCont.h + 1;   // [land] 요약 줄은 단추 줄 위
+          const iL = g.land ? sc.iL : null;                           // [land6] 가로 요약 자리(lay가 정함 — 단추 줄 옆 또는 위)
+          const iy0 = g.land ? bCont.y + (iL ? iL.dy : -19) : bCont.y + bCont.h + 1;   // [land] 요약 줄은 단추 줄 위 · [land6] 또는 단추 줄 옆(옛: bCont.y − 19)
+          const icx = w0 => (iL ? iL.x + ((iL.w - w0) >> 1) : (W - w0) >> 1);   // [land6] 폭 w0짜리를 요약 자리 가운데에 놓는 왼쪽 x(세로 = 옛 식 (W − w0) >> 1 그대로)
           // [s44-director C2③] 아직 안 열어 본 기록이면 은빛 → 금빛으로 천천히 반짝(글 없음 — 누를 수 있다는 표시만)
           const k = sc.recNew ? 0.5 - 0.5 * Math.cos((t - sc.st1) / 1400 * Math.PI * 2) : 0;
           const col = k > 0.8 ? '#e8d49a' : k > 0.45 ? '#b8b090' : '#9aa8c8';   // [r3 A8] 바탕 은빛 옛 #8a98b8
           if (MC.uw2 && MC.uw2('U5') && g.plate) {                             // [r5 U5] 요약 한두 줄 밑에 명판(g.plate — frame 묶음, 타이틀 단추와 같은 act5 창 색). 글 자리·누름 칸은 그대로. 되돌리기: ?uw2off=U5 또는 이 블록 삭제
             const two = !!(sc.two && sc.info2), tw = Math.max(MC.text.width(sc.info, 'small'), two ? MC.text.width(sc.info2, 'small') : 0);
             const pw = Math.min(W - 2, tw + 20) & ~1, ph = two ? 17 + INFO2_H : 17;
-            U.drawDither(plateCanvas(pw, ph, pal), (W - pw) >> 1, iy0, p * 16);
+            U.drawDither(plateCanvas(pw, ph, pal), icx(pw), iy0, p * 16);   // [land6] icx(옛: (W − pw) >> 1 — 세로는 같은 값)
           }
           const im = MC.text.bake(sc.info, 'small', col, { shadow: '#03050b' });
-          if (im) U.drawDither(im, (W - im.width) >> 1, iy0 + 2, p * 16);
+          if (im) U.drawDither(im, icx(im.width), iy0 + 2, p * 16);         // [land6] icx(옛: (W − im.width) >> 1)
           // [r3 B3] 둘째 줄 — 흐린 보조 글(A8 기준색 #9aa4c0, 반짝이지 않음). 자리가 없는 낮은 화면이면 lay()가 sc.two를 끈다
           const im2 = sc.two && sc.info2 ? MC.text.bake(sc.info2, 'small', '#9aa4c0', { shadow: '#03050b' }) : null;
-          if (im2) U.drawDither(im2, (W - im2.width) >> 1, bCont.y + bCont.h + 3 + INFO2_H, p * 16);
+          if (im2) U.drawDither(im2, icx(im2.width), g.land ? iy0 + 2 + INFO2_H : bCont.y + bCont.h + 3 + INFO2_H, p * 16);   // [land6] 가로는 요약 줄 바로 아래(옛: 가로에서는 그리지 않았다 — sc.two false)
         }
         bMute.render();
         const muted = MC.save.settings && MC.save.settings.mute;
@@ -104402,6 +104460,8 @@ MC.addLang('es', {
       // [land2] 가로 두 칸: 버전 글씨는 소리 탭의 무음 안내 줄 오른쪽 끝에(안내 글과 6칸 넘게 떨어질 때만). 옛: 창 맨 아래 오른쪽(verY) — 줄 높이를 늘리면서 그 자리가 없어졌다
       if (this.two) {
         if (MC.VERSION && this.tab === 0) { const vs = 'v' + MC.VERSION, hw = MC.text.width(tf('set.silentHint'), 'small'); if (x + (w >> 1) + (hw >> 1) + 6 <= x + w - 6 - MC.text.width(vs, 'small')) MC.text.draw(vs, x + w - 6, hintY, { font: 'small', color: P.dim, align: 'right' }); }
+        // [land6] 다른 탭(진행 등)에서도 같은 자리(줄 아래 오른쪽 끝)에 버전 글씨 — 세로는 모든 탭에서 창 맨 아래 오른쪽에 보이는데 가로 두 칸은 소리 탭에서만 보였다. 옛: 가로는 this.tab === 0일 때만
+        else if (MC.VERSION && hintY + 11 <= this.y + this.h) MC.text.draw('v' + MC.VERSION, x + w - 6, hintY, { font: 'small', color: P.dim, align: 'right' });
         return;
       }
       // [a42-ui 0.4.2 A7] 버전 글씨: 타이틀 왼쪽 위에서 설정 창 맨 아래 오른쪽으로(스토어 첫 화면에 개발 흔적이 남지 않게). 숫자라 번역 키 없음
