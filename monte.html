@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.12';
+  var VERSION = '0.9.13';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -762,6 +762,8 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       debug: !RELEASE && (q.debug === '1' || q.debug === 'true'),
       dev: !RELEASE && (local || q.debug === '1'),
       test: RELEASE ? null : (q.test || null),
+      // [land] 가로 배치(스팀판·폰 가로 — 만드는 중): ?land=1 일 때만, 창이 가로로 넓으면 논리 화면 320×180 이상 가로로. 다 만들면 스팀 빌드는 늘 켜고 폰은 돌리면 켠다
+      land: !RELEASE && q.land === '1',
       ev: RELEASE ? null : (q.ev || null),
       map: RELEASE ? null : (q.map || null), x: !RELEASE && q.x != null ? +q.x : null, y: !RELEASE && q.y != null ? +q.y : null,
       mute: q.mute === '1',
@@ -1311,7 +1313,13 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   //   (아이폰 Pro Max·Plus 7→6 · 아이패드 10 세로 7→6 · 가로 5→4 · 1080p 모니터 3→2 · 스토어 6.9"·6.5"(1284×2778) 7→6). 짝수 배율이면 초상·인물 기록 C가 기기 2px 칸으로 고르게 얹힌다.
   //   폴드 겉화면(5@3)·125·150% 노트북(3@1.25~1.5)은 내리면 글이 작아져(1.33) 그대로 두고 RES2(ptcPresent·ilPresent)가 맡는다.
   //   되돌리기: ?uw2off=RES1 또는 아래 'if (dpr && …) S--;' 줄을 지운다(인자 dpr은 남아도 무해)
+  // [land] 가로 배치: 높이 180 기준 정수배(1080p 6배 · 스팀 덱 1280×800 = 320×200 4배 · 폰 가로는 넓은 폭이 더 보임). 폭 320~432, 높이 180~240
+  function fitInLand(rw, rh) {
+    const S = Math.max(1, Math.min(Math.floor(rw / 320), Math.floor(rh / 180)));
+    return { S, W: Math.max(320, Math.min(432, Math.floor(rw / S))), H: Math.max(180, Math.min(240, Math.floor(rh / S))) };
+  }
   function fitIn(rw, rh, dpr) {
+    if (g.landNow) return fitInLand(rw, rh);
     let S = Math.max(1, Math.min(Math.floor(rw / 180), Math.floor(rh / 320)));
     if (dpr && S >= 3 && (S & 1) && (S - 1) / dpr >= 1.8 && MC.uw2 && MC.uw2('RES1')) S--;   // [r5 RES1]
     return { S, W: Math.max(64, Math.min(g.maxW || 216, Math.floor(rw / S))), H: Math.max(64, Math.min(432, Math.floor(rh / S))) };
@@ -1342,10 +1350,22 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   //   폰을 가로로 든 것(높이 480 미만 또는 가로:세로 1.75 넘음)만 '세로로 돌려 주세요'
   const wideOk = (iw, ih) => ih >= 480 && iw / ih <= 1.75;
 
+  // [land] 가로 배치를 아는 장면(이름) — 이 밖의 장면(손으로 하는 장면 mg_* 등 세로로만 짠 것)이 쌓여 있는 동안은 세로 배치(가운데 세로 판)로 그린다.
+  //   장면이 직접 가로를 알면 sc.landOk = true. 쌓기·빼기 때 scene.js가 g.landCheck()를 불러 바뀔 때만 다시 잰다
+  const LAND_OK = /^(field|dialogue|menu|settings|langpick|credits|confirm|battle|title|closeup|ev_hold_closeup|caption|timecard|learned|comic|people_page|intro_card|narr|nameplate|ev_caption|ev_closeup|ev_card|ev_info|ev_skip|ev_under)$/;
+  function portOnly() {
+    const st = MC.scene && MC.scene.stack;
+    if (!st) return false;
+    for (const s of st) if (s && !s.landOk && !LAND_OK.test(s.name || '')) return true;
+    return false;
+  }
+  g.landCheck = () => { if (MC.cfg && MC.cfg.land) resize(); };
+  g.portOnly = portOnly;
   function resize() {
     const dpr = Math.min(3, window.devicePixelRatio || 1);
     const iw = window.innerWidth, ih = window.innerHeight;
     const devW = Math.floor(iw * dpr), devH = Math.floor(ih * dpr);
+    g.landNow = !!(MC.cfg && MC.cfg.land) && iw > ih && !portOnly();   // [land] 가로 배치 켜짐(설정 + 창이 가로). 장면들은 g.land를 보고 배치를 고른다
     const full = fitIn(devW, devH, dpr);                   // [r5 RES1] dpr을 넘김(옛: fitIn(devW, devH))
     const seg = pickSeg(readSegs(), dpr, full.S);
     let rx = 0, ry = 0, rw = devW, rh = devH;              // 게임을 놓을 기기 px 영역
@@ -1354,15 +1374,16 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const offX = rx + Math.max(0, (rw - W * S) >> 1), offY = ry + Math.max(0, (rh - H * S) >> 1);
     const sf = readSafe();
     // [r5 RES1·RES3] 스위치 상태도 열쇠에(실행 중에 켜고 끈 뒤 g.resize()가 다시 잰다). 되돌리기: 끝의 + 갈래를 지운다
-    const key = [g.maxW || 216, dpr, iw, ih, sf.join(','), seg ? [seg.x, seg.y, seg.w, seg.h].join(',') : ''].join('|') + (MC.uw2 ? '|' + (MC.uw2('RES1') ? 1 : 0) + (MC.uw2('RES3') ? 1 : 0) : '');
+    const key = [g.maxW || 216, dpr, iw, ih, sf.join(','), seg ? [seg.x, seg.y, seg.w, seg.h].join(',') : '', g.landNow ? 'L' : ''].join('|') + (MC.uw2 ? '|' + (MC.uw2('RES1') ? 1 : 0) + (MC.uw2('RES3') ? 1 : 0) : '');
     // [r5 RES6] '세로로 돌려 주세요'는 짧은 변이 600 CSS px 미만인 터치 기기(폰)만 — 터치 노트북·16:9 큰 화면(1280×720 등)은 돌릴 수 없거나 돌릴 까닭이 없다.
     //   폰 가로(짧은 변 < 600)는 옛 그대로 wideOk로 가린다. 되돌리기: ?uw2off=RES6 또는 '&& (…RES6…)' 갈래를 지운다
-    const landscape = isTouch && iw > ih && !wideOk(iw, ih) && (!(MC.uw2 && MC.uw2('RES6')) || Math.min(iw, ih) < 600);
+    const landscape = !g.landNow && isTouch && iw > ih && !wideOk(iw, ih) && (!(MC.uw2 && MC.uw2('RES6')) || Math.min(iw, ih) < 600);   // [land] 가로 배치면 돌려 달라고 하지 않는다
     if (rotateEl) rotateEl.style.display = landscape ? 'flex' : 'none';
     if (MC.core && MC.core.pause) MC.core.pause(landscape, 'rotate');
     if (key === lastKey) return;
     lastKey = key;
     g.dpr = dpr; g.S = S; g.W = W; g.H = H; g.X0 = (W - 180) >> 1;
+    g.land = g.landNow;                                     // [land] 아직 가로 배치가 없는 장면은 옛 세로 칸(X0~X0+180)에 그린다
     g.seg = seg;
     const sc = g.screen;
     if (sc.width !== W * S) sc.width = W * S;
@@ -4779,6 +4800,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     try { sc[fn](arg); } catch (e) { MC.core.error(e, 'scene.' + (sc.name || '?') + '.' + fn); }
   }
   function lock() { if (MC.input && MC.input.lock) MC.input.lock(); }
+  function relay() { if (MC.gfx && MC.gfx.landCheck) { try { MC.gfx.landCheck(); } catch (e) { MC.core.error(e, 'scene.relay'); } } }   // [land] gfx.js portOnly
 
   const S = MC.scene = {
     stack,
@@ -4790,6 +4812,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
         const prev = stack[stack.length - 1];
         stack.push(sc);
         lock();
+        relay();                           // [land] 세로로만 짠 장면이면 그동안 세로 배치(enter 전에 — 장면이 맞는 크기로 시작)
         if (prev) call(prev, 'pause');
         call(sc, 'enter');
       });
@@ -4871,6 +4894,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   function finish(sc, result, wasTop) {
     lock();
     call(sc, 'exit');
+    relay();                             // [land] 세로로만 짠 장면이 빠지면 가로로 돌아온다(resume 전에)
     const r = sc._res; sc._res = null;
     if (wasTop !== false) call(stack[stack.length - 1], 'resume');
     if (r) r(result);
@@ -9148,7 +9172,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   function base(sc) { if (MC.scene.stack[0] === sc) G().clear('#05060c'); }
   // [pt-c] 초상 C 시험판(?ptc=1 — gfx.ptcOn, 인계 docs/handoff/pt-c-pilot.md): 48칸 자리(ART08_PLAN §1-5 추천 배치 A). 꺼져 있으면 모든 자리·값이 예전 그대로
   const ptc = () => { const g = G(); return !!(g.ptcOn && g.ptcOn()); };
-  const ptUp = () => ptc() ? 46 : 30;                  // 초상 테가 창 윗변 위로 올라오는 높이
+  const ptUp = () => G().land ? 16 : ptc() ? 46 : 30;   // 초상 테가 창 윗변 위로 올라오는 높이 · [land] 가로는 초상이 창 안이라 이름표 높이(16)만
   // 초상 액자 52×52(작은 창 테) + 48 자리: C가 있으면 대체 그림 + 기기 해상도 C(gfx.ptcSlot), 없으면(아직 C가 없는 인물) 옛 32칸을 48 자리 가로 가운데·바닥에
   function drawPt48(g, P, name, x, y, fo, sc) {
     g.frame(x, y, 52, 52, fo);
@@ -9342,8 +9366,15 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
 
   function boxRect() {
     const g = G();
+    if (g.land) {                                   // [land] 가로: 화면 아래(위) 넓은 창, 초상은 창 안 왼쪽(위로 솟지 않음) — 이름표만 창 위로 16
+      const w = Math.min(g.W - 12, 344), x = (g.W - w) >> 1;
+      return { x, y: st.pos === 'top' ? g.safe.top + 18 : g.H - BOX_H - 4 - g.safe.bottom - st.rise, w, h: BOX_H, pos: st.pos };
+    }
     return { x: g.X0 + 2, y: st.pos === 'top' ? g.safe.top + (st.pt && ptc() ? 50 : 34) : g.H - 66 - g.safe.bottom - st.rise, w: BOX_W, h: BOX_H, pos: st.pos };   // [pt-c] 위 창 + 48 초상 = +16(초상 꼭대기는 그대로 safe.top + 4)
   }
+  // [land] 가로 창의 글 칸: 초상이 창 안에 들어가면 그만큼 오른쪽으로(48칸 초상 56 · 작은 초상 40). 세로는 옛 그대로(왼쪽 8, 폭 TEXT_W)
+  function ptInset() { return G().land && st.pt && !MC.scene.stack.some(s => s && s.hidePt) ? (ptc() ? 56 : 40) : 0; }
+  function textW() { const g = G(); return g.land ? boxRect().w - 16 - ptInset() : TEXT_W; }
   function inStack() { return st.on && MC.scene.has(scene); }
   function hardReset(cancelChoice) {           // 씬이 밖에서 치워졌을 때 등: 걸린 약속을 모두 풀어 준다
     const adv = st.onAdv; st.onAdv = null;
@@ -9502,16 +9533,16 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       const e = st.mode === 'opening' ? MC.ease.outQuad(st.open) : 1 - MC.ease.inQuad(1 - st.open);
       const h = Math.round(BOX_H * e) & ~1;
       if (h < MIN_H) return;                                     // [a43-ui V6] 납작한 테(가는 막대)가 한두 프레임 남지 않게
-      g.frame(L.x, L.y + ((BOX_H - h) >> 1), BOX_W, h, fo);
+      g.frame(L.x, L.y + ((BOX_H - h) >> 1), L.w, h, fo);        // [land] 폭은 L.w(세로 = BOX_W 그대로)
       return;
     }
     // [a43-ui V6] 마지막 대사 뒤 닫히기만 기다리는 빈 상자(이름표만 남은 테)는 그리지 않는다. 다음 대사를 기다리는 자리(keep 'yes')는 예전처럼 둔다.
     st.hidIdle = st.mode === 'idle' && !st.page && !st.choice && pending === 0 && st.keep !== 'yes';
     if (st.hidIdle) return;
-    g.frame(L.x, L.y, BOX_W, BOX_H, fo);
+    g.frame(L.x, L.y, L.w, BOX_H, fo);
     renderDeco(g, P, pal, L, t);
     if (st.page) renderText(g, P, L, t);
-    if (st.mode === 'shown' && !st.noWait && st.auto == null && !st.choice) MC.ui.nextMark(L.x + BOX_W - 11, L.y + BOX_H - 11);
+    if (st.mode === 'shown' && !st.noWait && st.auto == null && !st.choice) MC.ui.nextMark(L.x + L.w - 11, L.y + BOX_H - 11);
   }
   function renderDeco(g, P, pal, L, t) {
     const sp = st.sp;
@@ -9523,7 +9554,16 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     // [r3 B5-gem] 정지 컷(custom s4 still, 인자 hidePt)이 화면에 있는 동안은 상자 초상을 숨긴다 — 그림의 얼굴과 초상이 두 번 보이지 않게(사용자 11-04 「추천대로」).
     //   정지 컷이 걷혀 스택에서 빠지면 다시 보인다. 이름표는 초상 없는 자리(L.x)로. 되돌리기: 이 두 줄을 지우고 아래 ptOn을 st.pt로
     const ptOn = !!st.pt && !MC.scene.stack.some(s => s && s.hidePt);
-    if (ptOn && pc) {                                    // [pt-c] 48칸 자리: 테 52 @ (L.x, L.y − 46), 이름표 x + 54
+    if (ptOn && g.land) {                                // [land] 가로: 초상은 창 안 왼쪽(48칸 52 테 @ x+5·y+5 / 작은 초상 36 테), 이름표는 글 칸 머리 위
+      if (pc) { drawPt48(g, P, st.pt, L.x + 5, L.y + 5 + dy, fo, scene); tagX = L.x + 62; }
+      else {
+        const px = L.x + 5, py = L.y + 13 + dy;
+        g.frame(px, py, 36, 36, fo);
+        g.gradV(px + 2, py + 2, 32, 32, [g.mix(P.f, P.D, 0.6), g.mix(P.f, P.D, 0.3), P.f]);
+        g.sprite(st.pt, px + 2, py + 2);
+        tagX = L.x + 46;
+      }
+    } else if (ptOn && pc) {                             // [pt-c] 48칸 자리: 테 52 @ (L.x, L.y − 46), 이름표 x + 54
       drawPt48(g, P, st.pt, L.x, L.y - 46 + dy, fo, scene);
       tagX = L.x + 54;
     } else if (ptOn) {
@@ -9538,7 +9578,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       const rl = sp.roleShow && sp.role ? ' · ' + sp.role : '', rw = rl ? MC.text.width(rl, 'small') : 0;   // [l45-guide B8-2] 첫 등장 한 번: 「모렐 · 선주」
       // [r5 U4] 이름표 → 명판(g.plate: 양끝 리벳, 이름 글 x+8, 폭 +2). 되돌리기: ?uw2off=U4 또는 u4를 false로(옛 작은 창 · x+7 · 폭 +14)
       const u4 = !!(MC.uw2 && MC.uw2('U4') && g.plate), tx0 = u4 ? 8 : 7;
-      const nw = Math.max(MC.text.width(nm, 'bold'), 12), tw = nw + rw + (u4 ? 16 : 14), ty = L.y - (pc ? 16 : 18) + (ptOn ? 0 : dy);   // [pt-c] 이름표가 창 윗변에 2칸 걸림(배치 A) · [r3 B5-gem] ptOn(옛 st.pt)
+      const nw = Math.max(MC.text.width(nm, 'bold'), 12), tw = nw + rw + (u4 ? 16 : 14), ty = L.y - (g.land ? 16 : pc ? 16 : 18) + (ptOn && !g.land ? 0 : dy);   // [pt-c] 이름표가 창 윗변에 2칸 걸림(배치 A) · [r3 B5-gem] ptOn(옛 st.pt) · [land] 가로는 늘 16
       if (u4) g.plate(tagX, ty, tw, 18, fo); else g.frame(tagX, ty, tw, 18, fo);
       MC.text.draw(nm, tagX + tx0, ty + 2, { font: 'bold', color: sp.color });
       if (rl) MC.text.draw(rl, tagX + tx0 + nw, ty + 4, { font: 'small', color: g.mix(sp.color, '#9a98a8', 0.55) });
@@ -9560,12 +9600,12 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   }
   function renderText(g, P, L, t) {
     const pg = st.page, gs = pg.glyphs, sp = st.sp || {};
-    const base = sp.text || P.text, tx = L.x + 8, ty = L.y + 8, center = pg.align === 'center', sh = sp.shake ? 1 : 0;
+    const base = sp.text || P.text, tx = L.x + 8 + ptInset(), ty = L.y + 8, center = pg.align === 'center', sh = sp.shake ? 1 : 0, TW = textW();   // [land] 글 칸 = 초상 오른쪽
     for (let i = 0; i < st.shown; i++) {
       const gl = gs[i];
       if (gl.space) continue;
       let x = tx + gl.x, y = ty + gl.line * LH;
-      if (center) x += (TEXT_W - pg.lineW[gl.line]) >> 1;
+      if (center) x += (TW - pg.lineW[gl.line]) >> 1;
       const fx = gl.fx | sh;
       if (fx) { const o = fxOff(fx, i, t); x += o[0]; y += o[1]; }
       MC.text.drawChar(gl.ch, x, y, 'body', gl.color ? MC.text.color(gl.color) : base);
@@ -9590,6 +9630,14 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   function choiceRect() {
     const g = G(), c = st.choice, h = c.total + 8, L = boxRect();
     let y;
+    if (g.land) {                                   // [land] 가로: 선택지는 창(이름표 포함) 바로 위, 오른쪽 맞춤 — 창이 없으면 화면 아래 오른쪽
+      const x = L.x + L.w - BOX_W;
+      if (st.box) {
+        const top = st.pos === 'top' ? L.y + BOX_H + 3 : L.y - (st.sp && st.sp.style === 'normal' && st.sp.name != null ? 16 : st.sp && st.sp.style === 'think' ? 17 : 0) - 3 - h;
+        return { x, y: Math.max(g.safe.top + 2, top), w: BOX_W, h };
+      }
+      return { x, y: Math.max(g.safe.top + 2, g.H - 8 - g.safe.bottom - h), w: BOX_W, h };
+    }
     if (st.box) {
       if (st.pos === 'top' || st.rise > 0) y = L.y + BOX_H + 3;   // [u51 B2-6] 올린 질문 상자 바로 아래(질문 → 답 순서로 읽힌다 — 선택지는 대화창 제자리에)
       else {
@@ -9753,7 +9801,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       let voice = o.voice !== undefined ? o.voice : sp.voice, hush = null;
       if (voice && typeof voice === 'object') { const h0 = voice.hush ? String(voice.hush) : null, hT = h0 && MC.i18n && MC.i18n.active ? MC.i18n.t(h0) : h0; hush = hT ? String(hT).replace(/\s+/g, '') : null; voice = voice.id != null ? voice.id : null; }   // [0.95] hush 글도 번역(팩에 키 「……나를 봐서.」 등)
       for (let b = 0; b < boxes.length; b++) {
-        const comp = compile(boxes[b], { align: sp.align });
+        const comp = compile(boxes[b], { align: sp.align, width: textW() });   // [land] 가로 창은 글 칸이 넓다(세로 = TEXT_W 그대로)
         if (hush) for (const pg of comp.pages) {
           const gs = pg.glyphs.filter(gl => !gl.space), s = gs.map(gl => gl.ch).join(''), at = s.lastIndexOf(hush);
           if (at >= 0) for (let i = at; i < at + hush.length; i++) gs[i].quiet = true;
@@ -9782,10 +9830,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       const qs = Array.isArray(o.t) ? o.t.filter(x => x != null && x !== '') : (o.t != null && o.t !== '' ? [o.t] : []);
       if (qs.length) {
         // [u51 B2-6] 아래 질문 상자는 선택지 높이(+틈 3)만큼 올려 연다 → 선택지가 그 아래(대화창 제자리)에 와서 질문이 늘 답 위에 읽힌다(모바일 평가 11). 위 창은 예전 그대로(선택지가 아래)
-        const rise = o.pos === 'top' ? 0 : buildChoice(opts).total + 8 + 3;
+        const rise = o.pos === 'top' || G().land ? 0 : buildChoice(opts).total + 8 + 3;   // [land] 가로는 질문 상자를 올리지 않고 선택지를 창 위 오른쪽에
         await openBox(sp, Object.assign({}, o, { rise }));
         ask: for (let q = 0; q < qs.length; q++) {
-          const comp = compile(qs[q], { align: sp.align }), lastQ = q === qs.length - 1;
+          const comp = compile(qs[q], { align: sp.align, width: textW() }), lastQ = q === qs.length - 1;
           for (let p = 0; p < comp.pages.length; p++) {
             if (!inStack()) break ask;
             await showPage(comp.pages[p], { speed: o.speed, voice: sp.voice, noWait: lastQ && p === comp.pages.length - 1 });
@@ -13506,6 +13554,33 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     } else warn('nomenu', 'MC.ch1.openMenu 없음(scenes 담당) — 무시');
   }
 
+  // [land] 지도가 화면보다 좁거나 낮을 때(가로 화면의 작은 지도): 맨 바깥 타일 줄(16칸)을 반복해 화면 끝까지 잇고, 지도에서 멀어질수록 어둡게 녹인다.
+  //   지도별로 끄기: maps 데이터에 edgeFill:false(실내처럼 검은 바깥이 자연스러운 곳). 세로 화면은 쓰지 않는다(옛 그대로)
+  function edgeFill(ctx, mw, mh, g) {
+    const x0 = rcam.x, y0 = rcam.y, x1 = rcam.x + g.W, y1 = rcam.y + g.H, T = TS;
+    for (let x = -T; x + T > x0; x -= T) ctx.drawImage(map.cache, 0, 0, T, mh, x, 0, T, mh);          // 왼쪽
+    for (let x = mw; x < x1; x += T) ctx.drawImage(map.cache, mw - T, 0, T, mh, x, 0, T, mh);        // 오른쪽
+    for (let y = -T; y + T > y0; y -= T) ctx.drawImage(map.cache, 0, 0, mw, T, 0, y, mw, T);          // 위
+    for (let y = mh; y < y1; y += T) ctx.drawImage(map.cache, 0, mh - T, mw, T, 0, y, mw, T);        // 아래
+    { // 네 귀퉁이(지도 밖 가로·세로가 겹치는 곳): 모서리 타일 하나로 채운다(검은 네모가 남지 않게)
+      const xs = [], ys = [];
+      for (let x = -T; x + T > x0; x -= T) xs.push([x, 0]);
+      for (let x = mw; x < x1; x += T) xs.push([x, mw - T]);
+      for (let y = -T; y + T > y0; y -= T) ys.push([y, 0]);
+      for (let y = mh; y < y1; y += T) ys.push([y, mh - T]);
+      for (const [dx, sx] of xs) for (const [dy, sy] of ys) ctx.drawImage(map.cache, sx, sy, T, T, dx, dy, T, T);
+    }
+    const dk = map.dark || '#05060c', fade = (ax, ay, bx, by, rx, ry, rw, rh) => {
+      if (rw <= 0 || rh <= 0) return;
+      const gr = ctx.createLinearGradient(ax, ay, bx, by);
+      gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, dk);
+      ctx.save(); ctx.globalAlpha = 0.85; ctx.fillStyle = gr; ctx.fillRect(rx, ry, rw, rh); ctx.restore();
+    };
+    if (x0 < 0) fade(0, 0, x0, 0, x0, y0, -x0, g.H);
+    if (x1 > mw) fade(mw, 0, x1, 0, mw, y0, x1 - mw, g.H);
+    if (y0 < 0) fade(0, 0, 0, y0, x0, y0, g.W, -y0);                 // 위·아래는 화면 폭 전체(귀퉁이는 두 번 겹쳐 더 어둡게)
+    if (y1 > mh) fade(0, mh, 0, y1, x0, mh, g.W, y1 - mh);
+  }
   function render() {
     const g = G(), ctx = g.ctx;
     if (!map) { g.clear('#000'); return; }
@@ -13519,6 +13594,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (rcam.x < 0 || rcam.y < 0 || rcam.x + g.W > mw || rcam.y + g.H > mh) {
       ctx.fillStyle = map.voidPat || map.dark;
       ctx.fillRect(rcam.x, rcam.y, g.W, g.H);
+      if (g.land && map.edgeFill !== false && map.cache) edgeFill(ctx, mw, mh, g);   // [land] 가로 화면: 지도 가장자리 줄을 화면 끝까지 이어 그리고 바깥으로 갈수록 어둡게
     }
     // 1) 정적 타일(보이는 부분만)
     const sx = MC.clamp(rcam.x, 0, mw), sy = MC.clamp(rcam.y, 0, mh);
@@ -17588,6 +17664,22 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     V.listH = Math.max(104, V.gridY - 2 - V.listY);
     // [c43-ui B2-1] 목록 창 = 칸 3줄 + 아래 설명 두 줄(DESC_H). 설명 몫만큼 창을 위로 늘린다(목록이 열린 동안 무대 아래쪽을 덮음)
     V.winY = V.listY - DESC_H; V.winH = V.listH + DESC_H;
+    // 세로 기준 자리: 상태 칸(SX) · 목록 창(LWX·LW·칸 2열) · 기록(LX·폭·높이) · 말풍선(spX·spY)
+    V.SX = X0; V.LWX = X0 + 2; V.LW = 176; V.lcols = 2; V.LX = X0 + 2; V.logW = 176; V.logH = 58; V.spX = X0 + 2; V.spY = V.logY;
+    if (g.land) {                                                         // [land] 가로: 적 무대 위 · 기록 한 줄(무대 아래에 걸침) · 상태 왼쪽 아래 · 명령 2×3 오른쪽 아래
+      const mt = MC.ui.minTouch(), rh = Math.max(18, Math.min(24, mt)), bw = 62, sl = g.safe.left, sr = g.safe.right;
+      V.gx = g.W - 4 - sr - (bw * 2 + 2); V.bw = bw; V.rh = rh;
+      V.gridY = g.H - sb - 4 - (rh * 3 + 4);
+      V.statY = g.H - sb - 4 - V.statH;
+      V.SX = 2 + sl;
+      V.logH = 22; V.logW = Math.min(g.W - 16, 248); V.LX = (g.W - V.logW) >> 1;
+      V.logY = Math.min(V.gridY, V.statY) - 4 - V.logH;
+      V.stageH = V.logY + 8;                                             // 적 발(stageH - 24)·체력 막대가 기록 줄 위에 오게
+      V.spX = (g.W - 176) >> 1; V.spY = V.logY + V.logH - 58;           // 말풍선(3줄)은 기록 줄 자리에서 위로 — 상태 칸에 가리지 않게
+      V.lcols = 3; V.LW = 84 * 3 + 8; V.LWX = (g.W - V.LW) >> 1;
+      V.winH = 2 * 32 + 8 + DESC_H; V.winY = Math.max(g.safe.top + 2, V.gridY - 2 - V.winH);   // 칸 3열 × 2줄 + 설명 두 줄(✕는 창 오른쪽 옆)
+      V.listY = V.winY; V.listH = V.winH - DESC_H;
+    }
     const feet = V.stageH - 24, SL3 = [10, 66, 122];
     if (V.mir) {                                                          // (S3) 거울 속: 세 자리(섞는 동안은 옛 자리 → 새 자리로 미끄러짐)
       const M = V.mir, q = M.ms ? clamp((V.t - M.t0) / M.ms, 0, 1) : 1;
@@ -17607,19 +17699,26 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       list.forEach((ev, i) => { ev.mOy = 0; placeEnemy(ev, slots[i] != null ? slots[i] : 10 + i * 56, feet, null); });
     }
     const bx = X0 + 2;
-    const place = (B, keys) => keys.forEach((k, i) => { const bt = B[k]; bt.x = bx + (i % 3) * 60; bt.y = V.gridY + ((i / 3) | 0) * 40; });
+    // [land] 2열 × 3줄: 왼쪽 위 = 맞선다(엄지 자리 대신 첫 칸), 같은 번호 칸은 세로 배치와 같은 명령(F_KEYS도 번호대로)
+    const LPOS = [[1, 2], [1, 1], [1, 0], [0, 2], [0, 1], [0, 0]];
+    const place = g.land
+      ? (B, keys) => keys.forEach((k, i) => { const bt = B[k], p = LPOS[i]; bt.x = V.gx + p[0] * (V.bw + 2); bt.y = V.gridY + p[1] * (V.rh + 2); bt.w = V.bw; bt.h = V.rh; })
+      : (B, keys) => keys.forEach((k, i) => { const bt = B[k]; bt.x = bx + (i % 3) * 60; bt.y = V.gridY + ((i / 3) | 0) * 40; bt.w = 56; bt.h = 36; });   // (가로에서 돌아오면 크기도 되돌린다)
     place(V.btn, CMD_KEYS);
     if (V.fbtn) place(V.fbtn, fKeys());
-    if (V.btn.master) { const s = V.btn.skill; V.btn.master.x = s.x; V.btn.master.y = s.y; }          // (S4) 금빛 [스승의 말씀]: 부서진 [배운 것] 자리
-    if (V.btn.live) { V.btn.live.x = bx; V.btn.live.y = V.gridY + 40; V.btn.live.w = 176; }           // (S4) [살아서 나간다]: 아래 줄 전체 폭(엄지 자리)
+    if (V.btn.master) { const s = V.btn.skill; V.btn.master.x = s.x; V.btn.master.y = s.y; V.btn.master.w = s.w; V.btn.master.h = s.h; }          // (S4) 금빛 [스승의 말씀]: 부서진 [배운 것] 자리
+    if (V.btn.live) {                                                                                 // (S4) [살아서 나간다]: 아래 줄 전체 폭(엄지 자리)
+      if (g.land) { V.btn.live.x = V.gx; V.btn.live.y = V.gridY + 2 * (V.rh + 2); V.btn.live.w = V.bw * 2 + 2; V.btn.live.h = V.rh; }
+      else { V.btn.live.x = bx; V.btn.live.y = V.gridY + 40; V.btn.live.w = 176; V.btn.live.h = 36; }
+    }
   }
   // 아군 상태 칸(1인: 176 한 칸 / 2인·회색 빈 칸: 87 두 칸)
   function cellOf(i) {
-    if (!cells2()) return { x: V.X0 + 2, y: V.statY, w: 176, h: V.statH };
-    return { x: V.X0 + 2 + i * 89, y: V.statY, w: 87, h: V.statH };
+    if (!cells2()) return { x: V.SX + 2, y: V.statY, w: 176, h: V.statH };
+    return { x: V.SX + 2 + i * 89, y: V.statY, w: 87, h: V.statH };
   }
-  function hpAt(i) { if (!cells2()) return [V.X0 + 40, V.statY + 14]; const c = cellOf(i); return [c.x + 36, c.y + 12]; }
-  function mpAt(i) { if (!cells2()) return [V.X0 + 124, V.statY + 14]; const c = cellOf(i); return [c.x + 36, c.y + 24]; }
+  function hpAt(i) { if (!cells2()) return [V.SX + 40, V.statY + 14]; const c = cellOf(i); return [c.x + 36, c.y + 12]; }
+  function mpAt(i) { if (!cells2()) return [V.SX + 124, V.statY + 14]; const c = cellOf(i); return [c.x + 36, c.y + 24]; }
 
   /* ---------- 명령 버튼 ---------- */
   const CMD_KEYS = ['flee', 'item', 'skill', 'repeat', 'endure', 'attack'];
@@ -17899,8 +17998,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     setMode('list');
   }
   function listCells() {
-    const x0 = V.X0 + 2, y0 = V.winY + ((V.listH - 104) >> 1), out = [];
-    for (let s = 0; s < 6; s++) { const c = s % 2, r = (s / 2) | 0; out.push([x0 + 4 + c * 84, y0 + 4 + r * 32, 84, 32]); }
+    const x0 = V.LWX, nc = V.lcols || 2, nr = Math.ceil(6 / nc), y0 = V.winY + ((V.listH - (nr * 32 + 8)) >> 1), out = [];   // [land] 가로는 3열 × 2줄
+    for (let s = 0; s < 6; s++) { const c = s % nc, r = (s / nc) | 0; out.push([x0 + 4 + c * 84, y0 + 4 + r * 32, 84, 32]); }
     return out;
   }
   function listSlotAt(x, y) {
@@ -17911,9 +18010,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   // [c43-ui B2-2] 목록 창 오른쪽 위 ✕(44 CSS px) — 창 윗변에 걸친 꼬리표
   function closeRect() {
     const s = Math.max(22, MC.ui.minTouch());
+    if (G().land) return { x: V.LWX + V.LW + 2, y: V.winY, w: s, h: s };   // [land] 창 오른쪽 옆
     return { x: V.X0 + 2 + 176 - s, y: V.winY - s + 3, w: s, h: s };         // 아래 끝 = 창 윗변 + 3(첫 줄 칸은 +4부터라 겹치지 않음)
   }
-  const inListWin = (x, y) => x >= V.X0 + 2 && x < V.X0 + 178 && y >= V.winY && y < V.winY + V.winH;
+  const inListWin = (x, y) => x >= V.LWX && x < V.LWX + V.LW && y >= V.winY && y < V.winY + V.winH;
   // [c43-ui B2-2] 목록은 모달: ✕ 또는 창 바깥(무대·격자)을 탭하면 닫힌다(닫힌 뒤 450ms는 격자·적 그림이 누름을 삼킴 — P2와 두 겹)
   function listModalInput(ev) {
     const Ls = V.list;
@@ -18653,8 +18753,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (typeof s.then === 'function') await play(s.then(val));
   };
   function askRows() {
-    const x = V.X0 + 2, y = V.gridY - 1, n = Math.max(1, V.askUI.opts.length), rh = Math.min(24, Math.floor(76 / n));
-    return { x, y, w: 176, h: rh * n + 4, rh };
+    const L = G().land, x = L ? V.SX + 2 : V.X0 + 2, y = L ? Math.min(V.gridY, V.statY) - 1 : V.gridY - 1, n = Math.max(1, V.askUI.opts.length), rh = Math.min(24, Math.floor((L ? G().H - G().safe.bottom - 4 - y : 76) / n));   // [land] 아래 띠 전체
+    return { x, y, w: L ? G().W - G().safe.right - 4 - x : 176, h: rh * n + 4, rh };
   }
   function askRowAt(x, y) {
     const R = askRows();
@@ -19470,7 +19570,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   function drawEnemyOverlays() {
     const g = G(), t = V.t, P = g.uiPal, seen = V.B.seen || {};
     const topMin = g.safe.top + (party2() ? 18 : 2);
-    const ptR = speechPt48() ? [V.X0 + 2, V.logY - 52, 52, 52] : null;    // [r5 B-04] 말풍선 초상 52 테 자리(drawSpeech)
+    const ptR = speechPt48() ? [V.spX, (V.spYNow != null ? V.spYNow : V.spY) - 52, 52, 52] : null;    // [r5 B-04] 말풍선 초상 52 테 자리(drawSpeech)
     for (const ev of V.en) {
       if (!ev.visible || ev.gone || ev.die || ev.appear || ev.rise) continue;
       const e = ev.u, hid = hiddenEv(ev);
@@ -19839,7 +19939,29 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       MC.text.draw('◀', d.x + 6, d.y - 4, { font: 'small', color: blink ? COL.name : '#b8a070' });
     }
   }
+  // [land] 가로 기록: 무대 아래에 걸친 한 줄 창 — 가장 새 줄만(아래에서 밀려 올라옴), 대상 고르기는 한 줄 안내
+  function drawLogLand() {
+    const g = G(), x = V.LX, y = V.logY, w = V.logW, h = V.logH, P = g.uiPal;
+    g.frame(x, y, w, h, { small: true });
+    if (V.mode === 'target' && V.pend) {
+      const head = cmdLabel(V.pend) + ' → ' + T('chooseTarget'), hw = MC.text.width(head, 'body');
+      MC.text.draw(head, x + 8, y + 3, { color: COL.gold });
+      if (V.tpress) MC.text.draw(labelOf(V.tpress), x + 16 + hw, y + 3, { color: P.text });
+      return;
+    }
+    const tm = typeMs(); let l = null, prev = null;
+    for (const q of V.log.lines) if (q.start <= V.t) { prev = l; l = q; }
+    if (!l) return;
+    const p = clamp((V.t - l.start) / 100, 0, 1), dy = Math.round((1 - p) * 14);
+    g.pushClip(x + 3, y + 3, w - 6, h - 6);
+    if (prev && dy > 0) MC.text.draw(prev.s, x + 8, y + 3 + dy - 14, { color: P.dim });
+    const n = Math.min(l.n, Math.floor((V.t - l.start) / tm) + 1), col = lineColor(l), shake = l.shakeUntil > V.t;
+    if (n >= l.n && !shake) MC.text.draw(l.s, x + 8, y + 3 + dy, { color: col });
+    else { let cx = x + 8; for (let k = 0; k < n; k++) { const sx = shake ? (((V.t / 33) | 0) + k) % 3 - 1 : 0; cx += MC.text.drawChar(l.chars[k], cx + sx, y + 3 + dy, 'body', col); } }
+    g.popClip();
+  }
   function drawLog() {
+    if (G().land) { drawLogLand(); return; }
     const g = G(), x = V.X0 + 2, y = V.logY, P = g.uiPal;
     g.frame(x, y, 176, 58);
     if (V.mode === 'target' && V.pend) {
@@ -19915,7 +20037,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (!b) return;
     const q = V.t - b.t0;
     if (q < 0 || q >= b.dur) return;
-    const g = G(), fd = famOf(b.fam), x = V.X0 + 2, y = V.logY, w = 176, h = 58;
+    const g = G(), fd = famOf(b.fam), x = V.X0 + 2, y = G().land ? G().safe.top + 4 : V.logY, w = 176, h = 58;   // [land] 이름패는 무대 위쪽
     const k = Math.min(clamp(q / 160, 0, 1), clamp((b.dur - q) / 200, 0, 1)), a = k >= 1 ? 1 : (k > 0.5 ? 0.66 : 0.33);
     g.frame(x, y, w, h, { alpha: a, over: { W: fd.color, D: fd.dark, f: '#07060a' } });
     const big = MC.text.width(b.name, 'big') <= w - 16;
@@ -19923,8 +20045,9 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (b.sub) MC.text.draw(b.sub, x + (w >> 1), y + 40, { font: 'small', color: fd.text || g.uiPal.dim, align: 'center', alpha: a });
   }
   function drawSpeech() {
-    const sp = V.speech, g = G(), x = V.X0 + 2, y = V.logY;
-    g.frame(x, y, 176, 58, { pal: sp.pal });
+    const sp = V.speech, g = G(), L = g.land, sh = L ? 10 + Math.max(1, Math.min(3, sp.chars.length)) * 16 : 58, x = V.spX, y = L ? V.logY + V.logH - sh : V.spY;   // [land] 가로는 줄 수만큼 높이, 기록 줄 아래 끝에 맞춤
+    V.spYNow = y;
+    g.frame(x, y, 176, sh, { pal: sp.pal });
     let nx = x;
     if (sp.portrait && speechPt48()) {                                     // [r5 B-04] 대화창과 같은 52 테 + pt-c 48(작은 창 테 · 그 말풍선의 창 팔레트 3색). 이름표는 그 오른쪽(x + 54)
       const P0 = g.pal(sp.pal), cols = [g.mix(P0.f, P0.D, 0.6), g.mix(P0.f, P0.D, 0.3), P0.f];   //   덜 풀렸으면 바탕 + 옛 32칸을 48 자리 가운데·바닥에(대화창 drawPt48과 같다)
@@ -19954,7 +20077,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
         k++;
       }
     }
-    if (sp.done && !sp.keep && !(sp.holdT && V.t < sp.holdT)) MC.ui.nextMark(x + 176 - 12, y + 58 - 12);
+    if (sp.done && !sp.keep && !(sp.holdT && V.t < sp.holdT)) MC.ui.nextMark(x + 176 - 12, y + sh - 12);
   }
   function statusBar(x, y, w, v, ghost, max, col, hi, blink, h) {
     const g = G(), hh = h || 3;
@@ -20012,7 +20135,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (!av) return;
     const u = av.u, jq = t - av.jolt;
     const jx = jq < 200 ? Math.round(3 * (1 - jq / 200) * Math.sin(jq * 0.12)) : 0;
-    const x = V.X0 + 2 + jx, y = V.statY;
+    const x = V.SX + 2 + jx, y = V.statY;
     g.frame(x, y, 176, 34, { over: frameOver(av, 0) });
     const cov = cellCover(av, x, y, 176, 34);                                // [a43-ui V1]
     MC.text.draw(u.name, x + 8, y + 4, { font: 'small', color: cov ? P.dim : COL.name });
@@ -20294,8 +20417,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   }
   function drawList() {
     if (V.mode !== 'list' || !V.list) return;
-    const g = G(), P = g.uiPal, Ls = V.list, x = V.X0 + 2, y = V.winY, seen = V.B.seen || {}, C = CORE();
-    g.frame(x, y, 176, V.winH);
+    const g = G(), P = g.uiPal, Ls = V.list, x = V.LWX, y = V.winY, seen = V.B.seen || {}, C = CORE();
+    g.frame(x, y, V.LW, V.winH);
     const cells = listCells(), many = Ls.items.length > 6, per = many ? 5 : 6, cy0 = cells[0][1] - 4;
     {                                                                  // 목록이 상태창을 가리므로 지금 HP·MP를 빈 마지막 칸(없으면 위쪽 이름표 — ✕와 겹치지 않게 왼쪽)에
       const av = V.al[V.actor ? V.actor.idx : 0], u = av.u, mpS = tf('stat.mp') + ' ' + Math.round(av.dmp) + '/' + u.maxMp, hpS = tf('stat.hp') + ' ' + Math.ceil(av.dhp) + '/' + u.maxHp;
@@ -20312,8 +20435,9 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     drawCloseTab();
     const ids = []; for (const e of V.B.enemies) if (e.alive && ids.indexOf(e.id) < 0) ids.push(e.id);
     const keyOf = id => { const e0 = V.B.enemies.find(e => e.id === id); return e0 ? sKey(e0) : id; };   // (S4 H-5) seenAs
-    g.vline(x + 88, cy0 + 6, 92, g.mix(P.f, P.D, 0.6));
-    for (let r = 1; r < 3; r++) g.hline(x + 6, cy0 + 4 + r * 32, 164, g.mix(P.f, P.D, 0.6));
+    { const nc = V.lcols || 2, nr = Math.ceil(6 / nc);   // [land] 칸 구분선도 열·줄 수대로
+      for (let c = 1; c < nc; c++) g.vline(x + 4 + c * 84, cy0 + 6, nr * 32 - 4, g.mix(P.f, P.D, 0.6));
+      for (let r = 1; r < nr; r++) g.hline(x + 6, cy0 + 4 + r * 32, V.LW - 12, g.mix(P.f, P.D, 0.6)); }
     for (let s = 0; s < 6; s++) {
       const [cx, cy, cw, ch] = cells[s];
       const down = Ls.press === s && Ls.inside;
@@ -20395,8 +20519,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     return out;
   }
   function drawListDesc(cells, ids, keyOf) {
-    const g = G(), P = g.uiPal, Ls = V.list, x = V.X0 + 2, y1 = cells[4][1] + 32 + 1;
-    g.hline(x + 6, y1, 164, g.mix(P.f, P.D, 0.6));
+    const g = G(), P = g.uiPal, Ls = V.list, x = V.LWX, y1 = cells[4][1] + 32 + 1;
+    g.hline(x + 6, y1, V.LW - 12, g.mix(P.f, P.D, 0.6));
     const it = Ls.items[Ls.sel];
     if (!it) { MC.text.draw(tf('battle.listHint'), x + 8, y1 + 7, { font: 'small', color: P.dim }); return; }
     const d = descOf(it, ids, keyOf);
@@ -88969,8 +89093,9 @@ MC.addLang('es', {
     const cont = MC.time.real - lastCloseEnd < 260;          // 연속 클로즈업이면 띠를 새로 열지 않음
     const BAND = 88, OPEN = cont ? 0 : 170, SLIDE = 230, OUT = 150;
     const text = opt.t ? MC.text.resolveJosa(String(opt.t)) : '';
-    let tFont = 'body', tLines = text ? MC.text.wrap(text, 92, 'body') : [];
-    if (tLines.length > 4) { tFont = 'small'; tLines = MC.text.wrap(text, 92, 'small').slice(0, 6); }
+    const LW = g.land ? Math.max(92, Math.min(180, g.W - 64 - 12 - 24 - g.safe.left - g.safe.right)) : 92;   // [land] 가로는 글 칸을 넓히고 초상+글 묶음을 가운데로
+    let tFont = 'body', tLines = text ? MC.text.wrap(text, LW, 'body') : [];
+    if (tLines.length > 4) { tFont = 'small'; tLines = MC.text.wrap(text, LW, 'small').slice(0, 6); }
     // [r3 B5-1] holdSay:N(시 P0-3) — 나가는 슬라이드 직전(t = ms − OUT)에서 멈춘 채 결과를 먼저 돌려주고(이벤트는 다음 대사로), 다음 대사 N개가 끝날 때까지
     //   얼굴을 남긴다(ch1.holdSay — s4escape mount와 같은 걷힘 규칙: N개 끝 + holdAfter ms · N+1번째 대사 · 위에 불투명 화면 · 검정 · 이벤트 끝). 되돌리기: holdN 줄과 아래 [r3 B5-1] 꼬리표 줄들을 지운다
     const holdN = Math.max(0, opt.holdSay | 0);
@@ -89016,7 +89141,8 @@ MC.addLang('es', {
         g.rect(0, top, W, bh, '#000');
         if (bh >= 4) { g.hline(0, top, W, '#2c2a36'); g.hline(0, top + bh - 1, W, '#2c2a36'); g.ditherRect(0, top + 1, W, 1, '#2c2a36', 6); g.ditherRect(0, top + bh - 2, W, 1, '#2c2a36', 6); }
         if (bh < BAND) return;
-        const tx = text ? (RS ? W - g.X0 - 76 : g.X0 + 12) : ((W - 64) >> 1) + (RS ? 22 : -22), py = mid - 32;   // [r3 B5-3] RS: 초상 오른쪽 자리
+        const bx0 = g.land ? ((W - (64 + 12 + LW)) >> 1) : 0;   // [land] 묶음 왼쪽 끝
+        const tx = text ? (RS ? (g.land ? bx0 + LW + 12 : W - g.X0 - 76) : (g.land ? bx0 : g.X0 + 12)) : ((W - 64) >> 1) + (RS ? 22 : -22), py = mid - 32;   // [r3 B5-3] RS: 초상 오른쪽 자리
         const t1 = t - OPEN * 0.5;
         let px = tx;
         const pin = W + 6, pout = -70;                                                                      // [r3 B5-3] 들어오고 나가는 끝(RS면 왼쪽과 맞바꿈)
@@ -89033,7 +89159,7 @@ MC.addLang('es', {
         const la = t < ms - OUT ? U.lvl(t1, SLIDE * 0.6, 200) : MC.clamp((ms - t) / OUT, 0, 1) * 16;
         const nm = MC.text.bake(spk.name, 'small', spk.color, { shadow: '#000' });
         if (text) {                                  // 이름(머리) + 본문을 초상 오른쪽에 세로 가운데로([r3 B5-3] RS면 초상 왼쪽에)
-          const lh = MC.text.LINE[tFont], block = 15 + tLines.length * lh, y0 = mid - (block >> 1) + 15, bx = RS ? g.X0 + 12 : g.X0 + 88;
+          const lh = MC.text.LINE[tFont], block = 15 + tLines.length * lh, y0 = mid - (block >> 1) + 15, bx = RS ? (g.land ? bx0 : g.X0 + 12) : (g.land ? bx0 + 76 : g.X0 + 88);
           if (nm) U.drawDither(nm, bx, y0 - 15, la);
           for (let i = 0; i < tLines.length; i++) U.drawDither(MC.text.bake(tLines[i], tFont, '#e8e4d8'), bx, y0 + i * lh, la);
         } else if (nm) {                             // 이름만: 초상 오른쪽 아래, 띠 안
@@ -100537,8 +100663,13 @@ MC.addLang('es', {
   const stats = { r: [], h: [] };                              // 프레임 비용(ms) 최근 240개 — 논리 그리기 · A 기기 해상도 그리기
   function pushStat(a, v) { a.push(v); if (a.length > 240) a.shift(); }
 
+  // [land] 가로: 그림은 왼쪽 정사각에 가까운 칸(높이 전체 · 폭 = 높이, 글 칸 132는 남김), 글은 오른쪽 검은 칸 — 승인 시안 '그림 왼쪽 · 글 오른쪽'
+  //   그림 쪽 코드는 L.W를 그림 폭으로 쓰므로 L.W = 그림 칸 폭으로 두면 옛 그리기(논리 · 기기 해상도)가 그대로 왼쪽 칸에 그린다
+  function landPW(g) { return Math.max(120, Math.min(g.H, g.W - 132)); }
+  function landTW(g) { return Math.max(80, g.W - landPW(g) - PAD * 2 - (g.safe.right || 0)); }
   function layout(bt) {
     const g = G(), W = g.W, H = g.H, sb = g.safe.bottom || 0, bandTop0 = H - sb - BAND;
+    if (g.land) { const PW = landPW(g); return { W: PW, H, S: g.S, picH: H, bandTop0: H, extra: 0, capH: 0, bandTop: H, land: true, TX: PW + PAD, TW: landTW(g) }; }
     const capN = MC.fx && MC.fx.sndCaps ? Math.min(2, MC.fx.sndCaps().length) : 0;
     const extra = bt ? Math.max(0, bt.lines.length - 2) * LH : 0;
     const capH = capN ? capN * CAP_LH + 3 : 0;
@@ -100550,7 +100681,7 @@ MC.addLang('es', {
     const mul = sp <= 0 ? 1.4 : sp >= 2 ? 0.6 : 1, tm = ch1.u && ch1.u.typeMul ? ch1.u.typeMul() : 1;
     return TYPE_MS * mul * tm;
   }
-  const wrapT = s => MC.text.wrap(s, TEXT_W, 'body');
+  const wrapT = s => MC.text.wrap(s, G().land ? landTW(G()) : TEXT_W, 'body');   // [land] 오른쪽 글 칸 폭
   const nChars = lines => { let n = 0; for (const l of lines) for (const ch of l) if (ch !== ' ') n++; return n; };
   // 지금 띠에 보일 글 {lines, n(보일 글자 수), done, cur(이 컷 글인가)} | null
   function bandText(P) {
@@ -100656,7 +100787,7 @@ MC.addLang('es', {
     const P = cur, g = G();
     if (!P || P.hiFrame !== g.renderId || !P.hi || !P.L) return;
     const t0 = now(), s = g.sctx, S = g.S, L = P.L, Wd = L.W * S, hD = L.bandTop * S, picHd = L.picH * S, h = P.hi;
-    if (Wd !== g.screen.width) return;                         // 크기 바뀌는 중
+    if (L.land ? !(g.land && L.W === landPW(g)) : Wd !== g.screen.width) return;   // [land] 그림 칸 폭은 화면 폭보다 좁다                         // 크기 바뀌는 중
     if (P.vista) {                                             // [vista] 그림 칸(윗변 vy = k의 배수)만 잘라 그 안을 원점으로 — 칸 격자·열기·닫기 디더가 그림 칸에 붙는다
       s.save();
       s.beginPath(); s.rect(0, L.vy, Wd, L.vh); s.clip(); s.translate(0, L.vy);
@@ -100718,7 +100849,7 @@ MC.addLang('es', {
     const g = G(), L = P.L;
     if (!L || !(ms > 0)) return;
     const S = g.S, Wd = L.W * S, hD = L.picH * S;
-    if (Wd !== g.screen.width) return;
+    if (L.land ? !(g.land && L.W === landPW(g)) : Wd !== g.screen.width) return;   // [land] 그림 칸 폭은 화면 폭보다 좁다
     if (!P.snapC || P.snapC.width !== Wd || P.snapC.height !== hD) P.snapC = g.makeCanvas(Wd, hD);
     const x = P.snapC.getContext('2d');
     x.globalCompositeOperation = 'copy'; x.drawImage(g.screen, 0, 0, Wd, hD, 0, 0, Wd, hD); x.globalCompositeOperation = 'source-over';
@@ -100730,11 +100861,12 @@ MC.addLang('es', {
   // 길게 누르기 진행 원(반지름 4, 논리 px — 위에서 시계 방향)
   const RING = (function () { const r = 4, out = []; for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) { const d = Math.hypot(x, y); if (d > r - 0.6 && d <= r + 0.45) out.push([x, y, (Math.atan2(x, -y) + Math.PI * 2) % (Math.PI * 2)]); } return out.sort((a, b) => a[2] - b[2]); })();
   function renderBand(P, L, lv, bt) {
-    const g = G(), W = L.W, x0 = g.X0 + PAD, y0 = L.bandTop0;
-    g.rect(0, L.bandTop, W, g.H - L.bandTop, '#000');
+    const g = G(), LD = !!L.land, W = L.W, x0 = LD ? L.TX : g.X0 + PAD, y0 = L.bandTop0, TW = LD ? L.TW : TEXT_W;
+    const bx = LD ? L.W : 0, by = LD ? 0 : L.bandTop, bw = LD ? g.W - L.W : W;   // [land] 글 칸 = 그림 오른쪽 세로 띠
+    g.rect(bx, by, bw, g.H - by, '#000');
     if (bt) {
       let left = bt.n;
-      const ty = y0 + TXT_Y - L.extra;
+      const ty = LD ? Math.max(8, ((g.H - bt.lines.length * LH) >> 1) - 6) : y0 + TXT_Y - L.extra;
       for (let i = 0; i < bt.lines.length && left > 0; i++) {
         let x = x0;
         for (const ch of bt.lines[i]) {
@@ -100744,17 +100876,17 @@ MC.addLang('es', {
         }
       }
     }
-    const ry = y0 + ROW_Y, p = P.holdP || 0;
+    const ry = LD ? g.H - (g.safe.bottom || 0) - 16 : y0 + ROW_Y, p = P.holdP || 0;
     for (let i = 0; i < P.cuts.length; i++) g.rect(x0 + i * 6, ry + 3, 4, 4, i === P.ci ? COL.now : i < P.ci ? COL.past : COL.next);
     if (p > 0) {                                               // 진행 원(오른쪽 아래)
-      const cx = x0 + TEXT_W - 4, cy = ry + 5, m = Math.round(p * RING.length);
+      const cx = x0 + TW - 4, cy = ry + 5, m = Math.round(p * RING.length);
       for (let i = 0; i < RING.length; i++) g.rect(cx + RING[i][0], cy + RING[i][1], 1, 1, i < m ? COL.hintOn : COL.next);
     } else if (bt && bt.cur && bt.done && P.phase === 'play' && ((P.clock / 500) | 0) % 2 === 0) {   // ▼ 다 나옴(대화창처럼)
-      const x = x0 + TEXT_W - 7, y = ry + 3;
+      const x = x0 + TW - 7, y = ry + 3;
       g.rect(x, y, 7, 1, COL.text); g.rect(x + 1, y + 1, 5, 1, COL.text); g.rect(x + 2, y + 2, 3, 1, COL.text); g.rect(x + 3, y + 3, 1, 1, COL.text);
     }
-    if (P.canSkip) MC.text.draw(tf('comic.skip'), x0 + TEXT_W - 13, ry, { font: 'small', color: p > 0 ? COL.hintOn : COL.dim, align: 'right' });   // 건너뛰기 안내(작게, 본 편만)
-    if (lv < 16) g.ditherRect(0, L.bandTop, W, g.H - L.bandTop, '#000', 16 - lv);
+    if (P.canSkip) MC.text.draw(tf('comic.skip'), LD ? x0 + TW : x0 + TW - 13, LD ? ry - 14 : ry, { font: 'small', color: p > 0 ? COL.hintOn : COL.dim, align: 'right' });   // 건너뛰기 안내(작게, 본 편만)
+    if (lv < 16) g.ditherRect(bx, by, bw, g.H - by, '#000', 16 - lv);
   }
 
   /* ---------- [vista] 판짜기·카메라·이름표 판 ---------- */
@@ -101772,13 +101904,16 @@ MC.addLang('es', {
     // ---- 배치(매 프레임) ----
     function lay() {
       const W = g.W, H = g.H, top = g.safe.top, bot = g.safe.bottom, X0 = g.X0;
+      // [land] 가로: 그림은 왼쪽 칸(폭 = 그림 폭 180, 글 칸 136은 남김 · 높이 전체 · 넘기지 않음), 명패와 글은 오른쪽 칸(글만 위아래로 넘긴다).
+      //   그림 쪽 함수들은 W를 그림 칸 폭으로 받으므로 W = 그림 칸 폭으로 돌려준다(RX·RW = 오른쪽 글 칸)
+      if (g.land) { const IW = Math.min(IL_W, W - 136); return { W: IW, H, top, bot, X0, ph: H - top, land: true, RX: IW + 8, RW: W - IW - 14 - g.safe.right }; }
       const ph = MC.clamp(Math.round((H - top - bot) * 0.6), 120, IL_H - 4);
       return { W, H, top, bot, X0, ph };
     }
     function textItems(L) {
-      const lw = 152, items = [];
+      const LL = g.land ? lay() : null, lw = LL ? LL.RW - 12 : 152, items = [];   // [land] 오른쪽 글 칸 폭
       const intro = introOf(id);
-      if (intro) items.push({ kind: 'intro', ls: MC.text.wrap(intro, 160, 'body') });
+      if (intro) items.push({ kind: 'intro', ls: MC.text.wrap(intro, LL ? LL.RW - 4 : 160, 'body') });
       if (INTRO) return items;
       for (const l of lines(id)) if (l.k > 0) items.push({ kind: 'bio', k: l.k, ls: MC.text.wrap(l.t, lw, 'body') });
       const e = entry(id), nLock = (e && e.bio || []).filter(b => b && b.t && !MC.game.check(b.cond)).length;
@@ -101864,7 +101999,7 @@ MC.addLang('es', {
     sc.render = () => {
       const L0 = lay(), { W, H, top, bot, X0, ph } = L0, Pl = P();
       g.clear(PAGE_BG);
-      const sy = Math.round(sc.scroll), slotY = -sy, slotH = top + ph;
+      const LD = !!L0.land, tsy = Math.round(sc.scroll), sy = LD ? 0 : tsy, slotY = -sy, slotH = top + ph;   // [land] 그림은 넘기지 않고 글만(tsy)
       const out = sc.closing >= 0 ? MC.ease.inQuad(MC.clamp(sc.closing / 140, 0, 1)) : 0;
       const e0 = (MC.data.ilC || {})[ilKey(id, sc.era)] || {}, sideSgn = e0.side === 'R' ? 1 : -1;
       // 그림 자리: 바탕 + (시기 넘김이면 두 장) + 맨 아래 디더
@@ -101890,19 +102025,19 @@ MC.addLang('es', {
         }
       }
       // 명패·시기 표시·뒤로 단추 자리(그림 위 UI → 촘촘한 패스에서 뺀다)
-      const rise = Math.round(enter * 6), plY = slotY + top + ph - 12 + rise, plX = X0 + 4, plW = 172, plH = 30;
+      const rise = Math.round(enter * 6), plY = LD ? top + 6 + rise : slotY + top + ph - 12 + rise, plX = LD ? L0.RX : X0 + 4, plW = LD ? L0.RW : 172, plH = 30;   // [land] 명패는 오른쪽 칸 위
       const spr = dotSprite(id, sc.era), ss = spr ? g.spriteSize(spr) : { w: 0, h: 0 };
       const sprY = plY + plH - 4 - ss.h;
       holes.push([plX, Math.min(plY, sprY) - 1, plW, plH + Math.max(0, plY - sprY) + 2]);
-      bBack.x = X0 + 2; bBack.y = 2 + top;
+      bBack.x = LD ? 2 + g.safe.left : X0 + 2; bBack.y = 2 + top;
       if (!INTRO) holes.push([bBack.x, bBack.y, bBack.w, bBack.h + 1]);
-      const barH = top + 30, bar = !INTRO && slotY + slotH < barH + 12;   // 그림이 위로 다 넘어가면 뒤로 단추 뒤에 어두운 띠(글이 그 밑으로 지나간다)
+      const barH = top + 30, bar = !LD && !INTRO && slotY + slotH < barH + 12;   // 그림이 위로 다 넘어가면 뒤로 단추 뒤에 어두운 띠(글이 그 밑으로 지나간다)
       if (bar) holes.push([0, 0, W, barH + 4]);
       const L = list(), multi = L.length > 1;
       let pill = null;
       if (multi) {
-        const lab = eraLabel(sc.era), tw = MC.text.width(lab, 'small'), dw = L.length * 5, pw = 6 + 6 + tw + 5 + dw + 6 + 6, pxR = W - 6 - g.safe.right;
-        pill = { x: pxR - pw, y: plY - 17, w: pw, h: 13, lab, tw };
+        const lab = eraLabel(sc.era), tw = MC.text.width(lab, 'small'), dw = L.length * 5, pw = 6 + 6 + tw + 5 + dw + 6 + 6, pxR = LD ? W - 6 : W - 6 - g.safe.right;
+        pill = { x: pxR - pw, y: LD ? H - bot - 17 : plY - 17, w: pw, h: 13, lab, tw };   // [land] 그림 칸 오른쪽 아래
         holes.push([pill.x, pill.y, pill.w, pill.h + 1]);
       }
       if (slotY + slotH > 0) g.ilSlot({ x: 0, y: slotY, w: W, h: slotH, bg: bgCanvas(place || 'port', red, W, slotH, top, ph, e0.side, !!vs), figs, over: fadeCanvas(W), overY: slotH - 12, holes }, sc);
@@ -101930,31 +102065,35 @@ MC.addLang('es', {
         bPrev.render(); bNext.render();
       }
       // 글 칸
-      let yy = plY + plH + 6;
-      if (rl && !roleIn) { MC.text.draw(rl, X0 + 10, yy, { font: 'small', color: Pl.dim }); yy += 14; }
+      // [land] 글 칸 x(TX)·폭(TW)·가운데(TC) — 세로는 옛 자리(X0 + 10 · 164 · X0 + 90). 가로는 글만 넘기고(tsy) 명패 아래로 자른다
+      const TX = LD ? L0.RX + 2 : X0 + 10, TW = LD ? L0.RW - 4 : 164, TC = LD ? L0.RX + (L0.RW >> 1) : X0 + 90;
+      let yy = plY + plH + 6 - (LD ? tsy : 0);
+      if (LD) g.pushClip(L0.RX - 2, plY + plH + 2, L0.RW + 6, H - bot - (plY + plH + 2));
+      if (rl && !roleIn) { MC.text.draw(rl, TX, yy, { font: 'small', color: Pl.dim }); yy += 14; }
       for (const it of textItems()) {
         if (it.kind === 'intro') {
-          it.ls.forEach((l, j) => MC.text.draw(l, X0 + 10, yy + j * 16, { color: Pl.text }));
+          it.ls.forEach((l, j) => MC.text.draw(l, TX, yy + j * 16, { color: Pl.text }));
           yy += it.ls.length * 16 + 3;
-          g.hline(X0 + 8, yy, 164, g.mix(Pl.f, Pl.D, 0.6));
+          g.hline(TX - 2, yy, TW, g.mix(Pl.f, Pl.D, 0.6));
           yy += 7;
         } else if (it.kind === 'bio') {
           const fresh = sc.fresh.has(it.k);
-          if (fresh) { g.rect(X0 + 9, yy + 6, 4, 4, Pl.gold); g.px(X0 + 9, yy + 6, g.mix(Pl.gold, '#ffffff', 0.5)); }
-          else g.rect(X0 + 10, yy + 7, 2, 2, g.mix(Pl.W, Pl.f, 0.55));
-          it.ls.forEach((l, j) => MC.text.draw(l, X0 + 18, yy + j * 16, { color: fresh ? g.mix(Pl.text, Pl.gold, 0.35) : Pl.text }));
+          if (fresh) { g.rect(TX - 1, yy + 6, 4, 4, Pl.gold); g.px(TX - 1, yy + 6, g.mix(Pl.gold, '#ffffff', 0.5)); }
+          else g.rect(TX, yy + 7, 2, 2, g.mix(Pl.W, Pl.f, 0.55));
+          it.ls.forEach((l, j) => MC.text.draw(l, TX + 8, yy + j * 16, { color: fresh ? g.mix(Pl.text, Pl.gold, 0.35) : Pl.text }));
           yy += itemH(it);
         } else {
           yy += 4;
-          MC.text.draw(it.ls[0], X0 + 90, yy, { color: Pl.dim, align: 'center' });   // [r3 A8] 「─ 아직 모른다 ─」 흐린 글을 #9a98a8로(옛 g.mix(Pl.dim, PAGE_BG, 0.25) ≈ #757380 — s0_06 도 L)
+          MC.text.draw(it.ls[0], TC, yy, { color: Pl.dim, align: 'center' });   // [r3 A8] 「─ 아직 모른다 ─」 흐린 글을 #9a98a8로(옛 g.mix(Pl.dim, PAGE_BG, 0.25) ≈ #757380 — s0_06 도 L)
           yy += 18;
         }
       }
-      const total = yy + sy + 10 + bot;
+      if (LD) g.popClip();
+      const total = yy + tsy + 10 + bot;
       sc.maxScroll = Math.max(0, total - H);
       if (sc.scroll > sc.maxScroll) sc.scroll = sc.maxScroll;
       if (sc.maxScroll > 0 && sc.scroll < sc.maxScroll - 2 && (((sc.t / 500) | 0) & 1)) {   // 아래에 더 있다
-        const ax = X0 + 90, ay = H - bot - 7;
+        const ax = TC, ay = H - bot - 7;
         for (let i = 0; i < 3; i++) g.rect(ax - 2 + i, ay + i, 5 - i * 2, 1, Pl.gold);
       }
       // 뒤로 단추(그림 위)
@@ -102241,7 +102380,7 @@ MC.addLang('es', {
   }
   // [r5 UW-7] 그림 칸을 논리판에 찍는다(가: 그림 아래 fade칸 · 나: 자르는 줄 위 fade칸은 Bayer로 코드 바탕에 녹임). mask = 그림 칸(기기 해상도로 바꿀 자리)
   function ttPaint(e, T, A) {
-    const g = G(), W = g.W, H = g.H, F = TT_GEO.fade, x = e.c.getContext('2d'), B = U.BAYER;
+    const g = G(), W = g.W, H = g.H, F = TT_GEO.fade, x = e.c.getContext('2d'), B = U.BAYER, SIDE = g.land && W > A.w ? 14 : 0;
     const y0 = Math.max(0, T.ty), y1 = Math.min(H, T.cut);
     if (y1 <= y0) return;
     const id = x.getImageData(0, y0, W, y1 - y0), d = id.data, mask = new Uint8Array(W * H);
@@ -102249,6 +102388,7 @@ MC.addLang('es', {
       const sx = xx - T.ix, sy = y - T.ty;
       if (sx < 0 || sx >= A.w || sy < 0 || sy >= A.h) continue;
       if (y >= T.cut - F && (T.cut - y) / F * 16 <= B[(y & 3) * 4 + (xx & 3)]) continue;
+      if (SIDE && Math.min(sx, A.w - 1 - sx) < SIDE && Math.min(sx, A.w - 1 - sx) / SIDE * 16 <= B[(y & 3) * 4 + (xx & 3)]) continue;   // [land] 그림 양옆 끝을 성기게 녹임
       const v = A.px[sy * A.w + sx], q = ((y - y0) * W + xx) * 4;
       d[q] = v >> 16; d[q + 1] = (v >> 8) & 255; d[q + 2] = v & 255; d[q + 3] = 255; mask[y * W + xx] = 1;
     }
@@ -102292,6 +102432,10 @@ MC.addLang('es', {
       if (T && !b) {                            // [r5 UW-7] 가: 그림 아랫변(바다)의 색에서 코드 바다로 — 그림이 fade칸에서 이 위로 녹는다
         const c0 = rowAvg(A, TT_GEO.h - 6, TT_GEO.h);
         g.gradV(0, T.bot - TT_GEO.fade, W, H - T.bot + TT_GEO.fade, [c0, g.mix(c0, '#03060c', 0.4), g.mix(c0, '#03060c', 0.7), '#03060c']);
+        if (g.land && W > TT_GEO.w) {           // [land] 그림 양옆(수평선 아래)도 바다 — 그림의 수평선 바로 아래 색에서 어둡게(흰 빈칸 방지)
+          const s0 = rowAvg(A, TT_GEO.hz + 2, TT_GEO.hz + 8), s1 = rowAvg(A, Math.min(TT_GEO.h - 8, TT_GEO.hz + 40), Math.min(TT_GEO.h - 2, TT_GEO.hz + 46));
+          g.gradV(0, L.hz, W, H - L.hz, [g.mix(s0, '#03060c', 0.35), g.mix(s1, '#03060c', 0.5), '#03060c']);
+        }
         ttPaint(e, T, A);
         return;                                 // 가: 코드 등대 탑 · 성 · 물그림자 없음(그림 속)
       }
@@ -103054,7 +103198,14 @@ MC.addLang('es', {
       const mt = MC.ui.minTouch(), bh = Math.max(28, mt + 6), W = g.W, cx = W >> 1;
       let y = g.H - 30 - g.safe.bottom;
       bSet.w = 112; bSet.h = bh - 2; y -= bSet.h; bSet.x = cx - (bSet.w >> 1); bSet.y = y; y -= 8;
-      if (sc.info) {
+      if (g.land) {                             // [land] 가로: 단추를 맨 아래 한 줄로(이어하기 · 처음부터 · 설정), 요약 한 줄은 그 위
+        const row = sc.info ? [bCont, bNew, bSet] : [bNew, bSet], h2 = Math.max(26, mt + 4), gap = 8;
+        row.forEach(b => { b.w = MC.clamp(MC.text.width(String(b.label), 'body') + 28, 72, 128); b.h = h2; });
+        const tot = row.reduce((s, b) => s + b.w, 0) + gap * (row.length - 1), ry = g.H - 6 - g.safe.bottom - h2;
+        let rx = (W - tot) >> 1;
+        row.forEach(b => { b.x = rx; b.y = ry; rx += b.w + gap; });
+        sc.two = false;
+      } else if (sc.info) {
         bNew.w = 112; bNew.h = bh; y -= bNew.h; bNew.x = cx - (bNew.w >> 1); bNew.y = y;
         // [r3 B3] 둘째 줄 자리. 둘째 줄을 넣어도 이어하기 단추 위 어두운 띠(render: 단추 22px 위부터, 수평선 아래일 때만 깐다)가 깔릴 때만 넣는다 —
         //   낮은 화면(논리 높이 약 375 미만: 360×740·375×667·360×640 폰)에서는 빼서 단추가 수평선·성 섬 밑동에 닿지 않고 바다 띠도 예전 그대로
@@ -103164,7 +103315,7 @@ MC.addLang('es', {
     // 「＿＿＿＿ · 끝」 줄의 누름 칸: 이어하기 단추 아래 ~ 처음부터 단추 위(사이 25px 전부), 폭은 글자 + 양옆 20px(최소 120)
     function inInfo(ev) {
       if (ev.x == null || ev.y == null) return false;
-      const w = Math.max(120, MC.text.width(sc.info, 'small') + 40), x0 = (g.W - w) >> 1, y0 = bCont.y + bCont.h + 1, y1 = bNew.y - 1;
+      const w = Math.max(120, MC.text.width(sc.info, 'small') + 40), x0 = (g.W - w) >> 1, y0 = g.land ? bCont.y - 20 : bCont.y + bCont.h + 1, y1 = g.land ? bCont.y - 1 : bNew.y - 1;   // [land] 요약 줄은 단추 줄 위
       return ev.x >= x0 && ev.x < x0 + w && ev.y >= y0 && ev.y < y1;
     }
     async function doRecord() {
@@ -103183,7 +103334,7 @@ MC.addLang('es', {
       drawWorld(t, L, { isle: sc.cleared });                                // [s44-director] 바다·성 한 장(B5-3 컷과 같은 함수) · C1③ 클리어 뒤 바위섬
       // 글자가 물결에 묻히지 않게 아래쪽 바다를 디더 계단으로 어둡게(1단계 안내 → 2단계 버튼 영역)
       {
-        const y0 = sc.stage >= 1 ? (sc.info ? bCont.y : bNew.y) - 22 : H - 104 - g.safe.bottom;
+        const y0 = sc.stage >= 1 ? (sc.info ? bCont.y - (g.land ? 18 : 0) : bNew.y) - 22 : H - (g.land ? 52 : 104) - g.safe.bottom;   // [land] 아래 띠만
         const k = sc.stage >= 1 ? 0.6 + 0.4 * MC.clamp((t - sc.st1) / 300, 0, 1) : U.lvl(t, 1000, 500) / 16;
         if (y0 > L.hz) {
           for (let i = 0; i < 5; i++) g.ditherRect(0, y0 + i * 5, W, 5, '#03050b', Math.round((2 + i * 2) * k));
@@ -103198,7 +103349,7 @@ MC.addLang('es', {
       // 1단계 안내
       if (sc.stage === 0 && t > 1100) {
         const k = ((t - 1100) / 533 | 0) % 4, colr = ['#6a7088', '#9aa8c8', '#e8ecf4', '#9aa8c8'][k];
-        const lv = U.lvl(t, 1100, 400), py = H - 90 - g.safe.bottom;
+        const lv = U.lvl(t, 1100, 400), py = H - (g.land ? 38 : 90) - g.safe.bottom;   // [land] 가로는 바다 위(로고 장식 줄과 겹치지 않게)
         const a = MC.text.bake(tf('title.tapToStart'), 'body', colr, { shadow: '#03050b' });
         U.drawDither(a, (W - a.width) >> 1, py, lv);
         // [l45-guide B8-5] 「(소리가 켜집니다)」 줄은 뺐다 — 소리 안내는 맨 아래 한 줄로(같은 말이 두 번 보이던 것, 플16)
@@ -103211,16 +103362,17 @@ MC.addLang('es', {
         for (const b of [bCont, bNew, bSet]) { if (b === bCont && !sc.info) continue; b.y += dy; }
         for (const b of buttons()) if (b !== bMute) b.render();
         if (sc.info) {
+          const iy0 = g.land ? bCont.y - 19 : bCont.y + bCont.h + 1;   // [land] 요약 줄은 단추 줄 위
           // [s44-director C2③] 아직 안 열어 본 기록이면 은빛 → 금빛으로 천천히 반짝(글 없음 — 누를 수 있다는 표시만)
           const k = sc.recNew ? 0.5 - 0.5 * Math.cos((t - sc.st1) / 1400 * Math.PI * 2) : 0;
           const col = k > 0.8 ? '#e8d49a' : k > 0.45 ? '#b8b090' : '#9aa8c8';   // [r3 A8] 바탕 은빛 옛 #8a98b8
           if (MC.uw2 && MC.uw2('U5') && g.plate) {                             // [r5 U5] 요약 한두 줄 밑에 명판(g.plate — frame 묶음, 타이틀 단추와 같은 act5 창 색). 글 자리·누름 칸은 그대로. 되돌리기: ?uw2off=U5 또는 이 블록 삭제
             const two = !!(sc.two && sc.info2), tw = Math.max(MC.text.width(sc.info, 'small'), two ? MC.text.width(sc.info2, 'small') : 0);
             const pw = Math.min(W - 2, tw + 20) & ~1, ph = two ? 17 + INFO2_H : 17;
-            U.drawDither(plateCanvas(pw, ph, pal), (W - pw) >> 1, bCont.y + bCont.h + 1, p * 16);
+            U.drawDither(plateCanvas(pw, ph, pal), (W - pw) >> 1, iy0, p * 16);
           }
           const im = MC.text.bake(sc.info, 'small', col, { shadow: '#03050b' });
-          if (im) U.drawDither(im, (W - im.width) >> 1, bCont.y + bCont.h + 3, p * 16);
+          if (im) U.drawDither(im, (W - im.width) >> 1, iy0 + 2, p * 16);
           // [r3 B3] 둘째 줄 — 흐린 보조 글(A8 기준색 #9aa4c0, 반짝이지 않음). 자리가 없는 낮은 화면이면 lay()가 sc.two를 끈다
           const im2 = sc.two && sc.info2 ? MC.text.bake(sc.info2, 'small', '#9aa4c0', { shadow: '#03050b' }) : null;
           if (im2) U.drawDither(im2, (W - im2.width) >> 1, bCont.y + bCont.h + 3 + INFO2_H, p * 16);
@@ -103235,7 +103387,7 @@ MC.addLang('es', {
       }
       // [l45-guide B8-5] 소리 안내 한 줄(옛 「무음 모드에서는 소리가 나지 않아요」 + 「(소리가 켜집니다)」를 하나로 — 플16·모4·소17)
       const n = MC.text.bake(tf('title.soundLine'), 'small', '#9aa4c0', { shadow: '#03050b' });   // [r3 A8] 흐린 안내 옛 #7a84a0
-      if (n) U.drawDither(n, (W - n.width) >> 1, H - 14 - g.safe.bottom, U.lvl(t, 900, 500));
+      if (n && !(g.land && sc.stage >= 1)) U.drawDither(n, (W - n.width) >> 1, H - 14 - g.safe.bottom, U.lvl(t, 900, 500));   // [land] 단추 줄 자리라 2단계에선 뺀다
       if (t < 300) g.ditherFill('#000', 16 - t / 300 * 16);
     };
     return sc;
@@ -103446,9 +103598,10 @@ MC.addLang('es', {
     }
     widgets() { const out = this.tabs.slice(); for (const e of this.rb) { if (e.tog) out.push(e.tog); else out.push(e.dec, e.inc); } return out; }
     // 두 탭 중 긴 쪽 기준으로 알맞은 높이(탭을 바꿔도 창 크기가 변하지 않게)
-    neededH() {
+    neededH(cols) {                              // [land] cols 2 = 가로 화면 두 칸(줄 수 절반)
       const mt = MC.ui.minTouch(), tabH = Math.max(22, mt), rowH = Math.max(mt + 8, 30);
       let n = 0; for (const tb of SET_TABS) n = Math.max(n, tb.rows.filter(r => !r.show || r.show()).length);
+      if (cols === 2) n = Math.ceil(n / 2);
       return tabH + 14 + n * rowH + 18;
     }
     change(r, d) {
@@ -103484,15 +103637,18 @@ MC.addLang('es', {
       this.tabH = tabH;
       const n = this.rb.length;
       // [scenes-s4b2] 진행 탭 8줄(S4 설정 2줄 더함)이 180×320 창(높이 제한)에 들어가게: 자리가 모자랄 때만 줄 높이를 20까지 줄인다(넉넉하면 예전 그대로)
-      const avail = Math.floor((h - tabH - 14 - 18) / Math.max(1, n));
+      // [land] 가로 화면에서 폭이 넉넉하면(280 이상) 줄을 두 칸으로 나눈다(왼쪽 칸 먼저 채움)
+      const two = !!G().land && w >= 280, per = two ? Math.ceil(n / 2) : n, cw = two ? ((w - 8) >> 1) : w;
+      this.per = per;
+      const avail = Math.floor((h - tabH - 14 - 18) / Math.max(1, per));
       this.rowH = MC.clamp(avail, Math.min(mt + 4, Math.max(20, avail)), Math.max(mt + 8, 30));
       const bh = Math.max(20, Math.min(this.rowH - 6, mt));
       this.rb.forEach((e, i) => {
-        const ry = y + tabH + 10 + i * this.rowH, by = ry + ((this.rowH - bh) >> 1);
-        e.y = ry;
-        if (e.r.type === 'lang' || e.r.type === 'link') { e.tog.x = x + 4; e.tog.y = by; e.tog.w = w - 8; e.tog.h = bh; }   // 행 전체가 단추
-        else if (e.tog) { e.tog.x = x + w - 92; e.tog.y = by; e.tog.w = 88; e.tog.h = bh; }
-        else { e.dec.x = x + w - 92; e.dec.y = by; e.dec.w = 22; e.dec.h = bh; e.inc.x = x + w - 26; e.inc.y = by; e.inc.w = 22; e.inc.h = bh; }
+        const k = i % per, cx = x + Math.floor(i / per) * (cw + 8), ry = y + tabH + 10 + k * this.rowH, by = ry + ((this.rowH - bh) >> 1);
+        e.y = ry; e.k = k; e.cx = cx; e.cw = cw;
+        if (e.r.type === 'lang' || e.r.type === 'link') { e.tog.x = cx + 4; e.tog.y = by; e.tog.w = cw - 8; e.tog.h = bh; }   // 행 전체가 단추
+        else if (e.tog) { e.tog.x = cx + cw - 92; e.tog.y = by; e.tog.w = 88; e.tog.h = bh; }
+        else { e.dec.x = cx + cw - 92; e.dec.y = by; e.dec.w = 22; e.dec.h = bh; e.inc.x = cx + cw - 26; e.inc.y = by; e.inc.w = 22; e.inc.h = bh; }
       });
     }
     update() { for (const b of this.widgets()) b.update(); }
@@ -103501,8 +103657,8 @@ MC.addLang('es', {
       const g = G(), P = this.pal ? g.pal(this.pal) : g.uiPal, s = MC.save.settings, x = this.x, w = this.w;
       for (const b of this.tabs) b.render();
       this.rb.forEach((e, i) => {
-        const r = e.r, ry = e.y, cy = ry + ((this.rowH - 16) >> 1) + 1;
-        if (i > 0) g.hline(x + 6, ry, w - 12, g.mix(P.f, P.D, 0.6));
+        const r = e.r, ry = e.y, cy = ry + ((this.rowH - 16) >> 1) + 1, x = e.cx != null ? e.cx : this.x, w = e.cw || this.w;   // [land] 칸마다 x·폭
+        if ((e.k != null ? e.k : i) > 0) g.hline(x + 6, ry, w - 12, g.mix(P.f, P.D, 0.6));
         if (r.type === 'lang') {                  // (지구본) 언어 ········ 한국어 ▶
           e.tog.render();
           ch1.drawGlobe(x + 8, cy + 3, P.text);
@@ -103543,7 +103699,7 @@ MC.addLang('es', {
         }
         if (e.dec) { tri(e.dec.x + 8, e.dec.y + (e.dec.h >> 1) - 3 + (e.dec.pressed ? 1 : 0), -1, e.dec.enabled ? P.text : P.dim); tri(e.inc.x + 9, e.inc.y + (e.inc.h >> 1) - 3 + (e.inc.pressed ? 1 : 0), 1, e.inc.enabled ? P.text : P.dim); }
       });
-      const rowsEnd = this.y + this.tabH + 10 + this.rb.length * this.rowH, hintY = rowsEnd + 6, verY = this.y + this.h - 11;
+      const rowsEnd = this.y + this.tabH + 10 + (this.per || this.rb.length) * this.rowH, hintY = rowsEnd + 6, verY = this.y + this.h - 11;
       if (this.tab === 0) MC.text.draw(tf('set.silentHint'), x + (w >> 1), hintY, { font: 'small', color: P.dim, align: 'center' });
       // [a42-ui 0.4.2 A7] 버전 글씨: 타이틀 왼쪽 위에서 설정 창 맨 아래 오른쪽으로(스토어 첫 화면에 개발 흔적이 남지 않게). 숫자라 번역 키 없음
       //   줄·무음 안내와 겹칠 만큼 창이 낮으면(180×320 소리 탭, 디버그의 언어 줄) 그 탭에서는 그리지 않는다(다른 탭에서 보인다)
@@ -103623,12 +103779,16 @@ MC.addLang('es', {
     }
     function close() { if (sc.closing < 0) { sc.closing = 0; } }
     function lay() {
-      const mt = MC.ui.minTouch(), rh = Math.max(26, mt + 4), bh = Math.max(26, mt + 2);
-      const h = 26 + rows.length * rh + 8 + bh + 10;
-      const x = g.X0 + ((180 - W) >> 1), y = Math.max(16 + g.safe.top, ((g.H - h) >> 1) - 10);
-      rows.forEach((r, i) => { r.b.x = x + 6; r.b.y = y + 24 + i * rh; r.b.w = W - 12; r.b.h = rh; });
-      bClose.w = 96; bClose.h = bh; bClose.x = x + ((W - 96) >> 1); bClose.y = y + h - bh - 8;
-      sc.box = [x, y, W, h];
+      const mt = MC.ui.minTouch(), bh = Math.max(26, mt + 2), avail = g.H - 8 - g.safe.top - g.safe.bottom;
+      let rh = Math.max(26, mt + 4);
+      // [land] 가로 화면에서 한 줄로 안 들어가면 두 칸(왼쪽 먼저), 그래도 넘치면 줄 높이를 손가락 크기까지 줄인다
+      const two = !!g.land && 26 + rows.length * rh + 8 + bh + 10 > avail, per = two ? Math.ceil(rows.length / 2) : rows.length, CW = two ? Math.min(W, (g.W - 16 - g.safe.left - g.safe.right - 4) >> 1) : W, BW = two ? CW * 2 + 4 : W;
+      if (two) rh = Math.max(Math.max(20, mt), Math.min(rh, Math.floor((avail - 26 - 8 - bh - 10) / per)));
+      const h = 26 + per * rh + 8 + bh + 10;
+      const x = two ? (g.W - BW) >> 1 : g.X0 + ((180 - W) >> 1), y = Math.max((two ? 4 : 16) + g.safe.top, ((g.H - h) >> 1) - (two ? 0 : 10));
+      rows.forEach((r, i) => { const c = Math.floor(i / per), k = i % per; r.k = k; r.b.x = x + 6 + c * (CW + 4); r.b.y = y + 24 + k * rh; r.b.w = CW - 12; r.b.h = rh; });
+      bClose.w = 96; bClose.h = bh; bClose.x = x + ((BW - 96) >> 1); bClose.y = y + h - bh - 8;
+      sc.box = [x, y, BW, h];
     }
     const widgets = () => rows.map(r => r.b).concat([bClose]);
     sc.update = dt => {
@@ -103658,12 +103818,12 @@ MC.addLang('es', {
       rows.forEach((r, i) => {
         const b = r.b, on = r.l.code === MC.i18n.lang, dy = b.pressed ? 1 : 0, ty = b.y + ((b.h - 16) >> 1) + 1 + dy;
         b.render();
-        if (i > 0) g.hline(x + 8, b.y, w - 16, g.mix(P.f, P.D, 0.6));
+        if (r.k > 0) g.hline(b.x + 2, b.y, b.w - 4, g.mix(P.f, P.D, 0.6));   // [land] 칸마다(옛: x + 8, w - 16 — 한 칸일 땐 같은 자리)
         const pk = MC.i18n.packs && MC.i18n.packs[r.l.code], face = MC.text.faceOf ? MC.text.faceOf(pk && pk.meta) : 'body';   // 언어 이름은 그 언어의 글꼴로
-        MC.text.draw(r.l.native, x + 14, ty, { font: face, color: on ? P.gold : P.text });
-        if (r.l.status && r.l.status !== 'release') MC.text.draw(r.l.status, x + w - 26, ty + 2, { font: 'small', color: P.dim, align: 'right' });   // (debug) 파일럿 등
+        MC.text.draw(r.l.native, b.x + 8, ty, { font: face, color: on ? P.gold : P.text });
+        if (r.l.status && r.l.status !== 'release') MC.text.draw(r.l.status, b.x + b.w - 20, ty + 2, { font: 'small', color: P.dim, align: 'right' });   // (debug) 파일럿 등
         if (on) {                                   // ✓(코드 그림)
-          const cx = x + w - 20, cy = b.y + (b.h >> 1) - 1 + dy;
+          const cx = b.x + b.w - 14, cy = b.y + (b.h >> 1) - 1 + dy;
           for (let k = 0; k < 3; k++) g.rect(cx + k, cy + k, 1, 2, P.gold);
           for (let k = 0; k < 5; k++) g.rect(cx + 3 + k, cy + 1 - k, 1, 2, P.gold);
         }
@@ -103866,7 +104026,7 @@ MC.addLang('es', {
         { label: tf('menu.skills'), iconCanvas: ic('ic_menu_skills'), onTap: () => go('skills') },
         { label: tf('menu.status'), right: hasFaria() ? tf('menu.twoPeople') : '', iconCanvas: ic('ic_menu_status'), onTap: () => go('status') },
         { label: tf('menu.settings'), iconCanvas: ic('ic_menu_settings'), onTap: () => go('settings') },
-        { label: tf('menu.save'), right: canSave() ? '' : tf('menu.saveOnlyCell'), enabled: canSave(), iconCanvas: ic('ic_menu_save'), onTap: () => doSave(), onDisabled: () => MC.ui.toast(tf('menu.saveOnlyCellToast'), 1800) },
+        { label: tf('menu.save'), right: canSave() || g.land ? '' : tf('menu.saveOnlyCell'), enabled: canSave(), iconCanvas: ic('ic_menu_save'), onTap: () => doSave(), onDisabled: () => MC.ui.toast(tf('menu.saveOnlyCellToast'), 1800) },
         { label: tf('menu.toTitle'), iconCanvas: ic('ic_menu_title'), onTap: () => doTitle() }
       ]);
     }
@@ -103928,7 +104088,13 @@ MC.addLang('es', {
       if (ch1.gotoTitle) ch1.gotoTitle();
     }
 
-    function content() { const top = 30 + g.safe.top, bottom = g.H - 8 - g.safe.bottom; return [g.X0 + 2, top, 176, bottom - top]; }
+    // [land] 가로 화면: 첫 화면은 머리띠 없이 왼쪽 목록 · 오른쪽 두 사람 카드 + 위치 칸, 다른 쪽은 머리띠(◀ 제목 ×) 아래 화면 폭 전체
+    function content() {
+      if (g.land) { const l = 4 + g.safe.left, top = (sc.page === 'main' ? 4 : 30) + g.safe.top, bottom = g.H - 4 - g.safe.bottom; return [l, top, g.W - 4 - g.safe.right - l, bottom - top]; }
+      const top = 30 + g.safe.top, bottom = g.H - 8 - g.safe.bottom; return [g.X0 + 2, top, 176, bottom - top];
+    }
+    function landLW(w) { return Math.min(150, Math.max(120, Math.round(w * 0.4))); }   // [land] 첫 화면 왼쪽 목록 폭
+    function landSW(w) { return Math.min(180, Math.max(150, (w >> 1) + 10)); }        // [land] 상태 쪽 왼쪽(초상 칸) 폭
     function tabH() { return Math.max(22, MC.ui.minTouch()); }
     function lay() {
       const mt = MC.ui.minTouch();
@@ -103956,11 +104122,21 @@ MC.addLang('es', {
       const listH = h - DESC_H - 6;
       items.x = x; items.y = y; items.w = w; items.rowH = Math.max(26, mt + 2); items.rows = Math.max(2, Math.floor((listH - 8) / items.rowH) - (items.items.length > Math.floor((listH - 8) / items.rowH) ? 1 : 0));
       bUse.w = 76; bUse.h = Math.max(24, mt); bUse.x = x + w - bUse.w - 6; bUse.y = y + h - bUse.h - 6;
-      sc.setH = Math.min(h, settings.neededH() + 8);
+      sc.setH = Math.min(h, settings.neededH(g.land ? 2 : 1) + 8);
       settings.layout(x + 4, y + 4, w - 8, sc.setH - 8);
       const th = tabH(), tw = (w - 4) >> 1;
       tabs.forEach((b, i) => { b.x = x + i * (tw + 4); b.y = y; b.w = tw; b.h = th; b.style = ((i === 0) === (sc.who === 'dantes')) ? 'primary' : 'normal'; });
       tabs[0].label = dispName();
+      if (g.land) {                                   // [land] 가로 배치 덮어쓰기
+        bBack.x = 4 + g.safe.left;
+        if (sc.page === 'main') { bClose.x = x + w - 28; bClose.y = y + 3; }        // × 는 위 카드 오른쪽 모서리 안에
+        const lw = landLW(w);
+        cmd.x = x; cmd.y = y; cmd.w = lw; cmd.rows = Math.max(1, cmd.items.length);
+        cmd.rowH = Math.max(14, Math.min(Math.max(28, mt + 4), Math.floor((h - 8) / cmd.rows)));
+        const iw = Math.min(160, Math.max(130, (w >> 1) - 2)), fit = Math.max(2, Math.floor((h - 8) / items.rowH));
+        items.w = iw; items.rows = Math.max(2, fit - (items.items.length > fit ? 1 : 0));
+        if (sc.page === 'status') { const sw = landSW(w), tw2 = (sw - 4) >> 1; tabs.forEach((b, i) => { b.x = x + i * (tw2 + 4); b.w = tw2; }); }
+      }
     }
     function showTabs() { return (sc.page === 'status' || sc.page === 'skills') && hasFaria(); }
     function widgets() {
@@ -104050,7 +104226,59 @@ MC.addLang('es', {
       if (!gl) return '';
       return MC.text.width(gl, 'small') <= bClose.x - 6 - (g.X0 + 2 + 9) ? gl : '';
     }
+    // [land] 사람 카드: 48 초상(대화창과 같은 자리) + 이름·Lv + HP(·MP) 막대. rpad = 오른쪽 위 × 자리
+    function landCard(x, y, w, h, m, who, name, color, rpad) {
+      const P = g.uiPal, mx = maxOf(m), cols = [g.mix(P.f, P.D, 0.6), g.mix(P.f, P.D, 0.3), P.f];
+      g.frame(x, y, w, h);
+      const px = x + 4, py = y + ((h - 52) >> 1), pt = U.portrait(who);
+      g.frame(px, py, 52, 52, { small: true });
+      if (!(pt && g.ptcSlot && g.ptcSlot(pt, px + 2, py + 2, cols, sc))) { g.gradV(px + 2, py + 2, 48, 48, cols); if (pt) g.sprite(pt, px + 10, py + 18); else U.silhouette(px + 10, py + 18, 1, color); }
+      const tx = px + 58, R = x + w - 8;
+      MC.text.draw(name, tx, y + 7, { color });
+      MC.text.draw(tf('fmt.lv', { n: m.lv || 1 }), R - (rpad | 0), y + 7, { color: P.gold, align: 'right' });
+      const row = (lab, v, max, col, yy, red) => {
+        MC.text.draw(lab, tx, yy, { font: 'small', color: P.dim });
+        bar(tx + 18, yy + 4, Math.max(16, R - 46 - (tx + 18)), v, max, col);
+        MC.text.draw(v + '/' + max, R, yy, { font: 'small', color: red ? P.red : P.text, align: 'right' });
+      };
+      row(tf('stat.hp'), m.hp, mx.hp, hpCol(m, mx), y + 27, m.hp <= mx.hp * 0.3);
+      if (who === 'dantes') row(tf('stat.mp'), m.mp, mx.mp, '#5aa9e6', y + 41);
+      else if (m.auto) MC.text.draw(tf('menu.auto'), tx, y + 41, { font: 'small', color: g.mix(P.dim, P.gold, 0.35) });
+    }
+    function renderMainLand(x, y, w, h) {
+      const P = g.uiPal, lw = landLW(w), rx = x + lw + 4, rw = x + w - rx, CH = 60;
+      cmd.render();
+      const fa = faria();
+      landCard(rx, y, rw, CH, MC.game.lead() || { lv: 1, hp: 0, mp: 0 }, 'dantes', dispName(), '#f0c860', 28);
+      let ny = y + CH + 4;
+      if (fa) { landCard(rx, ny, rw, CH, fa, 'faria', fariaName(), '#e8d49a', 0); ny += CH + 4; }
+      else if (fariaGone()) {                        // [scenes-s4] 회색 빈 카드(이름·수치 없음)
+        g.frame(rx, ny, rw, CH, { small: true });
+        const px = rx + 4, py = ny + ((CH - 52) >> 1);
+        g.frame(px, py, 52, 52, { small: true }); g.ditherRect(px + 2, py + 2, 48, 48, '#05040a', 10);
+        g.ditherRect(px + 58, ny + (CH >> 1), rw - 58 - 12, 1, '#3a3a44', 8);
+        ny += CH + 4;
+      }
+      const bh = y + h - ny;
+      if (bh < 30) return;
+      g.frame(rx, ny, rw, bh, { small: true });
+      MC.text.draw(mapName() || '　', rx + 8, ny + 5, { font: 'small', color: P.text });
+      if (!MC.game.flag('a3.year_gone') && !MC.game.flag('s4.on')) MC.text.draw(tf('fmt.year', { y: (MC.state && MC.state.year) || 1815 }), rx + rw - 8, ny + 5, { font: 'small', color: P.gold, align: 'right' });
+      let ly = ny + 20;
+      const r = ch1.recap && ch1.recap.pick ? ch1.recap.pick(MC.state) : null, gl = r && r.g;
+      if (gl) {                                      // 할 일(첫 화면 머리띠 대신 여기에, 넘치면 두 줄)
+        const ls = MC.text.wrap(gl, rw - 26, 'small').slice(0, Math.max(1, Math.floor((ny + bh - 4 - ly) / 13)));
+        for (let i = 0; i < 3; i++) g.rect(rx + 8 + i, ly + 4 + i, 1, 5 - i * 2, '#e8d49a');
+        ls.forEach((l, i) => MC.text.draw(l, rx + 15, ly + i * 13, { font: 'small', color: '#e8d49a' }));
+        ly += ls.length * 13;
+      }
+      if (ly + 13 <= ny + bh - 3) {
+        const pm = Math.floor(((MC.state && MC.state.playMs) || 0) / 60000);
+        MC.text.draw(tf('fmt.play', { h: Math.floor(pm / 60), m: String(pm % 60).padStart(2, '0') }), rx + 8, ly, { font: 'small', color: P.dim });
+      }
+    }
     function renderMain(x, y, w, h) {
+      if (g.land) { renderMainLand(x, y, w, h); return; }
       { // [c43-ui B8-4] 첫 줄: 할 일(이어하기 띠와 같은 표 — ch1.recap). 안내를 일부러 비운 자리면 그리지 않는다(그땐 「메뉴」 제목)
         const gl = mainGoal();
         if (gl) {
@@ -104072,7 +104300,29 @@ MC.addLang('es', {
         MC.text.draw(tf('fmt.play', { h: Math.floor(pm / 60), m: String(pm % 60).padStart(2, '0') }), x + 8, fy + 19, { font: 'small', color: P.dim });
       }
     }
+    function renderItemsLand(x, y, w, h) {           // [land] 왼쪽 목록 · 오른쪽 설명(높이 전체)
+      const P = g.uiPal, iw = items.w, dx = x + iw + 4, dw = x + w - dx;
+      if (!items.items.length) { g.frame(x, y, iw, 48); MC.text.draw(tf('menu.noItems'), x + (iw >> 1), y + 16, { align: 'center', color: P.dim }); }
+      else items.render();
+      g.frame(dx, y, dw, h);
+      if (!sc.sel) { MC.text.wrap(tf('menu.pickHint'), dw - 16, 'small').forEach((l, i) => MC.text.draw(l, dx + (dw >> 1), y + (h >> 1) - 6 + i * 13, { font: 'small', color: P.dim, align: 'center' })); return; }
+      const d = itemDef(sc.sel), use = usableInField(sc.sel);
+      const full = tr(d.full, 'item'), tl = full && MC.text.width(full, 'body') <= dw - 16 ? full : (d.short ? tr(d.name, 'item') + '·' + tr(d.short, 'item') : tr(d.name, 'item'));
+      const tls = MC.text.wrap(tl, dw - 16, 'body').slice(0, 2);
+      tls.forEach((l, i) => MC.text.draw(l, dx + 8, y + 6 + i * 16, { color: P.gold }));
+      let ty = y + 6 + tls.length * 16 + 2;
+      const tag = KIND_TAG[d.kind] ? tf(KIND_TAG[d.kind]) : '';
+      if (tag) { MC.text.draw(tag, dx + 8, ty, { font: 'small', color: P.dim }); ty += 13; }
+      g.hline(dx + 8, ty + 3, dw - 16, g.mix(P.f, P.D, 0.6)); ty += 8;
+      const extra = d.kind === 'equip' ? bonusText(d) : '';
+      const bottom = y + h - (use ? bUse.h + 10 : 6) - (extra ? 15 : 0);
+      const ls = MC.text.wrap(descOf(d), dw - 16, 'small').slice(0, Math.max(1, Math.floor((bottom - ty) / 13)));
+      ls.forEach((l, i) => MC.text.draw(l, dx + 8, ty + i * 13, { font: 'small', color: P.text }));
+      if (extra) MC.text.draw(extra, dx + 8, ty + ls.length * 13 + 2, { font: 'small', color: g.mix(P.gold, P.text, 0.4) });
+      if (use) bUse.render();
+    }
     function renderItems(x, y, w, h) {
+      if (g.land) { renderItemsLand(x, y, w, h); return; }
       const P = g.uiPal;
       if (!items.items.length) {
         g.frame(x, y, w, 48);
@@ -104290,7 +104540,48 @@ MC.addLang('es', {
         MC.text.draw(String(s[1]), cx + 76, cy, { font: 'small', color: P.text, align: 'right' });
       });
     }
+    // [land] 상태: 왼쪽 = (두 사람 칸) + 초상 칸, 오른쪽 = 능력치 한 줄씩 + 장비(두 줄씩) 또는 맡기기
+    function renderStatusLand(x, y, w, h) {
+      const P = g.uiPal, sw = landSW(w), rx = x + sw + 4, rw = x + w - rx;
+      let yy = y;
+      if (showTabs()) { tabs[0].render(); tabs[1].render(); yy += tabH() + 4; }
+      const fa = faria(), isF = sc.who === 'faria' && fa, m = isF ? fa : (MC.game.lead() || { id: 'dantes', lv: 1, hp: 0, mp: 0, exp: 0, skills: [] });
+      const mx = topBlock(x, yy, sw, m, isF ? 'faria' : 'dantes', isF ? fariaName() : dispName(), isF ? '#e8d49a' : '#f0c860');
+      const S = [[tf('stat.str'), mx.str], [tf('stat.def'), mx.def], [tf('stat.spd'), mx.spd], [tf('stat.wis'), mx.wis]], shh = 10 + S.length * 14;
+      g.frame(rx, y, rw, shh, { small: true });
+      S.forEach((s, i) => { MC.text.draw(s[0], rx + 8, y + 5 + i * 14, { font: 'small', color: P.dim }); MC.text.draw(String(s[1]), rx + rw - 8, y + 5 + i * 14, { font: 'small', color: P.text, align: 'right' }); });
+      let ey = y + shh + 4;
+      if (isF) {
+        const ah = Math.max(40, MC.ui.minTouch() + 14);
+        g.frame(rx, ey, rw, ah, { small: true });
+        MC.text.draw(tf('menu.auto'), rx + 8, ey + 5, { color: P.text });
+        const bh = Math.max(20, Math.min(ah - 8, MC.ui.minTouch()));
+        bAuto.x = rx + rw - 60; bAuto.y = ey + 4; bAuto.w = 56; bAuto.h = bh; bAuto.render();
+        const on = !!fa.auto, tx = rx + rw - 34, ty = ey + 9;
+        g.rect(tx, ty, 26, 10, '#000000'); g.rect(tx + 1, ty + 1, 24, 8, on ? g.mix(P.gold, P.f, 0.45) : '#15141c');
+        g.rect(on ? tx + 14 : tx + 2, ty + 2, 10, 6, on ? P.gold : P.dim);
+        MC.text.draw(tf(on ? 'set.on' : 'set.off'), tx - 6, ty - 1, { color: on ? P.text : P.dim, align: 'right' });
+        MC.text.wrap(tf('menu.autoDesc'), rw - 16, 'small').slice(0, 1).forEach(l => MC.text.draw(l, rx + 8, ey + 22, { font: 'small', color: P.dim }));
+        const ny = ey + ah + 4, nh = y + h - ny;
+        if (nh >= 30) {
+          g.frame(rx, ny, rw, nh, { small: true });
+          const nl = MC.text.wrap(tf('menu.cdNoteA') + ' ' + tf('menu.cdNoteB'), rw - 16, 'small').slice(0, Math.floor((nh - 6) / 13));
+          nl.forEach((l, i) => MC.text.draw(l, rx + 8, ny + 5 + i * 13, { font: 'small', color: P.dim }));
+        }
+        return;
+      }
+      const eq = [[tf('menu.weapon'), m.weapon], [tf('menu.armor'), m.armor]], eh = 8 + eq.length * 27;
+      if (ey + eh > y + h) return;
+      g.frame(rx, ey, rw, eh, { small: true });
+      eq.forEach((e, i) => {
+        const ry = ey + 4 + i * 27, d = e[1] ? itemDef(e[1]) : null;
+        MC.text.draw(e[0], rx + 8, ry, { font: 'small', color: P.dim });
+        MC.text.draw(d ? fitText(tr(d.name, 'item'), rw - 48, 'small') : tf('menu.none'), rx + 40, ry, { font: 'small', color: d ? P.text : P.dim });
+        if (d) MC.text.draw(bonusText(d), rx + rw - 8, ry + 13, { font: 'small', color: g.mix(P.gold, P.text, 0.4), align: 'right' });
+      });
+    }
     function renderStatus(x, y, w, h) {
+      if (g.land) { renderStatusLand(x, y, w, h); return; }
       const P = g.uiPal;
       let yy = y;
       if (showTabs()) { tabs[0].render(); tabs[1].render(); yy += tabH() + 4; }
@@ -104400,7 +104691,7 @@ MC.addLang('es', {
       if (p < 0.25) return;
       const P = g.uiPal, [x, y, w, h] = content();
       const dy = Math.round((1 - MC.ease.outCubic(p)) * 8) + (sc.pageT < 120 ? Math.round((1 - MC.ease.outCubic(sc.pageT / 120)) * 4) : 0);
-      const goalTop = sc.page === 'main' && mainGoal();                // [c43-ui B8-4] 첫 화면 맨 윗줄은 '할 일'(있으면 「메뉴」 제목 대신)
+      const goalTop = sc.page === 'main' && (g.land || mainGoal());   // [land] 가로 첫 화면은 머리띠 없음(할 일은 위치 칸에)                // [c43-ui B8-4] 첫 화면 맨 윗줄은 '할 일'(있으면 「메뉴」 제목 대신)
       // [r5 U2] 쪽 머리: ◀ 와 × 사이를 막 무늬 띠(g.motifStrip — 창 테와 같은 무늬)로 잇고, 가운데 명판(g.plate)에 쪽 제목. 글 자리(6 + 위 안전 여백)·색은 옛과 같다.
       //   되돌리기: ?uw2off=U2 또는 이 갈래를 지운다(옛 금색 글자만)
       if (!goalTop && MC.uw2 && MC.uw2('U2') && g.plate && g.motifStrip) {
