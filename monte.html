@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.14';
+  var VERSION = '0.9.15';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -764,6 +764,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
       test: RELEASE ? null : (q.test || null),
       // [land] 가로 배치(스팀판·폰 가로 — 만드는 중): ?land=1 일 때만, 창이 가로로 넓으면 논리 화면 320×180 이상 가로로. 다 만들면 스팀 빌드는 늘 켜고 폰은 돌리면 켠다
       land: !RELEASE && q.land === '1',
+      tapHold: !RELEASE && q.hold === 'tap',   // [taphold] 시험용(?hold=tap): 손으로 하는 장면에서 한 번 탭하면 누름이 걸려 있고 다시 탭하면 뗀다(길게 누르기를 못 하는 브라우저 자동 조작·시험자용)
       ev: RELEASE ? null : (q.ev || null),
       map: RELEASE ? null : (q.map || null), x: !RELEASE && q.x != null ? +q.x : null, y: !RELEASE && q.y != null ? +q.y : null,
       mute: q.mute === '1',
@@ -4495,7 +4496,22 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (r.dead) return;
     const up = mkEv('up', r);
     queue.push(up);
-    if (r.travel <= I.TAP_MOVE && up.dur <= I.TAP_MS) queue.push(mkEv('tap', r));
+    if (r.travel <= I.TAP_MOVE && up.dur <= I.TAP_MS) { queue.push(mkEv('tap', r)); latchTap(r.t0); }
+  }
+  // [taphold] 시험용(MC.cfg.tapHold, ?hold=tap): 손으로 하는 장면이 맨 위일 때 짧은 탭 = 누름을 걸어 둠(isDown 참) · 다시 탭 = 뗌.
+  //   장면이 바뀌면 저절로 풀린다(대사 빨리감기·다른 화면에 새지 않게). 버티기 장면들은 매 프레임 isDown()을 보므로 그대로 동작
+  let latch = null;
+  const HAND_RE = /^(mg_|breath$|hands$|candle$|ev_s3_)/;
+  function latchTap(t0) {
+    if (!(MC.cfg && MC.cfg.tapHold)) return;
+    const top = MC.scene && MC.scene.top && MC.scene.top();
+    if (!top || !HAND_RE.test(top.name || '')) { latch = null; return; }
+    latch = latch && latch.sc === top ? null : { sc: top, t0: t0 || now() };
+  }
+  function latchOn() {
+    if (!latch) return false;
+    if (!(MC.scene && MC.scene.top && MC.scene.top() === latch.sc)) { latch = null; return false; }
+    return true;
   }
   function onCancel(e) {
     const r = P.get(e.pointerId);
@@ -4532,7 +4548,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   function onKeyUp(e) {
     const k = KEYMAP[e.key];
     if (!k) return;
-    if (k === 'ok') okHeld = false;
+    if (k === 'ok') { if (okHeld && now() - okT0 <= I.TAP_MS) latchTap(okT0); okHeld = false; }   // [taphold] 확인 키를 짧게 눌러도 같은 걸어 두기
     else { const i = dirHeld.indexOf(k); if (i >= 0) dirHeld.splice(i, 1); }
   }
 
@@ -4607,9 +4623,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
 
   I.keyDir = () => (dirHeld.length ? dirHeld[dirHeld.length - 1] : null);
   I.onKey = fn => { keyHooks.push(fn); };
-  I.isDown = () => { if (okHeld) return true; for (const r of P.values()) if (!r.dead) return true; return false; };
+  I.isDown = () => { if (okHeld || latchOn()) return true; for (const r of P.values()) if (!r.dead) return true; return false; };
   I.heldMs = () => {           // 살아 있는 누름 중 가장 오래된 것의 지속 시간(대사 빨리감기용)
     const t = now(); let m = okHeld ? t - okT0 : 0;
+    if (latchOn()) m = Math.max(m, t - latch.t0);                // [taphold]
     for (const r of P.values()) if (!r.dead && r.travel <= 12 && t - r.t0 > m) m = t - r.t0;
     return m;
   };
