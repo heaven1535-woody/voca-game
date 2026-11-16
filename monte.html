@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.26';
+  var VERSION = '0.9.27';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -1376,10 +1376,15 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     return false;
   }
   // [orient] 가로 배치를 쓸까: 주소 ?land=1 / ?land=0(개발판 시험)이 먼저, 없으면 설정 「화면 방향」(자동 = 창·폰이 가로면 가로, 세로 고정 = 늘 세로)
+  // [land-shelf] 가로 화면 보관(11-17 사용자 「가로 모드는 일단 보관해두자, 세로모드에 집중하자」): 가로 코드(0.9.18~0.9.26)는 그대로 두고 꺼 둔다.
+  //   켜는 법: 개발판 주소 ?land=1(시험) · 다시 쓰려면 LAND_SHELVED = false(설정 「화면 방향」 줄도 다시 보인다). 꺼 둔 동안은 0.9.17 이전처럼 늘 세로(폰을 가로로 들면 「세로로 돌려 주세요」)
+  const LAND_SHELVED = true;
+  g.landEnabled = () => !LAND_SHELVED || (MC.cfg && MC.cfg.land === true);
   function landWanted() {
     const c = MC.cfg && MC.cfg.land;
     if (c === true) return true;
     if (c === false) return false;
+    if (LAND_SHELVED) return false;
     const s = MC.save && MC.save.settings;
     return !(s && s.orient === 'port');
   }
@@ -104361,7 +104366,7 @@ MC.addLang('es', {
       { k: 'shake', label: L('set.shake'), type: 'opt', opts: [[0, L('set.off')], [0.5, L('set.weak')], [1, L('set.normal')]] },
       { k: 'bright', label: L('set.bright'), type: 'opt', opts: [[0, L('set.bright0')], [15, L('set.bright15')], [30, L('set.bright30')]] },   // [l45-light B7-1] 밝기 보정(최종 화면 감마 — gfx.present). 바꾸는 즉시 보인다
       { k: 'fullscreen', label: L('set.fullscreen'), type: 'bool', show: canFs, get: () => !!fsEl(), set: setFs },   // [FULL1]
-      { k: 'orient', label: L('set.orient'), type: 'opt', opts: [['auto', L('set.orientAuto')], ['port', L('set.orientPort')]] },   // [orient] 화면 방향(자동 / 세로 고정) — 바꾸면 곧바로 다시 잰다(change)
+      { k: 'orient', label: L('set.orient'), type: 'opt', show: () => !!(MC.gfx && MC.gfx.landEnabled && MC.gfx.landEnabled()), opts: [['auto', L('set.orientAuto')], ['port', L('set.orientPort')]] },   // [land-shelf] 가로 보관 중엔 숨김 · [orient] 화면 방향(자동 / 세로 고정) — 바꾸면 곧바로 다시 잰다(change)
       { k: 'vibrate', label: L('set.vibrate'), type: 'bool', show: canVib },
       { k: 'assist', label: L('set.assist'), type: 'bool' },          // 손놀림 보조(S4 탈출 토막 1회 성공·헤엄 체력 감소 없음·키 잡기 5초 + 「길게 누르기」 장면 탭 버티기 input.js latchTap — 등급에는 영향 없음)
       { k: 'oneHand', label: L('set.oneHand'), type: 'bool' },        // S4 한 손 조작(헤엄: 누르고 있으면 0.9초 박자로 저절로 젓기)
