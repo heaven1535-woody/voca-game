@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.18';
+  var VERSION = '0.9.19';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -1359,13 +1359,16 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     'mg_s1_knot|mg_s1_shore|mg_s1_shore_tap|mg_s1_dig',
     'mg_s3_island|mg_s3_join|mg_s3_beam|mg_s3_bread|mg_s3_burn|mg_s3_reveal|mg_s3_pulse|mg_s3_sweep|mg_s3_order|ev_s3_patrol|ev_s3_paper',
     'mg_s3_vial|mg_s3_swim|mg_s3_breaths|mg_s3_drops|mg_s3_hour|mg_s3_bedcut|mg_s3_lift',
+    'ev_s3_shadow|mg_s3_shadow',   // [land-shadow] 그림자극(마지막 세로 전용 — 11-16 가로 배치)
     'mg_s4_still|mg_s4_slit|mg_s4_sew|mg_s4_sea_swim|mg_s4_helm|mg_s4_fingers|mg_s4_count3|mg_s4_fall|mg_s4_sea_sink|mg_s4_pulse_fade|mg_s4_ledger|mg_s4_record|mg_s4_face|mg_s4_ending',
     'breath|hands|letter|mg_burn|lessons|craft|candle|tbc|ev_deduce|ev_deduce_tap|ev_rewind|ev_memcard|mg_castle'
   ].join('|') + ')$');
   function portOnly() {
     const st = MC.scene && MC.scene.stack;
     if (!st || g.landAll) return false;                 // g.landAll = 시험용(안전망 끄기)
-    for (const s of st) if (s && !s.landOk && !LAND_OK.test(s.name || '')) return true;
+    // [land-held] 끝난 뒤 그림을 남겨 두는 장면은 이름이 바뀐다(s3night·s4escape 'ev_hold_' + 원래 이름, s4end ev_s4_pulse_fade·ev_s4_face) — 원래 이름으로 본다.
+    //   옛: 바뀐 이름이 목록에 없어 폰을 가로로 든 채면 그 순간 「세로로 돌려 주세요」가 떠 게임이 멈췄다(제미나이 0.9.18 평가)
+    for (const s of st) if (s && !s.landOk && !LAND_OK.test(String(s.name || '').replace(/^ev_hold_/, '').replace(/^ev_s4_(pulse_fade|face)$/, 'mg_s4_$1'))) return true;
     return false;
   }
   // [orient] 가로 배치를 쓸까: 주소 ?land=1 / ?land=0(개발판 시험)이 먼저, 없으면 설정 「화면 방향」(자동 = 창·폰이 가로면 가로, 세로 고정 = 늘 세로)
@@ -1400,6 +1403,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (key === lastKey) return;
     lastKey = key;
     g.dpr = dpr; g.S = S; g.W = W; g.H = H; g.X0 = (W - 180) >> 1;
+    if (g.land !== g.landNow && g.land != null && MC.input && MC.input.releaseAll) MC.input.releaseAll();   // [orient] 가로↔세로가 바뀌면 누르던 손가락·걸어 둔 누름을 푼다(좌표가 새 배치와 안 맞음 — GPT 0.9.18 평가)
     g.land = g.landNow;                                     // [land] 아직 가로 배치가 없는 장면은 옛 세로 칸(X0~X0+180)에 그린다
     g.seg = seg;
     const sc = g.screen;
@@ -4514,7 +4518,9 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   //   최근 4초 안에 떠 있던 장면에서만 건다 — 톡톡 여러 번 누르는 장면(매듭·바늘·물방울)에서 탭이 걸어 두기로 바뀌어 다음 탭이 빠지지 않게.
   //   길게 눌렀다 떼면 옛 그대로(짧은 탭만 걸어 둠). 풀기(다시 탭)는 언제나
   const assistOn = () => !!(MC.save && MC.save.settings && MC.save.settings.assist === true);
-  const holdHinted = top => { const u = MC.ch1 && MC.ch1.u; return !!(u && u.holdHintSc === top && now() - (u.holdHintT || -1e9) < 4000); };   // 그 장면에서 뜬 안내만
+  // [assist-tap2] 그 장면에서 「길게 누르기」 안내가 한 번이라도 떴으면(시간 제한 없음 — 옛 4초: 숨 참기 여러 파도에서 안내가 꺼진 뒤 다시 버틸 때 안 걸림, 제미나이 0.9.18 평가).
+  //   같은 장면에 톡톡 안내(hintHand tap·drag, 안내 아이콘 tap)가 뒤에 뜨면 cards.js가 holdHintSc를 지워 걸어 두기를 멈춘다
+  const holdHinted = top => { const u = MC.ch1 && MC.ch1.u; return !!(u && u.holdHintSc === top); };
   function latchTap(t0) {
     const test = !!(MC.cfg && MC.cfg.tapHold);
     if (!test && !assistOn()) return;
@@ -4570,8 +4576,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   /* ---------- 해제·잠금 ---------- */
   function releaseAll() {
     P.clear(); dirHeld.length = 0; okHeld = false; queue.length = 0;
+    latch = null;                                        // [assist-tap2] 걸어 둔 누름도 푼다(앱 전환·화면 끔·회전 — GPT 0.9.18 평가)
     I.epoch++;
   }
+  I.releaseAll = releaseAll;                             // [orient] gfx.js가 가로↔세로 배치가 바뀔 때 부른다(누르던 손가락 좌표가 새 배치에 맞지 않으므로)
   // 현재 눌린 포인터는 뗄 때까지 무시 + ms 동안 새 입력 무시
   I.lock = function (ms) {
     if (ms == null) ms = 150;
@@ -4997,6 +5005,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       if (!this.visible) return false;
       switch (ev.type) {
         case 'down': {
+          // [assist-hold] 걸어 둔 길게 누르기(손놀림 보조)는 다시 누르면 취소 — 그 누름의 'up'은 삼킨다
+          if (this._latched && this._shown() && this.hit(ev.x, ev.y, 0)) { this._latched = false; this._pid = null; this._swallow = ev.id; sfx('ui_cancel'); return true; }
           if (this._pid !== null || !this._shown() || !this.hit(ev.x, ev.y, 0)) return false;
           if (MC.time.real < this._ready) return true;          // 막 나타난 버튼: 삼킨다
           this._pid = ev.id; this._inside = true; this._t0 = MC.time.real; this._fired = false;
@@ -5008,11 +5018,16 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
           this._inside = this.hit(ev.x, ev.y, 4);
           return true;
         case 'up': {
+          if (this._swallow != null && ev.id === this._swallow) { this._swallow = null; return true; }
           if (ev.id !== this._pid) return false;
           this._pid = null; this._lastPid = ev.id;
           if (this._fired) return true;
           if (this.hit(ev.x, ev.y, 4)) {
-            if (this.hold > 0 && this.enabled) { if (MC.cfg && MC.cfg.tapHold) this._activate(); /* 다 누르지 않고 뗐다 — [taphold] 시험 모드(?hold=tap)면 한 번 탭으로 */ }
+            if (this.hold > 0 && this.enabled) {
+              if (MC.cfg && MC.cfg.tapHold) this._activate();   // 다 누르지 않고 뗐다 — [taphold] 시험 모드(?hold=tap)면 한 번 탭으로
+              // [assist-hold] 손놀림 보조: 짧게 눌렀다 떼면 누름을 걸어 두어 고리가 저절로 끝까지 찬다(같은 시간 — 실수로 지우지 않게 기다림은 그대로). 다시 누르면 취소
+              else if (MC.save && MC.save.settings && MC.save.settings.assist === true) { this._latched = true; this._pid = 'latch'; this._inside = true; }
+            }
             else this._activate();
           }
           return true;
@@ -5034,7 +5049,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     }
     update() {
       if (this.hold > 0 && this._pid !== null && this._inside && !this._fired && this.enabled && MC.time.real - this._t0 >= this.hold) {
-        this._fired = true; this._activate();
+        this._fired = true; if (this._latched) { this._latched = false; this._pid = null; } this._activate();
       }
       if (this.hold > 0 && this._pid !== null && !this._inside) this._t0 = MC.time.real;   // 벗어나면 진행 초기화
     }
@@ -5044,7 +5059,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       if (rid - this._lastR > 1) this.arm(180);                 // 다시 나타남 → 준비 시간
       this._lastR = rid;
       if (this.hold > 0 && this._pid !== null) {                // hold 진행은 렌더 시점에도 확인(update 안 불러도 동작)
-        if (this._inside && !this._fired && this.enabled && MC.time.real - this._t0 >= this.hold) { this._fired = true; Promise.resolve().then(() => this._activate()); }
+        if (this._inside && !this._fired && this.enabled && MC.time.real - this._t0 >= this.hold) { this._fired = true; if (this._latched) { this._latched = false; this._pid = null; } Promise.resolve().then(() => this._activate()); }
         if (!this._inside) this._t0 = MC.time.real;
       }
       const P = this.pal ? g.pal(this.pal) : g.uiPal;
@@ -5232,6 +5247,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const no = new Button({ w: bw, h: bh, label: o.no || tf('ui.cancel'), style: 'primary', sfx: 'ui_cancel', onTap: () => finish(false) });
     const yes = new Button({ w: bw, h: bh, label: o.yes || tf('ui.yes'), style: o.danger ? 'danger' : 'normal', hold: o.holdYes || 0, onTap: () => finish(true) });
     function finish(v) { if (sc.done) return; sc.done = true; MC.scene.remove(sc, v); }
+    sc.dbg = { yes, no };                                    // 시험용(자동 점검이 단추 자리를 읽는다)
     sc.update = () => { no.update(); yes.update(); };
     sc.onInput = ev => {
       if (no.onInput(ev) || yes.onInput(ev)) return true;
@@ -5253,7 +5269,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       const by = y + h - bh - 9 - (o.holdYes ? 11 : 0);
       no.x = x + 8; no.y = by; yes.x = x + W - 8 - bw; yes.y = by;
       no.render(); yes.render();
-      if (o.holdYes) MC.text.draw(tf(yes.pressed ? 'ui.holdKeep' : 'ui.holdHint'), yes.x + (bw >> 1), by + bh + 2, { font: 'small', color: yes.pressed ? 'gold' : 'dim', align: 'center' });
+      if (o.holdYes) MC.text.draw(tf(yes._latched ? 'ui.holdLatched' : yes.pressed ? 'ui.holdKeep' : 'ui.holdHint'), yes.x + (bw >> 1), by + bh + 2, { font: 'small', color: yes.pressed ? 'gold' : 'dim', align: 'center' });   // [assist-hold] 걸어 둔 동안은 「다시 누르면 취소」
     };
     return MC.scene.push(sc);
   }
@@ -6068,7 +6084,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
    i18n: 설정 lang(''=아직 안 고름 → MC.i18n.init이 ?lang= → 저장값 → 기기 언어(release 팩만) → ko). 토스트 글은 UI 키 sys.noStorage */
 (function (MC) { 'use strict';
   const KEY = { auto: 'mc34.auto', manual: 'mc34.manual', bak: 'mc34.auto.bak', settings: 'mc34.settings', clear: 'mc34.ch1clear' };   // clear: S4 2장 인계 기록(세이브 슬롯 아님 — wipe가 지우지 않는다)
-  // (S4 §D-4) assist = 손놀림 보조(등급 상한 A) · oneHand = 한 손 조작(헤엄 탭 없이 저절로 젓기) — loadSettings가 같은 타입만 받으므로 키만 더하면 된다
+  // (S4 §D-4) assist = 손놀림 보조(등급에는 영향 없음 — 0.9.17~) · oneHand = 한 손 조작(헤엄 탭 없이 저절로 젓기) — loadSettings가 같은 타입만 받으므로 키만 더하면 된다
   // [l45-light B7-1] bright = 밝기 보정 0 / 15 / 30(%) — gfx.present가 최종 화면에 감마로
   // [s46-sound B4-2] phoneBass = 폰 스피커 저음 보강(음악 베이스 한 옥타브 위 겹침 — music.js). 기본 켬(이어폰이면 끌 수 있다)
   // [u51 B8-7] sndCap = 소리 자막 ''(자동: 소리 끄기·효과음 0이면 켬) | 'on' | 'off' — 설정 줄을 처음 누르면 'on'/'off'로 정해진다(sfx.js capOn)
@@ -6116,8 +6132,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (s.map != null && typeof s.map !== 'string') return null;
     const maps = MC.data && MC.data.maps;
     if (s.map && maps && Object.keys(maps).length && !maps[s.map]) { p.rescued = rescueMap(s, maps); if (!p.rescued) return null; }
-    if (!(s.x >= 0 && s.y >= 0 && s.x < 1000 && s.y < 1000)) return null;
-    for (const m of s.party) { if (!(m.hp >= 0) || !(m.lv >= 1 && m.lv <= 99)) return null; }
+    // [save-num] 문자열 숫자('12')·참거짓이 비교에서 자동 변환돼 통과하던 것(GPT 0.9.18 평가). null은 옛처럼 받는다(옛 세이브가 갑자기 버려지지 않게 — null >= 0 이 참이라 통과하던 값)
+    const num = v => v === null || (typeof v === 'number' && Number.isFinite(v));
+    if (!(num(s.x) && num(s.y) && s.x >= 0 && s.y >= 0 && s.x < 1000 && s.y < 1000)) return null;
+    for (const m of s.party) { if (!m || !(num(m.hp) && m.hp >= 0) || !(typeof m.lv === 'number' && m.lv >= 1 && m.lv <= 99)) return null; }
     // 빠진 필드는 새 상태 기본값으로 채움(마이그레이션)
     const base = MC.game ? MC.game.newState() : {};
     for (const k in base) if (!(k in s)) s[k] = base[k];
@@ -12092,7 +12110,9 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (!h.key && stick && stick.touching && stick.everDir) { S3.hold = null; return; }   // 끌어서 걷기 시작 → 취소
     if (h.key && MC.input.keyDir && MC.input.keyDir()) { S3.hold = null; return; }       // 방향키를 누르면 취소
     const el = nowR() - h.t0;
-    const down = h.key ? !!(MC.input.isDown && MC.input.isDown()) : !!(stick && stick.touching);
+    // [assist-field] 손놀림 보조면 한 번 누른 뒤 손을 떼도 원이 저절로 끝까지 찬다(걷기 시작하면 취소는 그대로) — 벽에 귀 대기·끌어올리기 등(제미나이 argon 0.9.18)
+    const assistOn = !!(MC.save && MC.save.settings && MC.save.settings.assist === true);
+    const down = h.key ? !!(MC.input.isDown && MC.input.isDown()) : (!!(stick && stick.touching) || assistOn);
     if (h.done) {                                         // 키보드: 다 채운 뒤 Z를 뗄 때 event(누른 채 대사로 들어가면 빨리감기·건너뛰기가 대사를 넘긴다)
       if (!down) { S3.hold = null; pendTap.on = false; tapGuard = nowR() + 120; runEvent(d.event, o); }
       return;
@@ -51346,6 +51366,10 @@ MC.addEvents({
     { "op": "wait", "ms": 1800 },
     { "op": "say", "who": "think", "t": "……오늘 밤만." },
     { "op": "wait", "ms": 900 },
+    // [a2-night] 사용자 ①(11-16, 제미나이 평가 「심문 끝 → 호송 사이 호흡」): 체포 때 「시청은 저녁에 가자」를 되받는다 — 하루라고 믿는 밤(그 하루가 14년이 된다)
+    { "op": "say", "who": "think", "t": "……시청은 저녁에 가자고 했는데." },
+    { "op": "say", "who": "think", "t": "내일 아침이면 나간다.{p:300}\n하루 늦을 뿐이다." },
+    { "op": "wait", "ms": 600 },
     { "op": "set", "flag": "a2.villefort_done", "v": true },
     { "op": "call", "ev": "a2.boat" }
   ],
@@ -62847,13 +62871,12 @@ MC.addEvents({
   const flag = f => !!(MC.state && MC.state.flags && MC.state.flags[f]);
   const RANK = { S: 3, A: 2, B: 1 };
 
-  // tries = 2·3단계 재시도 합, hp = 헤엄 끝 체력 %, Lv15 이상이면 S의 체력 기준 40. 보조를 쓴 판은 상한 A. 최종전 패배·숨 참기 뗀 횟수는 넣지 않는다
+  // tries = 2·3단계 재시도 합, hp = 헤엄 끝 체력 %, Lv15 이상이면 S의 체력 기준 40. 최종전 패배·숨 참기 뗀 횟수는 넣지 않는다
+  // [grade-assist] 손놀림 보조는 등급에 넣지 않는다(옛: 보조를 쓴 판은 상한 A — 0.9.17에서 s4end gradeOf만 고치고 여기 남아 있던 것, GPT 0.9.18 평가). 보조 여부는 인계 기록 escape.assist에만
   function grade() {
     const tries = (num(getV('s4_try2')) | 0) + (num(getV('s4_try3')) | 0), hp = num(getV('s4_swimHp')) | 0;
-    const L = G() && G().lead ? G().lead() : null, lv = L ? (L.lv | 0) : 1, assist = num(getV('s4_assist')) === 1;
-    let g = (tries <= 1 && hp >= (lv >= 15 ? 40 : 60)) ? 'S' : (tries <= 4 || hp >= 30) ? 'A' : 'B';
-    if (assist && g === 'S') g = 'A';
-    return g;
+    const L = G() && G().lead ? G().lead() : null, lv = L ? (L.lv | 0) : 1;
+    return (tries <= 1 && hp >= (lv >= 15 ? 40 : 60)) ? 'S' : (tries <= 4 || hp >= 30) ? 'A' : 'B';
   }
   const COND = { S: 'healthy', A: 'tired', B: 'weak' };
   const CHOICE_VARS = ['toast', 'sardine', 'father', 'honest', 'doubt', 'inspector', 'rat', 'n1_trust', 'n1_water', 'day_bread', 'n3_vow', 'wrathN', 'dd_miss',
@@ -65995,6 +66018,7 @@ MC.addLang('ko', {
     "ui.yes": "예",
     "ui.holdKeep": "계속 누르세요",
     "ui.holdHint": "길게 누르기",
+    "ui.holdLatched": "다시 누르면 취소",
     "ui.go": "나아간다",
     "ui.close": "닫기",
 
@@ -66559,6 +66583,7 @@ MC.addLang('ko', {
     "ui.yes": { "w": 64, "font": "body", "lines": 1, "note": "확인창 기본 '예' 단추" },
     "ui.holdKeep": { "w": 100, "font": "small", "lines": 1, "note": "길게 눌러야 하는 '예' 단추 아래(누르는 중)" },
     "ui.holdHint": { "w": 100, "font": "small", "lines": 1, "note": "길게 눌러야 하는 '예' 단추 아래(누르기 전)" },
+    "ui.holdLatched": { "w": 100, "font": "small", "lines": 1, "note": "길게 눌러야 하는 '예' 단추 아래 — 손놀림 보조로 한 번 탭해 고리가 저절로 차는 중(다시 누르면 취소)" },
     "ui.go": { "w": 64, "font": "body", "lines": 1, "note": "출구 확인창 '예' 단추(다음 장소로 간다)" },
     "ui.close": { "w": 88, "font": "body", "lines": 1, "note": "설정·언어 창 아래 닫기 단추(96폭)" },
 
@@ -67027,7 +67052,7 @@ MC.addLang('ko', {
     "story.beamNearFaria": { "w": 170, "font": "small", "lines": 2, "note": "들보 세우기에서 보초가 바로 위일 때 눌렀을 때 한 번, 파리아(하게체 노학자)의 속삭임: 쉿, 지금 바로 머리 위다" },
     "story.beamNearSelf": { "w": 170, "font": "small", "lines": 2, "note": "들보 빼기(혼자, 발작 뒤 밤)에서 같은 실수 때 에드몽의 속마음: 아직이다, 바로 위다" },
 
-    "set.assist": { "w": 96, "font": "body", "lines": 1, "note": "설정 '진행' 탭 켬/끔 줄(S4 탈출 손놀림 보조 — 켜면 손으로 하는 장면의 버티기(길게 누르기)를 짧게 한 번 탭해 걸어 두고 다시 탭해 뗄 수 있음(0.9.18), 물속 손놀림이 한 번에 성공, 헤엄 체력이 줄지 않음, 등급은 그대로 · 기록에 「손놀림 보조」 줄(0.9.17)). 이름 칸 약 96px" },
+    "set.assist": { "w": 96, "font": "body", "lines": 1, "note": "설정 '진행' 탭 켬/끔 줄(S4 탈출 손놀림 보조 — 켜면 손으로 하는 장면의 버티기(길게 누르기)를 짧게 한 번 탭해 걸어 두고 다시 탭해 뗄 수 있음(0.9.18), 물속 손놀림이 한 번에 성공, 헤엄 체력이 줄지 않음, 등급·수감 기록에는 남지 않음(0.9.18)). 이름 칸 약 96px" },
     "set.oneHand": { "w": 96, "font": "body", "lines": 1, "note": "설정 '진행' 탭 켬/끔 줄(S4 헤엄: 누르고만 있으면 저절로 젓고 방향만 쓴다). 이름 칸 약 96px" },
     "set.bright": { "w": 66, "font": "body", "lines": 1, "note": "설정 '진행' 탭 ◀ 값 ▶ 줄(밝기 보정 — 어두운 장면이 폰에서 안 보일 때 화면 전체를 밝힘). 이름 칸 약 66px" },
     "set.bright0": { "w": 44, "font": "body", "lines": 1, "note": "밝기 보정 값 — 보정 없음(만든 그대로)" },
@@ -67152,6 +67177,7 @@ MC.addLang('en', {
     "ui.yes": ["Yes", "3ia7qv"],
     "ui.holdKeep": ["Keep holding", "1g2nh9u"],
     "ui.holdHint": ["Press and hold", "einy15"],
+    "ui.holdLatched": ["Tap again to cancel", "1xxoxxb"],
     "ui.go": ["Go", "1aloh2x"],
     "ui.close": ["Close", "11apzn2"],
 
@@ -68419,6 +68445,8 @@ MC.addLang('en', {
     "……왜 저를 안 보십니까?": "...Why won’t you look at me?",
     "늦었소.{p:400} 우리 둘 다,{p:200} 파티에 늦었어.": "It is late.{p:400} We are both of us{p:200} late for our feasts.",
     "……오늘 밤만.": "...Just for tonight.",
+    "……시청은 저녁에 가자고 했는데.": "...I said we’d go to the town hall this evening.",
+    "내일 아침이면 나간다.{p:300}\n하루 늦을 뿐이다.": "I’ll be out by morning.{p:300}\nJust one day late, that’s all.",
     "여기가 어딥니까?{p:200} 왜 바다로 나가는 겁니까?": "Where are we?{p:200} Why are we heading out to sea?",
     "곧 알게 된다.": "You’ll find out soon enough.",
     "저긴……{p:300} 이프 성이잖아요!": "That’s...{p:300} the Château d’If!",
@@ -70765,6 +70793,7 @@ MC.addLang('ja', {
     "ui.yes": ["はい", "3ia7qv"],
     "ui.holdKeep": ["そのまま押して", "1g2nh9u"],
     "ui.holdHint": ["長押し", "einy15"],
+    "ui.holdLatched": ["もう一度で取り消し", "1xxoxxb"],
     "ui.go": ["進む", "1aloh2x"],
     "ui.close": ["閉じる", "11apzn2"],
     "stat.str": ["力", "17fl6qv"],
@@ -71984,6 +72013,8 @@ MC.addLang('ja', {
     "……왜 저를 안 보십니까?": "……なぜ、僕を見ないのですか。",
     "늦었소.{p:400} 우리 둘 다,{p:200} 파티에 늦었어.": "もう遅い。{p:400}私たちは二人とも、{p:200}宴に遅れてしまった。",
     "……오늘 밤만.": "……今夜だけ。",
+    "……시청은 저녁에 가자고 했는데.": "……役場へは夕方に行こう、と言ったのに。",
+    "내일 아침이면 나간다.{p:300}\n하루 늦을 뿐이다.": "明日の朝には出られる。{p:300}\n一日遅れるだけだ。",
     "여기가 어딥니까?{p:200} 왜 바다로 나가는 겁니까?": "ここは、どこですか？{p:200} なぜ、海へ出るんです？",
     "곧 알게 된다.": "すぐにわかる。",
     "저긴……{p:300} 이프 성이잖아요!": "あれは……{p:300}イフ城じゃないか！",
@@ -74323,6 +74354,7 @@ MC.addLang('fr', {
     "ui.yes": ["Oui", "3ia7qv"],
     "ui.holdKeep": ["Restez appuyé", "1g2nh9u"],
     "ui.holdHint": ["Appui long", "einy15"],
+    "ui.holdLatched": ["Touchez : annuler", "1xxoxxb"],
     "ui.go": ["Avancer", "1aloh2x"],
     "ui.close": ["Fermer", "11apzn2"],
     "stat.str": ["FOR", "17fl6qv"],
@@ -75542,6 +75574,8 @@ MC.addLang('fr', {
     "……왜 저를 안 보십니까?": "…Pourquoi ne me regardez-vous pas ?",
     "늦었소.{p:400} 우리 둘 다,{p:200} 파티에 늦었어.": "Il est tard.{p:400} Nous voilà tous deux{p:200} en retard pour nos fêtes.",
     "……오늘 밤만.": "…Cette nuit seulement.",
+    "……시청은 저녁에 가자고 했는데.": "…Je lui avais dit : la mairie, ce soir.",
+    "내일 아침이면 나간다.{p:300}\n하루 늦을 뿐이다.": "Demain matin, je sors.{p:300}\nUn jour de retard, rien de plus.",
     "여기가 어딥니까?{p:200} 왜 바다로 나가는 겁니까?": "Où sommes-nous ?{p:200} Pourquoi prenons-nous la mer ?",
     "곧 알게 된다.": "Tu le sauras bien assez tôt.",
     "저긴……{p:300} 이프 성이잖아요!": "Mais c’est…{p:300} le château d’If !",
@@ -77886,6 +77920,7 @@ MC.addLang('zh-Hans', {
     "ui.yes": ["确定", "3ia7qv"],
     "ui.holdKeep": ["请继续按住", "1g2nh9u"],
     "ui.holdHint": ["长按", "einy15"],
+    "ui.holdLatched": ["再按一次取消", "1xxoxxb"],
     "ui.go": ["前往", "1aloh2x"],
     "ui.close": ["关闭", "11apzn2"],
     "stat.str": ["力量", "17fl6qv"],
@@ -79105,6 +79140,8 @@ MC.addLang('zh-Hans', {
     "……왜 저를 안 보십니까?": "……您为什么不看我？",
     "늦었소.{p:400} 우리 둘 다,{p:200} 파티에 늦었어.": "晚了。{p:400}我们两个，{p:200}都误了喜宴。",
     "……오늘 밤만.": "……只是今晚。",
+    "……시청은 저녁에 가자고 했는데.": "……明明说好了，傍晚去市政厅。",
+    "내일 아침이면 나간다.{p:300}\n하루 늦을 뿐이다.": "明天早上就能出去。{p:300}\n不过晚一天而已。",
     "여기가 어딥니까?{p:200} 왜 바다로 나가는 겁니까?": "这是哪里？{p:200}为什么要往海上去？",
     "곧 알게 된다.": "很快就知道了。",
     "저긴……{p:300} 이프 성이잖아요!": "那是……{p:300}伊夫堡啊！",
@@ -81450,6 +81487,7 @@ MC.addLang('zh-Hant', {
     "ui.yes": ["確定", "3ia7qv"],
     "ui.holdKeep": ["請繼續按住", "1g2nh9u"],
     "ui.holdHint": ["長按", "einy15"],
+    "ui.holdLatched": ["再按一次取消", "1xxoxxb"],
     "ui.go": ["前往", "1aloh2x"],
     "ui.close": ["關閉", "11apzn2"],
     "stat.str": ["力量", "17fl6qv"],
@@ -82669,6 +82707,8 @@ MC.addLang('zh-Hant', {
     "……왜 저를 안 보십니까?": "……您為什麼不看我？",
     "늦었소.{p:400} 우리 둘 다,{p:200} 파티에 늦었어.": "晚了。{p:400}我們兩個，{p:200}都誤了喜宴。",
     "……오늘 밤만.": "……只是今晚。",
+    "……시청은 저녁에 가자고 했는데.": "……明明說好了，傍晚去市政廳。",
+    "내일 아침이면 나간다.{p:300}\n하루 늦을 뿐이다.": "明天早上就能出去。{p:300}\n不過晚一天而已。",
     "여기가 어딥니까?{p:200} 왜 바다로 나가는 겁니까?": "這是哪裡？{p:200}為什麼要往海上去？",
     "곧 알게 된다.": "很快就知道了。",
     "저긴……{p:300} 이프 성이잖아요!": "那是……{p:300}伊夫堡啊！",
@@ -85012,6 +85052,7 @@ MC.addLang('es', {
     "ui.yes": ["Sí", "3ia7qv"],
     "ui.holdKeep": ["No sueltes", "1g2nh9u"],
     "ui.holdHint": ["Toque largo", "einy15"],
+    "ui.holdLatched": ["Toca para cancelar", "1xxoxxb"],
     "ui.go": ["Avanzar", "1aloh2x"],
     "ui.close": ["Cerrar", "11apzn2"],
     "stat.str": ["FUE", "17fl6qv"],
@@ -86231,6 +86272,8 @@ MC.addLang('es', {
     "……왜 저를 안 보십니까?": "…¿Por qué no me mira?",
     "늦었소.{p:400} 우리 둘 다,{p:200} 파티에 늦었어.": "Es tarde.{p:400} Los dos llegamos tarde{p:200} a nuestras fiestas.",
     "……오늘 밤만.": "…Solo esta noche.",
+    "……시청은 저녁에 가자고 했는데.": "…Le dije: a la alcaldía, esta tarde.",
+    "내일 아침이면 나간다.{p:300}\n하루 늦을 뿐이다.": "Mañana salgo.{p:300}\nSolo es un día de retraso.",
     "여기가 어딥니까?{p:200} 왜 바다로 나가는 겁니까?": "¿Dónde estamos?{p:200} ¿Por qué salimos al mar?",
     "곧 알게 된다.": "Pronto lo sabrás.",
     "저긴……{p:300} 이프 성이잖아요!": "Pero eso es…{p:300} ¡el castillo de If!",
@@ -88746,6 +88789,7 @@ MC.addLang('es', {
     if (!(lv > 0)) return;
     const g = G(), step = MC.clamp(Math.ceil(lv / 16 * 4 - 0.01), 1, 4), hold = kind === 'hold', T = performance.now();
     if (hold) { U.holdHintT = T; U.holdHintSc = MC.scene && MC.scene.top ? MC.scene.top() : null; }                           // [assist-tap] 「길게 누르기」 손가락이 떠 있었다(input.js latchTap — 손놀림 보조의 걸어 두기는 이런 장면에서만)
+    else if (U.holdHintSc && MC.scene && MC.scene.top && U.holdHintSc === MC.scene.top()) U.holdHintSc = null;            // [assist-tap2] 같은 장면에 톡톡·끌기 손가락이 뜨면 걸어 두기를 멈춘다
     bg = bg || '#05060c';
     x = Math.round(x); y = Math.round(y);
     if (kind === 'drag') {                               // [tap3] 끌기 시범: 손끝이 눌린 채 dir 쪽으로 18도트 미끄러지고(지나온 자리에 점선), 끝에서 잠깐 머문다. 'h' = 좌우로 오감(외부 평가 GPT)
@@ -88845,6 +88889,7 @@ MC.addLang('es', {
         const k = k01(t) * MC.clamp((r.lv == null ? 16 : r.lv) / 16, 0, 1);
         if (k <= 0.001) return;
         if (o.icon === 'hold') { U.holdHintT = performance.now(); U.holdHintSc = MC.scene && MC.scene.top ? MC.scene.top() : null; }   // [assist-tap] 길게 누르기 안내가 떠 있다
+        else if (o.icon && U.holdHintSc && MC.scene && MC.scene.top && U.holdHintSc === MC.scene.top()) U.holdHintSc = null;  // [assist-tap2] 톡톡·끌기 안내가 뜨면 멈춤
         const step = MC.clamp(Math.ceil(k * 4 - 0.001), 1, 4), col = g.mix(bg, GUIDE_COL, step / 4), cx = r.cx != null ? Math.round(r.cx) : g.W >> 1, maxW = r.maxW || g.W - 22;   // [land] r.cx·r.maxW = 가운데가 아닌 칸에 세울 때
         const ls = guideLines(o.text != null ? String(o.text) : U.tf(o.key), 'body', maxW).map(l => MC.text.bake(l, 'body', col, { shadow: '#000' })).filter(Boolean);
         const tip = (r.tipOn != null ? !!r.tipOn : s.failed) && o.tip ? guideLines(U.tf(o.tip), 'small', maxW).map(l => MC.text.bake(l, 'small', g.mix(bg, GUIDE_TIP, step / 4), { shadow: '#000' })).filter(Boolean) : [];
@@ -91384,6 +91429,12 @@ MC.addLang('es', {
         return true;
       };
       function geo() {
+        if (g.land) {   // [land-letter] 가로: 투서와 왼손 글씨를 나란히(밑줄을 가로 점선으로 잇는다), 아래는 대화창 자리만큼 비움. 옛: 세로로 쌓아 안내 글이 두 장 사이에 겹쳤다
+          const top = 14 + g.safe.top, bottom = g.H - (hold ? 62 : 22) - g.safe.bottom, avail = bottom - top - 12, cx = g.W >> 1;
+          const s = (13 + 80 <= avail && 2 * 128 + 24 <= g.W - 16) ? 2 : 1, gap = s > 1 ? 24 : 16;
+          const ya = top + Math.max(0, (avail - (13 + 40 * s)) >> 1) + 13;
+          return { s, cx, ya, yb: ya, xa: cx - 64 * s - (gap >> 1), xb: cx + (gap >> 1), side: true, gy: bottom };
+        }
         const top = 14 + g.safe.top, bottom = g.H - (hold ? 104 : 22) - g.safe.bottom;
         let s = 2;
         const need = k => 2 * (13 + 40 * k) + 10;
@@ -91427,7 +91478,11 @@ MC.addLang('es', {
         const uy = Math.round(40 * s * 0.66);
         if (t >= T.ua) underline(la, Gm.ya + uy, lw, MC.clamp((t - T.ua) / 250, 0, 1), s, 3);
         if (t >= T.ub) underline(lb, Gm.yb + uy, lw, MC.clamp((t - T.ub) / 250, 0, 1), s, 3);
-        if (t >= T.link) {
+        if (t >= T.link && Gm.side) {             // [land-letter] 나란히 놓였을 때: 두 밑줄 사이를 가로 점선으로
+          const p = MC.clamp((t - T.link) / 200, 0, 1), x0 = la + lw + 3, x1 = lb - 3, y = Gm.ya + uy, n = Math.round((x1 - x0) * p);
+          for (let i = 0; i < n; i += 3) gg.rect(x0 + i, y, 2, 1, RED);
+          if (p >= 1) { gg.vline(x0, y - 1, 3, RED); gg.vline(x1, y - 1, 3, RED); }
+        } else if (t >= T.link) {
           const p = MC.clamp((t - T.link) / 200, 0, 1), x = Math.max(la + lw, lb + lw) + 4, y0 = Gm.ya + uy, y1 = Gm.yb + uy, n = Math.round((y1 - y0) * p);
           for (let i = 0; i < n; i += 3) gg.rect(x, y0 + i, 1, 2, RED);
           if (p >= 1) { gg.hline(x - 3, y0, 3, RED); gg.hline(x - 3, y1, 3, RED); }
@@ -91438,7 +91493,7 @@ MC.addLang('es', {
           if (!U.drawSpr('ic_hand_tap', hx, hy)) gg.rect(hx + 2, hy + 2, 4, 4, '#ffcf4a');
         }
         // [c43-guide B1] 안내 「…누른다」는 공통 안내(body · 가장 밝은 단 · 디더 없음 — 검은 바탕에 어두운 회색이라 안 읽혔다). 자리는 두 장 아래 빈 띠(예전 자리)
-        gd.render({ bg: '#120c0a', y: g.H - (hold ? 104 : 22) - g.safe.bottom });
+        gd.render({ bg: '#120c0a', y: Gm.gy != null ? Gm.gy : g.H - (hold ? 104 : 22) - g.safe.bottom });   // [land-letter] 가로는 대화창 자리 바로 위
       }
       MC.scene.push(sc);
     });
@@ -92103,6 +92158,7 @@ MC.addLang('es', {
       sc.dbg = { cards, geo: () => geo(), state: () => ({ sel, qMiss, hint: hint && hint.text, doneAt, scroll, maxScroll }),
         pick(id) { const i = cards.findIndex(c => c.id === id); if (i >= 0) { select(i); answerSel(); } return i; } };
       function geo() {
+        if (g.land) return geoLand();
         const mt = MC.ui.minTouch(), L = 4, R = g.W - 4, gw = R - L, top = 6 + g.safe.top;
         const bx = L + 44, bw = R - bx;
         const qLines = MC.text.wrap(q, bw - 10, 'small').slice(0, 4), qh = U.bubbleH(qLines.length);
@@ -92120,7 +92176,25 @@ MC.addLang('es', {
         scroll = MC.clamp(scroll, 0, maxScroll);
         cards.forEach((c, i) => { c.r = [L + (i % 2) * (cw + 2), gy + ((i / 2) | 0) * pitch - Math.round(scroll), cw, rh]; });
         bAns.w = 86; bAns.h = bh; bAns.x = R - 5 - bAns.w; bAns.y = py + panelH - 5 - bh;
-        return { L, R, gw, top, bx, bw, qLines, qh, topH, bh, panelH, py, gy, gh, rh, pitch, cw };
+        return { L, R, gw, top, bx, bw, qLines, qh, topH, bh, panelH, py, gy, gh, rh, pitch, cw, cL: L, cR: R, cgw: gw, pL: L, pw: gw };
+      }
+      // [land-ask] 가로(높이 180~): 왼쪽 = 파리아 물음 + 고른 기억 본문·[이걸로 답한다], 오른쪽 = 기억 카드(위아래 끝까지).
+      //   옛: 세로 배치 그대로라 카드 칸이 한 줄(24px)만 남았다(제미나이 argon 0.9.18 평가)
+      function geoLand() {
+        const mt = MC.ui.minTouch(), L = 4 + g.safe.left, R = g.W - 4 - g.safe.right, top = 6 + g.safe.top, bot = g.H - 4 - g.safe.bottom;
+        const mid = L + Math.round((R - L) * 0.5);
+        const pL = L, pw = mid - 3 - L, bx = L + 44, bw = mid - 3 - bx;
+        const qLines = MC.text.wrap(q, bw - 10, 'small').slice(0, 4), qh = U.bubbleH(qLines.length), topH = Math.max(38, qh + 2);
+        const bh = Math.max(20, Math.min(mt, 24));
+        const py = top + topH + 4, panelH = Math.max(6 + 3 * 13 + 2 + bh + 5, bot - py);
+        const cL = mid + 3, cR = R - 3, cgw = cR - cL, gy = top + 14;
+        const rh = Math.max(22, Math.min(mt, 26)), pitch = rh + 2, cols = cgw >= 220 ? 2 : 1, cw = cols === 2 ? (cgw - 2) >> 1 : cgw;
+        const rows = Math.ceil(cards.length / cols), gh = Math.max(24, bot - gy);
+        maxScroll = Math.max(0, rows * pitch - 2 - gh);
+        scroll = MC.clamp(scroll, 0, maxScroll);
+        cards.forEach((c, i) => { c.r = [cL + (i % cols) * (cw + 2), gy + ((i / cols) | 0) * pitch - Math.round(scroll), cw, rh]; });
+        bAns.w = Math.min(86, pw - 10); bAns.h = bh; bAns.x = pL + pw - 5 - bAns.w; bAns.y = py + panelH - 5 - bh;
+        return { L: cL, R: cR, gw: cgw, top, bx, bw, qLines, qh, topH, bh, panelH, py, gy, gh, rh, pitch, cw, cL, cR, cgw, pL, pw };
       }
       function cardAt(x, y) {
         const Gm = geo();
@@ -92246,7 +92320,7 @@ MC.addLang('es', {
         g.ctx.drawImage(wallBg(), 0, 0);
         g.ditherFill('#05040a', 5);
         // 위: 파리아와 물음(되묻는 중이면 그 말)
-        const px = Gm.L + 6, py0 = Gm.top + 3;
+        const px = Gm.pL + 6, py0 = Gm.top + 3;   // [land-ask] 얼굴은 왼쪽 칸(세로는 pL = L)
         U.portraitBox(who, hint ? (args.hintFace || null) : face, px, py0, 1, null, sc);   // [r5 A1] sc = 빠른 길 검사(pt-c 32 자리). 되돌리기: 뒤 두 인자를 뺀다
         if (hint) {
           const k = t - hint.t0, a = hint.c0 >= 0 ? 1 - (t - hint.c0) / 140 : Math.min(1, k / 140);
@@ -92274,22 +92348,22 @@ MC.addLang('es', {
         }
         // 아래: 고른 기억의 본문 + [이걸로 답한다]
         const py = Gm.py;
-        g.frame(Gm.L, py, Gm.gw, Gm.panelH, { small: true });
-        const cxp = Gm.L + (Gm.gw >> 1);
+        g.frame(Gm.pL, py, Gm.pw, Gm.panelH, { small: true });
+        const cxp = Gm.pL + (Gm.pw >> 1);
         if (sel >= 0 && doneAt < 0) {
           const c = cards[sel], d = CL[c.id] || {};
-          const ls = MC.text.wrap(jos(Mm ? clueText(c.id) : ''), Gm.gw - 14, 'small').slice(0, 4);
-          ls.forEach((l, k) => MC.text.draw(l, Gm.L + 7, py + 5 + k * 13, { font: 'small', color: P.text }));
-          MC.text.draw(place(d.w), Gm.L + 7, bAns.y + ((bAns.h - 13) >> 1) + 1, { font: 'small', color: P.dim });
+          const ls = MC.text.wrap(jos(Mm ? clueText(c.id) : ''), Gm.pw - 14, 'small').slice(0, 4);
+          ls.forEach((l, k) => MC.text.draw(l, Gm.pL + 7, py + 5 + k * 13, { font: 'small', color: P.text }));
+          MC.text.draw(place(d.w), Gm.pL + 7, bAns.y + ((bAns.h - 13) >> 1) + 1, { font: 'small', color: P.dim });
           bAns.render();
         } else if (okIdx >= 0) {                                                  // (0.4.3b T6) 답한 기억: 이름만이 아니라 본문도(빈 칸 70%를 채움)
           const c = cards[okIdx], d = CL[c.id] || {};
-          MC.text.draw(U.tf('deduce.memName', { name: d.n ? U.tr(d.n, 'clue') : '' }), Gm.L + 7, py + 4, { color: P.gold });
-          const ls = MC.text.wrap(jos(Mm ? clueText(c.id) : ''), Gm.gw - 14, 'small').slice(0, 4);
-          ls.forEach((l, k) => MC.text.draw(l, Gm.L + 7, py + 22 + k * 13, { font: 'small', color: P.text }));
+          MC.text.draw(U.tf('deduce.memName', { name: d.n ? U.tr(d.n, 'clue') : '' }), Gm.pL + 7, py + 4, { color: P.gold });
+          const ls = MC.text.wrap(jos(Mm ? clueText(c.id) : ''), Gm.pw - 14, 'small').slice(0, 4);
+          ls.forEach((l, k) => MC.text.draw(l, Gm.pL + 7, py + 22 + k * 13, { font: 'small', color: P.text }));
         } else if (lastHint) {
-          const ls = MC.text.wrap(U.tf('deduce.quoteHint', { text: lastHint }), Gm.gw - 14, 'small').slice(0, 4);
-          ls.forEach((l, k) => MC.text.draw(l, Gm.L + 7, py + 5 + k * 13, { font: 'small', color: g.mix(P.gold, P.text, 0.35) }));
+          const ls = MC.text.wrap(U.tf('deduce.quoteHint', { text: lastHint }), Gm.pw - 14, 'small').slice(0, 4);
+          ls.forEach((l, k) => MC.text.draw(l, Gm.pL + 7, py + 5 + k * 13, { font: 'small', color: g.mix(P.gold, P.text, 0.35) }));
           MC.text.draw(U.tf('deduce.tryOther'), cxp, py + Gm.panelH - 18, { font: 'small', color: P.dim, align: 'center' });
         } else {
           MC.text.draw(args.help || U.tf('deduce.pickAnswer'), cxp, py + (Gm.panelH >> 1) - 13, { font: 'small', color: P.dim, align: 'center' });
@@ -92340,12 +92414,18 @@ MC.addLang('es', {
       const sc = makeScene({ stage: 'carve', IN: 480, draw });
       sc.dbg = { state: () => ({ done, cur: cur && cur.i, doneAt }) };
       function geo() {
-        const top = 14 + g.safe.top, bottom = g.H - (hold ? 108 : 22) - g.safe.bottom;
-        const pitch = MC.clamp(Math.floor((bottom - top) / names.length), 30, 56);
-        const y0 = top + Math.max(0, ((bottom - top) - pitch * names.length) >> 1);
-        return { top, bottom, pitch, y0, cx: g.W >> 1 };
+        // [land-carve] 가로: 이름을 두 칸(2×2)으로, 아래는 대화창 자리(hold)만큼 비운다. 옛: 세로 식 그대로라 넷이 120px로 대화창과 겹쳤다(제미나이 argon 0.9.18 평가)
+        const cols = g.land && names.length > 2 ? 2 : 1, rowsN = Math.ceil(names.length / cols);
+        const top = 14 + g.safe.top, bottom = g.H - (hold ? (g.land ? 62 : 108) : 22) - g.safe.bottom;
+        const pitch = MC.clamp(Math.floor((bottom - top) / rowsN), 30, 56);
+        const y0 = top + Math.max(0, ((bottom - top) - pitch * rowsN) >> 1);
+        return { top, bottom, pitch, y0, cx: g.W >> 1, cols };
       }
-      function namePos(i) { const Gm = geo(), w = MC.text.width(names[i], 'body') * 2; return [Gm.cx - (w >> 1), Gm.y0 + i * Gm.pitch + ((Gm.pitch - 26) >> 1), w]; }
+      function namePos(i) {
+        const Gm = geo(), w = MC.text.width(names[i], 'body') * 2, col = Gm.cols === 2 ? i % 2 : 0, row = Gm.cols === 2 ? (i >> 1) : i;
+        const cx = Gm.cols === 2 ? Math.round(g.W * (col ? 0.71 : 0.29)) : Gm.cx;
+        return [cx - (w >> 1), Gm.y0 + row * Gm.pitch + ((Gm.pitch - 26) >> 1), w];
+      }
       const gd = U.guide({ key: 'deduce.tapWall', icon: 'tap', delay: sc.IN + 900 });   // [c43-guide B1]
       function start() {
         if (cur || done >= names.length || doneAt >= 0) return;
@@ -92400,7 +92480,8 @@ MC.addLang('es', {
         // 손가락 안내
         if (!cur && done < names.length && doneAt < 0 && t > sc.IN + 900 && t - lastAct > 900) {
           const pos = namePos(done), bob = ((MC.time.real / 300) | 0) % 2;
-          if (!U.drawSpr('ic_hand_tap', (Gm.cx) - 4, pos[1] + 10 + bob)) g.rect(Gm.cx - 2, pos[1] + 12 + bob, 4, 4, '#ffcf4a');
+          const hx = pos[0] + (pos[2] >> 1);   // [land-carve] 그 이름 칸 가운데(세로는 화면 가운데와 같다)
+          if (!U.drawSpr('ic_hand_tap', hx - 4, pos[1] + 10 + bob)) g.rect(hx - 2, pos[1] + 12 + bob, 4, 4, '#ffcf4a');
         }
         // [c43-guide B1] 안내는 공통 안내(가장 밝은 단 · 디더 없음 — 예전 어두운 회색). 자리는 이름 줄 아래(예전 자리)
         gd.render({ bg: '#05050a', y: Gm.bottom + 9 });
@@ -94616,6 +94697,13 @@ MC.addLang('es', {
     return new Promise(resolve => {
       const sc = makeStage({ name: 'mg_s3_reveal', full: true, IN: 400, OUT: 500, draw });
       function geo() {
+        if (g.land) {   // [land-reveal] 가로(높이 180~): 종이(화면 높이만큼)는 왼쪽에 서 있고, 초는 오른쪽 아래. 누르면 종이가 옆으로 초 쪽까지 다가간다. 안내는 오른쪽 위.
+          //   옛: 세로 식이라 종이가 초를 가리고 쉬는 자리·불 앞 자리가 같아 움직이지 않았다(제미나이 argon 0.9.18)
+          const top = g.safe.top, bot = g.H - g.safe.bottom, PW = PW0(), ph = PH(), R0 = g.W - 6 - g.safe.right;
+          const flameX = R0 - 34, flameY = bot - 30, restX = 10 + g.safe.left, nearX = Math.max(restX, flameX - PW - 6);
+          const e = MC.ease.inOutQuad(prox), px = Math.round(restX + (nearX - restX) * e), py = Math.min(top + 4, Math.max(top - 2, (g.H - ph) >> 1));   // 첫 줄은 늘 보이게(넘치면 아래 엄지 쪽이 잘린다)
+          return { top, bot, PW, ph, px, py, flameY, cx: flameX, gcx: (restX + PW + 8 + R0) >> 1, gmw: R0 - restX - PW - 8, gy: top + 26 };
+        }
         const top = g.safe.top, bot = g.H - g.safe.bottom, PW = PW0(), ph = PH();
         const flameY = bot - 58, nearY = Math.max(top + 16, flameY - ph - 6), restY = Math.max(top + 16, nearY - 90);   // 쉬는 자리: 불에서 90px 위(서재 창이 보이게)
         const e = MC.ease.inOutQuad(prox), py = Math.round(restY + (nearY - restY) * e);
@@ -94707,7 +94795,7 @@ MC.addLang('es', {
         } else { drawArm(0, Gm.px + 6, Gm.py + Gm.ph - 3, Gm.bot, true); drawArm(1, Gm.px + Gm.PW - 7, Gm.py + Gm.ph - 3, Gm.bot, true); }
         // [c43-guide B1] 안내 한 줄(공통 자리) + 길게 누르기 손가락 — 첫 누름 전 · 다 드러나기 전에 손을 떼면 요령 줄과 함께 · 4초 손이 없으면 다시. 누르는 동안은 글 대신 가장자리 빛(CG)
         //   자리: 공통 자리는 촛불이 차지해서 촛불 바로 위(쉬는 종이·손가락과 불 사이)
-        gd.render({ bg: '#0a0604', hand: phase === 'reveal' && !down ? [Gm.cx, Gm.py + Gm.ph + 16] : null, handKind: 'hold', y: Math.min(U.guideBottom(), Gm.flameY - 26) });
+        gd.render({ bg: '#0a0604', hand: phase === 'reveal' && !down ? (Gm.gcx != null ? [Gm.gcx, Gm.gy + 34] : [Gm.cx, Gm.py + Gm.ph + 16]) : null, handKind: 'hold', y: Gm.gy != null ? Gm.gy : Math.min(U.guideBottom(), Gm.flameY - 26), cx: Gm.gcx, maxW: Gm.gmw });   // [land-reveal] 가로는 오른쪽 빈 칸
       }
       function revealOne() {
         const q = glyphs[idx]; if (!q) return;
@@ -94802,17 +94890,27 @@ MC.addLang('es', {
     if (n > 1 && order.every((s, i) => s.row === i)) order.push(order.shift());
     order.forEach((s, i) => { s.pile = i; });
     let miss = 0, drag = null, sel = null, phase = n ? 'join' : 'letter', joinT = -1, letT = n ? -1 : 0, closing = false, laid = false, touched = false;
-    const gd = U.guide({ key: 'mg.joinPrompt', icon: 'drag', dir: 'up', delay: 600 });
-    // 편지(9줄): 줄마다 2줄까지
+    const gd = U.guide({ key: 'mg.joinPrompt', icon: 'drag', dir: g.land ? 'left' : 'up', delay: 600 });   // [land-join] 가로는 쪽지를 왼쪽으로 끈다
+    // 편지(9줄): 줄마다 2줄까지 — [land-join] 가로는 폭을 넓혀(최대 280) 줄바꿈을 줄인다(9줄이 높이 180 안에)
     let letRows = null, letKey = '';
+    const LTW = () => g.land ? Math.min(g.W - 40, 280) : Math.min(g.W - 28, 152);
     function letterRows() {
-      const tw = Math.min(g.W - 28, 152), k = tw + '|' + MC.i18n.rev;
+      const tw = LTW(), k = tw + '|' + MC.i18n.rev;
       if (k !== letKey) { letKey = k; letRows = letter.map(s => MC.text.wrap(s, tw, 'small').slice(0, 2)); }
       return letRows;
     }
     return new Promise(resolve => {
       const sc = makeStage({ name: 'mg_s3_join', full: true, IN: 300, OUT: 300, draw });
       function geo() {
+        if (g.land) {   // [land-join] 가로: 반쪽 편지 왼쪽(위아래 가운데) · 쪽지 더미 오른쪽(두 칸, 좁으면 살짝 겹쳐 쌓음) · 안내는 더미 아래. 옛: 세로 식이라 더미가 바닥 한 줄에 몰려 편지와 겹쳤다(제미나이 argon 0.9.18)
+          const L0 = 8 + g.safe.left, R0 = g.W - 6 - g.safe.right, top = 6 + g.safe.top, bot = g.H - 6 - g.safe.bottom;
+          const sheetH = n * RH + 12, x0 = L0, y0 = Math.max(top, (g.H - sheetH) >> 1);
+          const slots = []; for (let j = 0; j < n; j++) slots.push([x0 + HW - 2, y0 + 6 + j * RH, SW, RH - 4]);
+          const pw = SW, ph = RH - 4, pX = x0 + HW + SW + 10, cols = n > 1 ? 2 : 1, colOff = Math.min(pw + 8, Math.max(24, R0 - pX - pw)), rowsN = Math.ceil(n / cols);
+          const gyL = top + 34, pTop = Math.max(top + 44, bot - rowsN * (ph + 8) - 4);   // 안내(두 줄까지 — y는 마지막 줄 자리)는 오른쪽 위, 더미는 그 아래
+          const piles = []; for (let i = 0; i < n; i++) { const c = i % cols, r = (i / cols) | 0; piles.push([pX + c * colOff + (r & 1 ? 3 : -2), pTop + r * (ph + 8) + (c ? 6 : 0)]); }
+          return { top, bot, x0, y0, sheetH, slots, piles, gy: gyL, gcx: (pX + R0) >> 1, gmw: R0 - pX };
+        }
         const top = 14 + g.safe.top, bot = g.H - 12 - g.safe.bottom, x0 = (g.W - (HW + SW - 2)) >> 1;
         const sheetH = n * RH + 12, y0 = top;
         const slots = []; for (let j = 0; j < n; j++) slots.push([x0 + HW - 2, y0 + 6 + j * RH, SW, RH - 4]);
@@ -94872,7 +94970,7 @@ MC.addLang('es', {
           for (const s of scraps) if (s.placed) drawScrap(s, false);
           for (const s of scraps) if (!s.placed && !(drag && drag.s === s)) { const k = now() - s.shakeT; const dx = k < 300 ? Math.round(Math.sin(k * 0.08) * 3 * (1 - k / 300)) : 0; s.cx += dx; drawScrap(s, false); s.cx -= dx; }
           if (drag) drawScrap(drag.s, true);
-          if (phase === 'join') gd.render({ bg: '#100c0c', y: Gm.y0 + Gm.sheetH + 17 });   // [c43-guide B1] 안내 한 줄 — 공통 자리(화면 아래)는 쪽지 더미가 차지해서 편지와 더미 사이에
+          if (phase === 'join') gd.render({ bg: '#100c0c', y: Gm.gy != null ? Gm.gy : Gm.y0 + Gm.sheetH + 17, cx: Gm.gcx, maxW: Gm.gmw });   // [c43-guide B1] 안내 한 줄 — 공통 자리(화면 아래)는 쪽지 더미가 차지해서 편지와 더미 사이에([land-join] 가로는 더미 아래)
           if (phase === 'join' && (!touched || gd.again()) && !drag && t > 2600) {   // [fix beats-clarity] 처음 손대기 전(·[c43-guide] 4초 손이 없을 때): 쪽지 하나를 제자리로 끌어 보이는 손짓
             const s = scraps.find(o => !o.placed);
             if (s) {
@@ -94888,9 +94986,9 @@ MC.addLang('es', {
           }
         } else {
           // 한 장이 된 편지
-          const rows = letterRows(), tw = Math.min(W - 28, 152), pw = tw + 16;
+          const rows = letterRows(), tw = LTW(), pw = tw + 16;
           let hh = 14; rows.forEach(r => { hh += r.length * 13 + 3; }); hh += 8;
-          const px = (W - pw) >> 1, py = Math.max(8 + g.safe.top, ((H - hh) >> 1) - 10), seam = px + Math.round(pw * 0.66);
+          const px = (W - pw) >> 1, py = Math.max((g.land ? 4 : 8) + g.safe.top, ((H - hh) >> 1) - (g.land ? 4 : 10)), seam = px + Math.round(pw * 0.66);
           g.rect(px + 2, py + 3, pw, hh, '#000000');
           g.rect(px, py, seam - px, hh, PARCH[2]); g.rect(seam, py, px + pw - seam, hh, '#e8dcc0');
           for (let y = 0; y < hh; y++) { const sx = seam + wobble(y, 21, 1); g.px(sx, py + y, PARCH[4]); if (U.hash(y, 4, 2) < 0.5) g.px(sx - 1, py + y, PARCH[3]); }
@@ -95172,11 +95270,12 @@ MC.addLang('es', {
       const sc = makeStage({ name: 'mg_s3_burn', full: true, IN: 300, OUT: 400, draw });
       const bg = () => once('burnbg|' + g.W + 'x' + g.H, () => { const c = bakeStones(g.W, g.H, ['#0a0808', '#161214', '#1a1618', '#1e1a1c', '#3a3238'], 61, 12, 24); G().withCtx(c, () => G().ctx.drawImage(U.vig(12, '#030203'), 0, 0)); return c; });
       function geo() {
-        const lamp = lampImg(), ls = lamp.width <= 48 ? 2 : 1, bot = g.H - g.safe.bottom;
-        const lx = (g.W - lamp.width * ls) >> 1, ly = bot - 40 - lamp.height * ls;
+        const lamp = lampImg(), ls = lamp.width <= 48 ? 2 : 1, bot = g.H - g.safe.bottom, LD = !!g.land;
+        // [land-burn] 가로: 등잔을 바닥 가까이·왼쪽 3분의 1로, 쉬는 종이는 위로 붙여 누르면 내려가게(옛: 세로 식이라 닿는 자리가 쉬는 자리와 거의 같아 움직이지 않았다 — 제미나이 argon 0.9.18). 안내는 오른쪽
+        const lx = LD ? Math.round(g.W * 0.36) - ((lamp.width * ls) >> 1) : (g.W - lamp.width * ls) >> 1, ly = bot - (LD ? 4 : 40) - lamp.height * ls;
         const flameX = lx + Math.round(lamp.width * ls * 0.9), flameY = ly + 6;
         const pap = reconImg(), pw = pap.width, ph = pap.height;
-        const rest = g.safe.top + 26, contact = flameY - 16 - ph;
+        const rest = g.safe.top + (LD ? 6 : 26), contact = flameY - 16 - ph;
         const e = MC.ease.inOutQuad(clamp(prog, 0, 1)), py = Math.round(rest + (contact - rest) * e), px = flameX - (pw >> 1) - 8;
         return { lamp, ls, lx, ly, flameX, flameY, pap, pw, ph, px: clamp(px, 4, g.W - pw - 4), py };
       }
@@ -95240,7 +95339,8 @@ MC.addLang('es', {
         }
         parts.render(); ash.render();
         // [c43-guide B1] 안내 한 줄 + 길게 누르기 손가락(공통) — 누르는 동안은 글 대신 가장자리 빛
-        gd.render({ bg: '#0a0808', hand: burnT < 0 && !wasDown ? [g.W >> 1, Gm.py + Gm.ph + 14] : null, handKind: 'hold', y: Math.min(U.guideBottom(), Gm.ly - 10) });   // 자리: 등잔 바로 위(공통 자리는 등잔이 차지)
+        const LG = !!g.land, gx0 = Gm.px + Gm.pw + 10, gR = g.W - 6 - g.safe.right;   // [land-burn] 가로는 종이 오른쪽 빈 칸
+        gd.render({ bg: '#0a0808', hand: burnT < 0 && !wasDown ? (LG ? [(gx0 + gR) >> 1, (g.H >> 1) + 26] : [g.W >> 1, Gm.py + Gm.ph + 14]) : null, handKind: 'hold', y: LG ? (g.H >> 1) - 8 : Math.min(U.guideBottom(), Gm.ly - 10), cx: LG ? (gx0 + gR) >> 1 : undefined, maxW: LG ? gR - gx0 : undefined });   // 자리: 등잔 바로 위(공통 자리는 등잔이 차지)
       }
       let wasDown = false;
       wrapUpdate(sc, dt => {
@@ -95409,6 +95509,10 @@ MC.addLang('es', {
   }
   function shadowGeo() {
     const g = G(), img = shadowImg(1), s = img.width * 2 <= g.W + 12 ? 2 : 1;
+    if (g.land) {   // [land-shadow] 가로(높이 180~): 실루엣(2배 192×128)을 위에 붙인다 — 대화가 뜨면 맨 아래 팔목 몇 줄만 창에 가린다(모양·턱 자리는 위쪽). 등잔·다음 표시는 아래 구석
+      const top = g.safe.top + 2, bot = g.H - 18 - g.safe.bottom;
+      return { s, x: (g.W - img.width * s) >> 1, y: top, bot };
+    }
     const top = g.safe.top + 12, bot = g.H - 74 - g.safe.bottom;
     return { s, x: (g.W - img.width * s) >> 1, y: top + Math.max(0, ((bot - top - img.height * s) >> 1)), bot };
   }
@@ -100022,7 +100126,7 @@ MC.addLang('es', {
     const v = n => +getVar(n) || 0, lv = (MC.state && MC.state.party && MC.state.party[0] && MC.state.party[0].lv) || 1;
     const tries = v('s4_try2') + v('s4_try3'), hp = v('s4_swimHp');
     let gr = tries <= 1 && hp >= (lv >= 15 ? 40 : 60) ? 'S' : (tries <= 4 || hp >= 30) ? 'A' : 'B';
-    // [tap3] 옛: 손놀림 보조를 켜면 S → A(접근성 기능에 불이익 — 외부 평가 GPT). 이제 등급은 그대로, 기록에 「손놀림 보조 · 받음」 줄만 더한다(record)
+    // [tap3] 옛: 손놀림 보조를 켜면 S → A(접근성 기능에 불이익 — 외부 평가 GPT). 이제 등급은 그대로이고 기록 화면에도 남기지 않는다(0.9.18 사용자 「빼줘」). 본 계산은 events_s4e.js grade()
     return gr;
   }
   /* [s44-director C2③ 장부 말투] 기록 숫자를 한글 셈말로(제미나이·a42-snd 남은 것 4): 「12/19」→「열아홉 중 열둘」, 「기운 72%」→「남은 숨 칠 할」, 「2시간 20분」→「두 시간 이십 분」.
@@ -103369,6 +103473,7 @@ MC.addLang('es', {
     const bSet = new MC.ui.Button({ label: L('title.settings'), pal, onTap: () => doSettings() });
     const bMute = new MC.ui.Button({ w: 24, h: 24, style: 'ghost', pal, sfx: null, onTap: () => toggleMute() });
     const bLang = new MC.ui.Button({ w: 24, h: 24, style: 'ghost', pal, onTap: () => doLang() });
+    sc.dbg = { bCont, bNew, bSet };                       // 시험용(tools/playtest.js가 화면 크기·가로세로와 상관없이 단추 자리를 읽는다)
     // '장 선택' 자리(ARCHITECTURE_S4 §F-2): 2장이 나오면 여기 숨은 항목 chapter(1장·2장 고르기)를 단추로 더한다. 지금은 보이지 않고 탭도 없다 —
     // 스토어 1장 단독판에서 '곧 나옵니다'로 읽히지 않게 단추·글자를 두지 않는다(코드 주석으로만).
     const buttons = () => { const b = sc.info ? [bCont, bNew, bSet, bMute] : [bNew, bSet, bMute]; if (langUI()) b.push(bLang); return b; };
@@ -103774,7 +103879,7 @@ MC.addLang('es', {
       { k: 'fullscreen', label: L('set.fullscreen'), type: 'bool', show: canFs, get: () => !!fsEl(), set: setFs },   // [FULL1]
       { k: 'orient', label: L('set.orient'), type: 'opt', opts: [['auto', L('set.orientAuto')], ['port', L('set.orientPort')]] },   // [orient] 화면 방향(자동 / 세로 고정) — 바꾸면 곧바로 다시 잰다(change)
       { k: 'vibrate', label: L('set.vibrate'), type: 'bool', show: canVib },
-      { k: 'assist', label: L('set.assist'), type: 'bool' },          // S4 손놀림 보조(탈출 토막 1회 성공·헤엄 체력 감소 없음·키 잡기 5초 — 등급 상한 A, 계약 §D-4)
+      { k: 'assist', label: L('set.assist'), type: 'bool' },          // 손놀림 보조(S4 탈출 토막 1회 성공·헤엄 체력 감소 없음·키 잡기 5초 + 「길게 누르기」 장면 탭 버티기 input.js latchTap — 등급에는 영향 없음)
       { k: 'oneHand', label: L('set.oneHand'), type: 'bool' },        // S4 한 손 조작(헤엄: 누르고 있으면 0.9초 박자로 저절로 젓기)
       { k: 'lang', label: L('set.lang'), type: 'lang', show: langUI },
       { k: 'credits', label: L('set.credits'), type: 'link', show: () => true, open: o => ch1.creditsView && ch1.creditsView(o) }] }       // 라이선스·크레딧 창(menu.js ch1.creditsView)       // 언어: 고를 언어가 2개 이상일 때만(docs/I18N.md §7)
@@ -103842,7 +103947,7 @@ MC.addLang('es', {
       const two = !!G().land && w >= 280, per = two ? Math.ceil(n / 2) : n, cw = two ? ((w - 8) >> 1) : w;
       this.per = per;
       const avail = Math.floor((h - tabH - 14 - 18) / Math.max(1, per));
-      this.rowH = MC.clamp(avail, Math.min(mt + 4, Math.max(20, avail)), Math.max(mt + 8, 30));
+      this.rowH = MC.clamp(avail, Math.min(mt + 4, Math.max(two ? 14 : 20, avail)), Math.max(mt + 8, 30));   // [land-fit] 가로 두 칸은 높이 180 폰에서도 넘치지 않게 14까지(누르는 자리는 minTouch로 넓어진다)
       let bh = Math.max(20, Math.min(this.rowH - 6, mt));
       if (two) bh = Math.min(bh, this.rowH - 2);   // [land-fit] 줄이 낮으면(320×180) 단추가 위아래 줄과 겹치지 않게(누르는 자리는 minTouch로 넓어진다)
       // [land-fit] 칸이 좁으면(가로 320 폭 = 칸 146) ◀ ▶ 를 16폭으로, 값 칸은 그 칸(열)에서 가장 긴 값만큼만 — 이름 자리를 넓힌다(오른쪽 끝 ▶ 는 열마다 한 줄로 맞춤)
@@ -103868,7 +103973,13 @@ MC.addLang('es', {
     onInput(ev) { for (const b of this.widgets()) if (b.onInput(ev)) return true; return false; }
     render() {
       const g = G(), P = this.pal ? g.pal(this.pal) : g.uiPal, s = MC.save.settings, x = this.x, w = this.w;
-      for (const b of this.tabs) b.render();
+      // [tab-em] 고른 탭이 더 또렷하게(그록 0.9.18): 고른 탭 = 안쪽 금빛 테 한 줄, 안 고른 탭 = 글자 한 단 어둡게
+      this.tabs.forEach((b, i) => {
+        const on = i === this.tab;
+        b.color = on ? null : g.mix(P.text, P.f, 0.4);
+        b.render();
+        if (on) g.rectO(b.x + 2, b.y + 2, b.w - 4, b.h - 4, g.mix(P.gold, P.f, 0.3));
+      });
       this.rb.forEach((e, i) => {
         const r = e.r, ry = e.y, cy = ry + ((this.rowH - 16) >> 1) + 1, x = e.cx != null ? e.cx : this.x, w = e.cw || this.w;   // [land] 칸마다 x·폭
         if ((e.k != null ? e.k : i) > 0) g.hline(x + 6, ry, w - 12, g.mix(P.f, P.D, 0.6));
@@ -103938,6 +104049,15 @@ MC.addLang('es', {
     function close() { if (sc.closing < 0) sc.closing = 0; }
     function lay() {
       const H = g.H, mt = MC.ui.minTouch(), bh = Math.max(26, mt + 2);
+      if (g.land) {   // [land-set] 타이틀에서 연 설정(가로): 화면 폭 거의 다 쓰는 창 + 두 칸, 「닫기」는 창 제목 줄 오른쪽(옛: 세로 폭 176 그대로라 줄이 창 밖으로 넘치고 닫기와 겹침 — 제미나이·그록 0.9.18 평가)
+        const x0 = 4 + g.safe.left, ww = g.W - 8 - g.safe.left - g.safe.right;
+        const ph = Math.min(panel.neededH(2) + 8, H - 8 - g.safe.top - g.safe.bottom - 26);
+        const top = Math.max(4 + g.safe.top, (H - (24 + ph + 2)) >> 1);
+        panel.layout(x0 + 4, top + 28, ww - 8, ph - 8);
+        sc.win = [x0, top, ww, ph + 24 + 2];
+        bClose.w = Math.max(44, MC.text.width(tf('ui.close'), 'body') + 16); bClose.h = 18; bClose.x = x0 + ww - bClose.w - 5; bClose.y = top + 3;
+        return;
+      }
       const ph = Math.min(panel.neededH() + 8, H - 60 - g.safe.top - g.safe.bottom - bh);
       const total = 24 + ph + 2 + 10 + bh;
       const top = Math.max(8 + g.safe.top, (H - total) >> 1);
@@ -104057,7 +104177,7 @@ MC.addLang('es', {
   // 바깥·뒤로가기·[닫기] = 닫기. 줄은 칸 안에 온전히 들어오는 것만 그린다(잘린 줄 없음). opt:{pal} -> Promise(닫힐 때)
   ch1.creditsView = function (opt) {
     opt = opt || {};
-    const g = G(), pal = opt.pal || null, W = 172;
+    const g = G(), pal = opt.pal || null, W0 = 172;   // [land-credits] 가로는 lay()에서 넓힌다
     const sc = { name: 'credits', opaque: false, blocking: true, t: 0, closing: -1, sy: 0, drag: null };
     const bClose = new MC.ui.Button({ label: L('ui.close'), pal: pal || undefined, sfx: 'ui_cancel', onTap: () => close() });
     function close() { if (sc.closing < 0) sc.closing = 0; }
@@ -104090,7 +104210,8 @@ MC.addLang('es', {
     function lay() {
       const mt = MC.ui.minTouch(), bh = Math.max(26, mt + 2);
       const h = Math.min(g.H - 24 - g.safe.top - g.safe.bottom, 420);
-      const x = g.X0 + ((180 - W) >> 1), y = Math.max(12 + g.safe.top, ((g.H - h) >> 1));
+      const W = g.land ? Math.min(360, g.W - 16 - g.safe.left - g.safe.right) : W0;   // [land-credits] 가로: 넓은 창(옛: 세로 폭 172 그대로라 라이선스 전문을 좁은 구멍으로 한참 넘겼다 — 제미나이 argon 0.9.18)
+      const x = g.land ? (g.W - W) >> 1 : g.X0 + ((180 - W) >> 1), y = Math.max(12 + g.safe.top, ((g.H - h) >> 1));
       bClose.w = 96; bClose.h = bh; bClose.x = x + ((W - 96) >> 1); bClose.y = y + h - bh - 8;
       sc.box = [x, y, W, h]; sc.view = [x + 8, y + 26, W - 16, h - 26 - bh - 16];
       const ls = build(W - 16 - 4), total = ls.reduce((s, l) => s + (l.h || 16), 0);
