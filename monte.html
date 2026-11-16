@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.15';
+  var VERSION = '0.9.16';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -5260,6 +5260,30 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     }
     return anchor;
   }
+  // [tap2] 대화창용 큰 닻(옛 5×6 닻을 2배 + 검은 테 + 그림자, 13×15) — 「다음」 표시가 작아 안 보인다는 외부 평가. 창 아래 테두리에 걸쳐 놓는다
+  let anchorB = null;
+  function anchorBigCanvas() {
+    if (anchorB) return anchorB;
+    const rows = ['..o..', '.oOo.', '..o..', '..o..', 'o.o.o', '.ooo.'], S = 2, W = 5 * S + 3, H = 6 * S + 3;
+    anchorB = G().makeCanvas(W, H);
+    const x = anchorB.getContext('2d'), on = (i, j) => j >= 0 && j < 6 && i >= 0 && i < 5 && rows[j][i] !== '.';
+    x.fillStyle = '#000';                                                       // 테(사방 1) + 그림자(오른쪽 아래 1)
+    for (let py = 0; py < 6 * S + 2; py++) for (let px = 0; px < 5 * S + 2; px++) {
+      let near = false;
+      for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1 && !near; dx++) if (on(Math.floor((px - 1 + dx) / S), Math.floor((py - 1 + dy) / S)) && px - 1 + dx >= 0 && py - 1 + dy >= 0) near = true;
+      if (near) { x.fillRect(px, py, 1, 1); x.fillRect(px + 1, py + 1, 1, 1); }
+    }
+    for (let j = 0; j < 6; j++) for (let i = 0; i < 5; i++) {
+      const c = rows[j][i]; if (c === '.') continue;
+      x.fillStyle = c === 'O' ? '#fff6d0' : '#ffcf4a'; x.fillRect(1 + i * S, 1 + j * S, S, S);
+      x.fillStyle = c === 'O' ? '#ffffff' : '#fff0a0'; x.fillRect(1 + i * S, 1 + j * S, 1, 1);   // 칸마다 왼쪽 위 반짝
+    }
+    return anchorB;
+  }
+  function nextMarkBig(x, y) {
+    const bob = [0, 1, 2, 1][((MC.time.real / 180) | 0) % 4];
+    G().ctx.drawImage(anchorBigCanvas(), x | 0, (y | 0) + bob);
+  }
   function nextMark(x, y) {
     const bob = ((MC.time.real / 400) | 0) & 1;
     const g = G();
@@ -5304,7 +5328,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     minTouch,
     window: (x, y, w, h, opt) => G().frame(x, y, w, h, opt),
     toast: (text, ms) => MC.fx.toast(text, ms == null ? 2000 : ms),
-    nextMark,
+    nextMark, nextMarkBig,
     cursor,                                     // [r5 U4] (x, y, P?, still?) 7×7 놋쇠 화살
     sepLine,                                    // [r5 U2] (x, y, w, P) 점선 구분선
     drawArc                                     // (cx,cy,r,progress0..1,color,backColor?) 원형 진행
@@ -9519,7 +9543,12 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   function revealTo(t) {
     const pg = st.page, gs = pg.glyphs, n = gs.length;
     if (st.base <= 0) { revealAll(t); return; }
-    if (st.shown < n ? gs[st.shown].pre >= BIG_P : pg.tail >= BIG_P) return;   // 지금 큰 쉼 → 무시
+    if (st.shown < n ? gs[st.shown].pre >= BIG_P : pg.tail >= BIG_P) {   // 지금 큰 쉼
+      // [tap2] 옛: 쉬는 동안의 탭은 버렸다(「눌렀는데 반응 없음」 — 외부 평가). 이제 쉼을 건너뛴다. 단 정점 쉼({p:1000} 이상)은 0.5초는 지킨다
+      const p = st.shown < n ? gs[st.shown].pre : pg.tail;
+      if (p >= KEY_P && st.acc < KEY_IGNORE) return;
+      if (st.shown >= n) { complete(t); return; }
+    }
     let j = st.shown + 1;
     while (j < n && !(gs[j].pre >= BIG_P)) j++;
     if (j >= n && !(pg.tail >= BIG_P)) { revealAll(t); return; }
@@ -9567,7 +9596,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     g.frame(L.x, L.y, L.w, BOX_H, fo);
     renderDeco(g, P, pal, L, t);
     if (st.page) renderText(g, P, L, t);
-    if (st.mode === 'shown' && !st.noWait && st.auto == null && !st.choice) MC.ui.nextMark(L.x + L.w - 11, L.y + BOX_H - 11);
+    if (st.mode === 'shown' && !st.noWait && st.auto == null && !st.choice) { if (MC.ui.nextMarkBig) MC.ui.nextMarkBig(L.x + L.w - 19, L.y + BOX_H - 13); else MC.ui.nextMark(L.x + L.w - 11, L.y + BOX_H - 11); }   // [tap2] 큰 닻을 아래 테두리에 걸쳐
   }
   function renderDeco(g, P, pal, L, t) {
     const sp = st.sp;
@@ -92333,8 +92362,17 @@ MC.addLang('es', {
         g.ring(s[0] + 8, s[1] + 8, 6 + Math.round(k * 12), k < 0.5 ? '#fff6d0' : '#a89a70');
         if (k < 0.25) g.rectO(s[0] - 1, s[1] - 1, 18, 18, '#ffffff');
       }
+      // [tap2] 처음 한 번 반짝인 뒤에도 1.6초마다 고리가 퍼진다(누를 칸이 어디인지 놓치지 않게 — 외부 평가 「깃발에서 막힘」)
+      if (sc.t >= 700) {                                   //   칸 둘레 금빛 모서리 넷(늘 켜짐, 숨 쉬듯) + 1.6초마다 두 겹 고리
+        const k = ((sc.t - 700) % 1600) / 700, cx = s[0] + 8, cy = s[1] + 8, br = (((MC.time.real / 260) | 0) & 1) ? '#ffcf4a' : '#b08a30';
+        if (k < 1) { const r = 8 + Math.round(k * 12); g.ring(cx, cy, r, k < 0.5 ? '#fff6d0' : '#a89a70'); g.ring(cx, cy, r + 1, k < 0.5 ? '#ffcf4a' : '#5a4a28'); }
+        for (const [qx, qy, dx, dy] of [[-4, -4, 1, 1], [19, -4, -1, 1], [-4, 19, 1, -1], [19, 19, -1, -1]]) {
+          const x0 = s[0] + qx, y0 = s[1] + qy;
+          g.rect(x0, y0, 1, 1, '#000000'); g.hline(Math.min(x0, x0 + dx * 4), y0, 5, br); g.vline(x0, Math.min(y0, y0 + dy * 4), 5, br);
+        }
+      }
       if (sc.t > 500) { if (!U.drawSpr('ic_hand_tap', s[0] + 6, s[1] + 6 + bob)) g.rect(s[0] + 8, s[1] + 8 + bob, 4, 4, '#ffcf4a'); }
-      if (gd) gd.render({ bg: '#000000' });                // [c43-guide B1] 이벤트 인자 안내도 공통 안내(자리·글꼴·밝기)
+      if (gd) gd.render({ bg: '#000000' });                // [c43-guide B1] 이벤트 인자 안내도 공통 안내(자리·글꼴·밝기) — [tap2] 칸 근처로 옮기면 인물을 가려 그대로 둔다
     };
     return MC.scene.push(sc);
   }
