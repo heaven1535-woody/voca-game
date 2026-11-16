@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.24';
+  var VERSION = '0.9.25';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -13719,7 +13719,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (map.def.banner === false) return;   // [r3 B3] 티불랑: 이름은 타이틀 요약·메뉴에만, 필드에는 예전처럼 장소 줄 없음
     const top = MC.scene.top(); if (top && top !== scene && top.blocking && top.name !== 'dialogue') return;   // 메뉴 등 덮는 화면 아래로 비치지 않게
     const g = G(), mh = map.h * TS;
-    if (anchorY(mh) == null || -rcam.y - g.safe.top < PLACE_H + 2) return;
+    // [land8] 가로: 방(2배 방 포함)이 화면 높이를 채워 위 빈자리가 없어도, 방 왼쪽 빈자리(장소 줄 폭 + 여백)가 있으면 왼쪽 위에 그린다(세로는 늘 보이던 줄).
+    //   옛: 세로와 같은 조건(anchorY · 위 빈자리)만 — 가로에서는 장소 줄이 거의 늘 빠졌다
+    //   (폭 검사는 아래 글을 만든 뒤 — landRoom)
+    if (!g.land && (anchorY(mh) == null || -rcam.y - g.safe.top < PLACE_H + 2)) return;
     const b = bannerBox(); if (b && b[2] > 0) return;
     if ((MC.fx.letterboxLevel && MC.fx.letterboxLevel() > 0.01) || (MC.fx.fadeLevel && MC.fx.fadeLevel() > 0.3)) return;
     const showYear = !(MC.game && (MC.game.flag('a3.year_gone') || MC.game.flag('s4.on')));
@@ -13729,6 +13732,18 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       const place = MC.i18n ? MC.i18n.t(String(map.def.name), 'map') : String(map.def.name);
       placeTx.text = showYear && MC.i18n ? MC.i18n.tf('field.placeLine', { place, year: MC.i18n.tf('fmt.year', { y: yr }) }) : place;
       placeTx.key = key;
+    }
+    if (g.land) {                                          // [land8] landRoom: 방 위 빈자리 또는 방 왼쪽 빈자리(글 폭 + 14)가 있어야 그린다
+      const k = zoomK(), zo = zoomOrg(), sx0 = Math.floor((-rcam.x - zo.cx) * k), sy0 = Math.floor((-rcam.y - zo.cy) * k);
+      if (sy0 - g.safe.top < PLACE_H + 2 && sx0 - g.safe.left < MC.text.width(placeTx.text, 'small') + 14) {
+        // 한 줄로는 안 들면 장소 / 연도 두 줄(같은 낱말 — 장소 이름과 fmt.year)로 왼쪽 빈자리에. 그래도 안 들면 그리지 않는다
+        const place = MC.i18n ? MC.i18n.t(String(map.def.name), 'map') : String(map.def.name);
+        const yrs = showYear && MC.i18n ? MC.i18n.tf('fmt.year', { y: yr }) : '';
+        if (sx0 - g.safe.left < Math.max(MC.text.width(place, 'small'), yrs ? MC.text.width(yrs, 'small') : 0) + 14) return;
+        MC.text.draw(place, 7 + g.safe.left, g.safe.top + 4, { font: 'small', color: '#a8a4b4', shadow: '#000' });
+        if (yrs) MC.text.draw(yrs, 7 + g.safe.left, g.safe.top + 4 + PLACE_H - 2, { font: 'small', color: '#a8a4b4', shadow: '#000' });
+        return;
+      }
     }
     MC.text.draw(placeTx.text, g.land ? 7 + g.safe.left : g.X0 + 5, g.safe.top + 4, { font: 'small', color: '#a8a4b4', shadow: '#000' });   // [land2] 가로: 왼쪽 위(이름표와 같은 줄 맞춤). 옛: X0 + 5
   }
@@ -19877,7 +19892,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       const e = ev.u, hid = hiddenEv(ev);
       // HP 막대(항상) — 숫자는 간파 뒤. (S3) 거울 속(진짜를 모름)은 막대 대신 같은 거울 표시만
       // [c43-ui B2-5] 큰 적(보스)은 막대 줄을 5px 올린다 — 발밑이 로그 창 바로 위라 말 상자 이름표가 막대 앞 「?」·계열 아이콘에 닿았다(도17)
-      const bw = ev.w >= 80 ? 64 : 32, bx = ev.cx - (bw >> 1), by = ev.feet + (ev.h > 60 ? -2 : 3);
+      const bw = ev.w >= 80 ? 64 : 32, bx = ev.cx - (bw >> 1);
+      let by = ev.feet + (ev.h > 60 ? -2 : 3);
+      // [land8] 가로 기록 창이 두 줄로 위로 자란 동안(좁은 320 폭의 긴 문장)은 막대 줄(아이콘·「?」 함께)을 창 윗변 위로 올린다 — 옛: 창이 막대 줄을 덮어 적 HP가 안 보였다(세로는 기록 창이 따로라 늘 보임)
+      if (V.logTwoTop != null && by + 4 > V.logTwoTop) by = V.logTwoTop - 5;
       const targeting0 = (V.mode === 'target' || (V.mode === 'cmd' && V.tpress === ev)) && e.alive;
       if (hid) {
         if (targeting0) drawTargetCorners(ev, by, t, P);
@@ -20250,11 +20268,15 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     //   옛: 늘 한 줄 — 앞 줄이 밀려 나가 문장 끝만 남았다(영어 「…acts on his own.」). 셋째 줄부터는 옛처럼 한 줄씩 밀려 올라간다
     const two = !!(l && prev && l.sid != null && l.sid === prev.sid && l.k > 0);
     if (two) { y -= 16; h += 16; }
+    // [land8] 두 줄 창 윗변(다음 그림에서 적 막대 줄을 그 위로 — drawEnemy). 대상 고르기 때는 막대 아래 적 이름(작은 글 한 줄)까지 창 위에 오게 11 더 올려 잰다. 옛: 없음(이름 아래쪽이 창에 잘렸다)
+    V.logTwoTop = two ? y : (V.mode === 'target' && V.pend ? y - 11 : null);
     g.frame(x, y, w, h, { small: true });
     if (V.mode === 'target' && V.pend) {
       const head = cmdLabel(V.pend) + ' → ' + T('chooseTarget'), hw = MC.text.width(head, 'body');
       MC.text.draw(head, x + 8, y + 3, { color: COL.gold });
       if (V.tpress) MC.text.draw(labelOf(V.tpress), x + 16 + hw, y + 3, { color: P.text });
+      // [land8] 세로처럼 누른 대상이 없을 때는 「적 그림을 누른다」 요령을 같은 줄 뒤에(작은 흐린 글, 창 안에 들 때만). 옛: 가로에서는 요령 줄이 없었다
+      else { const ht = T('chooseHint'), hx = x + 16 + hw; if (hx + MC.text.width(ht, 'small') <= x + w - 8) MC.text.draw(ht, hx, y + 6, { font: 'small', color: P.dim }); }
       return;
     }
     if (!l) return;
@@ -20269,7 +20291,9 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   }
   function drawLog() {
     // [land2] 가로: 승리 카드(V.panel)가 떠 있는 동안은 기록 한 줄 창을 그리지 않는다 — 카드(100~)와 한 줄 창이 무대 높이에 함께 들어가지 않아 2~14칸 겹쳤다(얻은 것·경험치는 카드 안에 있다). 옛: 늘 그림
-    if (G().land) { if (!V.panel) drawLogLand(); return; }
+    // [land8] 목록(기술·도구) 창이 열린 동안도 그리지 않는다 — 세로는 목록 창이 기록 창을 다 덮는데, 가로는 기록 창(최대 400)이 목록 창(260)보다 넓어 양옆으로 비어져 나왔다. 옛: if (!V.panel)
+    V.logTwoTop = null;                                                  // [land8] 기록 창을 안 그리는 판(세로·승리 카드·목록)에서는 막대 줄을 옮기지 않는다
+    if (G().land) { if (!V.panel && V.mode !== 'list') drawLogLand(); return; }
     const g = G(), x = V.X0 + 2, y = V.logY, P = g.uiPal;
     g.frame(x, y, 176, 58);
     if (V.mode === 'target' && V.pend) {
@@ -94533,8 +94557,27 @@ MC.addLang('es', {
     warm: '#ffcf6a', red: '#d0583a', guard: '#030305', rim: '#5a4426', cap: '#e8dec8', capHi: '#fff4e0', whisper: '#e8d8b0', bg: '#05060c', edge: '#4a4450' };   // [c43-guide B1] cap #8a8270 → 공통 안내 밝기(#e8dec8 — 검은 바탕에 어두운 회색이라 안 읽혔다)
   const geoMemo = {};
   function ovGeo(g, n) {                          // 화면 크기·안전 영역이 바뀌면 다시 잰다
-    const key = g.W + '|' + g.H + '|' + g.safe.top + '|' + n;
+    const key = g.W + '|' + g.H + '|' + g.safe.top + '|' + n + '|' + (g.land ? 'L' + g.safe.left + ',' + g.safe.right + ',' + g.safe.bottom : '');   // [land8] 가로·여백도 열쇠에(옛: W|H|top|n)
     if (geoMemo.key === key) return geoMemo.o;
+    if (g.land) {
+      /* [land8] 가로 전용 배치: 세로는 빗금 셈 → 회랑 단면 → 안내 → (들보) 가 위아래로 쌓인 약 124px 띠라, 가로(높이 180~204)에서는 가운데 가는 띠 하나로 떴다.
+         → 어두운 바탕 띠(높이 104) 안에 회랑 단면(+ 아래 들보 자리·손가락)은 왼쪽 넓게 · 빗금 셈과 안내(귀띔·손 안내)는 오른쪽 칸에 세로로.
+         그림은 모두 코드로 그리던 것 그대로(크기 같음), 글도 같은 글. 옛: 아래 세로 식에 폭만 240(land5) */
+      const sl = g.safe.left, sr = g.safe.right, mg = 12;
+      const sw = clamp(Math.floor((g.W - sl - sr) * 0.58 / n), 6, 24), w = sw * n, x0 = sl + mg, cx = x0 + (w >> 1);
+      // 바탕 띠는 높이 104(세로 띠처럼 위아래로 어둡게 한 필드가 조금 보인다) · 화면 세로 가운데
+      const mid = (g.safe.top + g.H - g.safe.bottom) >> 1, top = Math.max(g.safe.top + 12, mid - 52), bot = Math.min(g.H - g.safe.bottom - 12, mid + 52);
+      const yT = top + 14, yF = yT + 22;
+      const p = beatPlan(n, 0);
+      let k0 = n, k1 = -1;
+      for (let k = 0; k < n; k++) if (p.step(k, 0).near) { if (k < k0) k0 = k; if (k > k1) k1 = k; }
+      if (k1 < 0) { k0 = (n >> 1) - 1; k1 = n >> 1; }
+      const sx = x0 + k0 * sw, sw2 = (k1 - k0 + 1) * sw;
+      const rx = x0 + w + 16, rw = Math.max(80, g.W - sr - 8 - rx), tcx = rx + (rw >> 1), ty = yT - 2;
+      const o = { n, sw, w, cx, x0, top, yT, yF, sx, sw2, bx: sx + (sw2 >> 1), by: yF + 6, cap: ty + 16, bot, land: true, tcx, ty, rx, rw, guideY: ty + 62 };   // guideY = 손 안내 글 아랫변(U.guide render r.y)
+      geoMemo.key = key; geoMemo.o = o;
+      return o;
+    }
     // [land5] 가로: 회랑 단면 띠를 넓게(걸음 폭 156÷n·최대 16 → 240÷n·최대 24 — 열두 걸음이면 폭 156 → 240). 넓은 화면 가운데 가는 띠 하나만 작게 뜨던 것. 세로는 옛 값 그대로
     const sw = clamp(Math.floor((g.land ? 240 : 156) / n), 6, g.land ? 24 : 16), w = sw * n, cx = g.W >> 1, x0 = cx - (w >> 1);
     const top = g.safe.top + clamp(Math.round(g.H * 0.17), 44, 96), p = beatPlan(n, 0);
@@ -94586,9 +94629,9 @@ MC.addLang('es', {
   // 빗금 셈(벽의 날짜 빗금과 같은 모양 — 넷 긋고 다섯째는 비스듬히). 시작 자리는 n 전체 폭 기준(쌓이는 동안 흔들리지 않게)
   function drawTally(o, cnt, age, a) {            // age: 마지막 걸음 뒤 지난 ms(막 그은 빗금만 밝게)
     if (cnt <= 0 || a <= 0) return;
-    const g = G(), y = o.top, GW = 11, GAP = 5;
+    const g = G(), y = o.land ? o.ty : o.top, GW = 11, GAP = 5;   // [land8] 가로는 오른쪽 칸(옛: o.top · 단면 가운데 위)
     const widthOf = m => Math.floor(m / 5) * (GW + GAP) + (m % 5 ? (m % 5) * 3 - 1 : -GAP);
-    let x = Math.round(o.cx - widthOf(o.n) / 2), left = cnt;
+    let x = Math.round((o.land ? o.tcx : o.cx) - widthOf(o.n) / 2), left = cnt;
     const fresh = age < 220;
     for (let i = 0; left > 0; i++) {
       const m = Math.min(4, left), full = left >= 5;
@@ -94598,12 +94641,13 @@ MC.addLang('es', {
     }
   }
   // 안내·귀띔 한 줄(가운데, 작은 글자 — 디더 대신 색으로 흐리게)
-  function capText(y, s, col) {
+  // [land8] o를 넘기면(가로 배치) 오른쪽 칸 가운데·칸 폭으로 감는다. 세로는 o 없이 불러 옛 그대로(화면 가운데 · 폭 170)
+  function capText(y, s, col, o) {
     if (!s) return;
-    const g = G(), LH = (MC.text.LINE && MC.text.LINE.small) || 12;
-    MC.text.wrap(s, 170, 'small').slice(0, 2).forEach((l, i) => {
+    const g = G(), LH = (MC.text.LINE && MC.text.LINE.small) || 12, L = !!(o && o.land);
+    MC.text.wrap(s, L ? Math.min(170, o.rw) : 170, 'small').slice(0, 2).forEach((l, i) => {
       const c = MC.text.bake(l, 'small', col, { shadow: '#000' });
-      if (c) g.ctx.drawImage(c, Math.round((g.W - c.width) / 2), y + i * LH);
+      if (c) g.ctx.drawImage(c, Math.round(L ? o.tcx - c.width / 2 : (g.W - c.width) / 2), y + i * LH);
     });
   }
   const capCol = (col, k) => G().mix(OV.bg, col, Math.round(clamp(k, 0, 1) * 4) / 4);   // 4단계로만(굽는 글자 캐시가 넘치지 않게)
@@ -94616,7 +94660,7 @@ MC.addLang('es', {
     return () => { if (done) return; done = true; for (const ob of hid) ob.visible = true; };
   }
   function drawOverhead(o, V) {
-    const g = G(), t = now(), ctx = g.ctx, gd = V.gd, bot = V.bot || o.bot;
+    const g = G(), t = now(), ctx = g.ctx, gd = V.gd, bot = o.land ? o.bot : (V.bot || o.bot);   // [land8] 가로는 바탕 띠 아랫변을 ovGeo가 정한 자리로(옛: V.bot || o.bot)
     g.ditherRect(0, o.top - 16, g.W, 8, OV.bg, 6);                 // 바탕 띠(위아래 끝은 디더로 녹는다)
     g.rect(0, o.top - 8, g.W, bot - o.top + 16, OV.bg);             // [fixer-fix] 13 → 불투명: 굴 끝 방 등잔빛이 빗금 셈 뒤로 비치지 않게
     g.ditherRect(0, bot + 8, g.W, 8, OV.bg, 6);
@@ -94670,7 +94714,7 @@ MC.addLang('es', {
         drawTally(o, gd.count, run.last && run.lap === 0 ? run.bt - run.lastAt : 1e9, 16);
         dust.render();
         const hush = sc.t - hushT < 1300;
-        capText(o.yF + 16, U.tf(hush ? 'story.patrolHush' : 'mg.patrolGuide'), hush ? OV.whisper : capCol(OV.cap, (sc.t - 500) / 600));
+        capText(o.land ? o.cap : o.yF + 16, U.tf(hush ? 'story.patrolHush' : 'mg.patrolGuide'), hush ? OV.whisper : capCol(OV.cap, (sc.t - 500) / 600), o);   // [land8] 가로는 오른쪽 칸 빗금 아래(옛: 단면 아래 가운데)
       } });
       let ended = false;
       function end() { if (ended) return; ended = true; sc.close().then(() => { restoreGuards(); resolve({ ok: true }); }); }
@@ -94719,8 +94763,8 @@ MC.addLang('es', {
         dust.render();
         if (waiting && sc.t > 1200) hint(o.bx, o.by + 22, winK * (st ? 13 : (run.lap >= 1 || near > 0 ? 10 : 7)));   // 손가락 = 지금 눌러도 된다
         // [c43-guide B1] 안내 「발소리가 멀 때 누른다.」는 공통 안내 자리·밝기(어두운 회색이라 안 읽혔다 — 영s2b모·영s3a모). 귀띔(속삭임)은 예전 자리
-        if (waiting && sc.t - whisperT < 2600) capText(o.cap, U.tf(mode === 'set' ? 'story.beamNearFaria' : 'story.beamNearSelf'), OV.whisper);
-        gdG.render({ bg: '#05060c' });
+        if (waiting && sc.t - whisperT < 2600) capText(o.cap, U.tf(mode === 'set' ? 'story.beamNearFaria' : 'story.beamNearSelf'), OV.whisper, o);   // [land8] o(가로면 오른쪽 칸)
+        gdG.render(o.land ? { bg: '#05060c', y: o.guideY, cx: o.tcx, maxW: o.rw } : { bg: '#05060c' });   // [land8] 가로: 손 안내도 오른쪽 칸(귀띔 아래). 옛: 늘 공통 자리(가로는 화면 맨 아래)
       } });
       function end() { if (phase === 'end') return; phase = 'end'; sc.close().then(() => { restoreGuards(); resolve({ ok: true, near }); }); }
       function succeed() {
@@ -99926,7 +99970,8 @@ MC.addLang('es', {
         g.rect(tipX - 1, tipY - 6, 3, 7, '#2e241a'); g.vline(tipX, tipY - 6, 6, '#a8745a');                         // 이물 기둥
         // 키 손잡이를 쥔 손(정수 px 좌우 이동만 — H2-17): 그림 오른쪽·아래 변은 늘 화면 밖
         const hk = S.helpT >= 0 ? U.lvl(t, S.helpT, 600) : 0, pulling = S.helpT >= 0 && t - S.helpT > 250 && t - S.helpT < 1900;
-        const hx = W + o.SH - 7 * o.hs - 75 * o.hs + Math.round(S.h * o.SH), hy = o.hTop + (pulling ? (((T / 70) | 0) & 1) : 0);   // 조금 왼쪽(자코포 손이 화면 끝에 붙지 않게)
+        // [land8] 가로: 손을 화면 오른쪽 끝에서 안쪽(가운데 + 폭의 20%)으로 — 넓은 화면의 타원 비네트가 오른쪽 아래 귀퉁이를 어둡게 덮어 키를 쥔 손이 거의 안 보였다(소매는 sleeveRight가 화면 끝까지 잇는다). 옛: 세로와 같은 W + SH − 82·hs
+        const hx = (G().land ? Math.min(W + o.SH - 82 * o.hs, cx + Math.round(W * 0.2)) : W + o.SH - 7 * o.hs - 75 * o.hs) + Math.round(S.h * o.SH), hy = o.hTop + (pulling ? (((T / 70) | 0) & 1) : 0);   // 조금 왼쪽(자코포 손이 화면 끝에 붙지 않게)
         const dImg = spr('cu_helm_hand_d'), jImg = spr('cu_helm_hands');
         // [still-c3] C판(칸 2배 — ch1.u.cuC): 지금 배율 o.hs 자리에 C판을 o.hs/2배로(화면 크기·자리 같음). hx 공식·안내 (38,52)·줄무늬 소매 앵커 (61,2)는 옛 칸 × o.hs(화면 px) 그대로
         const dP = dImg ? U.cuC('cu_helm_hand_d', o.hs) : null, jP = jImg ? U.cuC('cu_helm_hands', o.hs) : null;
@@ -104114,6 +104159,8 @@ MC.addLang('es', {
       // [l45-guide B8-5] 소리 안내 한 줄(옛 「무음 모드에서는 소리가 나지 않아요」 + 「(소리가 켜집니다)」를 하나로 — 플16·모4·소17)
       const n = MC.text.bake(tf('title.soundLine'), 'small', '#9aa4c0', { shadow: '#03050b' });   // [r3 A8] 흐린 안내 옛 #7a84a0
       if (n && !(g.land && sc.stage >= 1)) U.drawDither(n, (W - n.width) >> 1, H - 14 - g.safe.bottom, U.lvl(t, 900, 500));   // [land] 단추 줄 자리라 2단계에선 뺀다
+      // [land8] 가로 2단계: 세로처럼 소리 안내를 남긴다 — 단추 줄(요약이 옆이면 그 줄, 위면 요약 판) 바로 위 가운데(아래 어둡게 한 띠 안). 옛: 가로 2단계에서는 안내가 사라졌다
+      else if (n && sc.stage >= 1) { lay(); const iL = sc.info ? sc.iL : null; U.drawDither(n, (W - n.width) >> 1, (iL && !iL.side ? bNew.y + iL.dy : bNew.y) - 12, U.lvl(t, 900, 500)); }
       if (t < 300) g.ditherFill('#000', 16 - t / 300 * 16);
     };
     return sc;
