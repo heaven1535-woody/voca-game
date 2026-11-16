@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.16';
+  var VERSION = '0.9.17';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -4997,7 +4997,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
           this._pid = null; this._lastPid = ev.id;
           if (this._fired) return true;
           if (this.hit(ev.x, ev.y, 4)) {
-            if (this.hold > 0 && this.enabled) { /* 다 누르지 않고 뗐다 */ }
+            if (this.hold > 0 && this.enabled) { if (MC.cfg && MC.cfg.tapHold) this._activate(); /* 다 누르지 않고 뗐다 — [taphold] 시험 모드(?hold=tap)면 한 번 탭으로 */ }
             else this._activate();
           }
           return true;
@@ -6096,7 +6096,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (!p || p.v !== 1 || !p.state || typeof p.state !== 'object') return null;
     const s = p.state;
     if (!Array.isArray(s.party) || !s.party.length || typeof s.party[0].lv !== 'number') return null;
-    if (typeof s.flags !== 'object' || typeof s.items !== 'object' || typeof s.vars !== 'object') return null;
+    const isObj = o => !!o && typeof o === 'object' && !Array.isArray(o);   // [save-null] typeof null === 'object'라 null·배열이 통과하던 것(외부 평가 GPT)
+    if (!isObj(s.flags) || !isObj(s.items) || !isObj(s.vars)) return null;
     if (s.map != null && typeof s.map !== 'string') return null;
     const maps = MC.data && MC.data.maps;
     if (s.map && maps && Object.keys(maps).length && !maps[s.map]) { p.rescued = rescueMap(s, maps); if (!p.rescued) return null; }
@@ -9180,7 +9181,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
 (function (MC) { 'use strict';
   const G = () => MC.gfx;
   const BOX_W = 176, BOX_H = 62, TEXT_W = 160, LH = 16, PER = 3;          // 계약서 5장: 176×62, 본문 3줄(행 16), 여백 좌8·위8
-  const OPEN_MS = 120, CLOSE_MS = 90, IGNORE_MS = 150, FF_HOLD = 350, FF_STEP = 120, CHOICE_READY = 250;
+  const OPEN_MS = 120, CLOSE_MS = 90, IGNORE_MS = 300, FF_HOLD = 350, FF_STEP = 120, CHOICE_READY = 250;
   // [a43-ui P6] 탭·빨리감기가 정점 대사를 지우지 않게: 큰 쉼({p:600} 이상)은 탭으로 건너뛰지 않는다 · 정점 줄(say key:true 또는 {p:1000} 이상 쉼)은 빨리감기로 넘기지 않는다
   const BIG_P = 600, KEY_P = 1000, KEY_IGNORE = 500, MIN_H = 16;   // MIN_H [V6] 여닫는 상자가 이보다 납작하면 그리지 않는다
   const GRACE = { yes: 650, grace: 280, no: 0 };                          // 마지막 페이지 뒤 창을 열어 두는 시간(다음 대사를 기다림)
@@ -9556,7 +9557,11 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     st.shown = j; st.acc = 0;                      // 쉼은 지금부터 센다
   }
   function tapped(t) {
-    if (st.mode === 'typing') { revealTo(t); return; }
+    if (st.mode === 'typing') {                  // [tap3] 한 번 탭 = 그 쪽 전부(외부 평가 그록·제미나이). 정점 쉼({p:1000} 이상)이 있는 쪽만 옛 길(쉼마다 끊어 보임)
+      const pg = st.page, keyPg = pg.tail >= KEY_P || pg.glyphs.some(gl => gl.pre >= KEY_P);
+      if (keyPg) revealTo(t); else revealAll(t);
+      return;
+    }
     if (st.mode === 'shown' && t - st.doneAt >= (st.key ? KEY_IGNORE : IGNORE_MS)) advance(true);
   }
   function onInput(ev) {
@@ -13717,6 +13722,13 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (menuVisible()) {
       menuBtn.x = g.W - 26 - g.safe.right; menuBtn.y = 2 + g.safe.top;
       menuBtn.render();
+      // [tap3] 새 소식 점: 인물·기억에 아직 안 읽은 것이 있으면 단추 오른쪽 위에 금빛 점(숨 쉬듯) — 메뉴 안 「새 소식」과 같은 금색(외부 평가 제미나이)
+      let fresh = 0;
+      try { fresh = (MC.people && MC.people.newTotal ? MC.people.newTotal() : 0) + (MC.mem && MC.mem.newCount ? MC.mem.newCount() : 0); } catch (_) { fresh = 0; }
+      if (fresh > 0) {
+        const dx = menuBtn.x + menuBtn.w - 6, dy = menuBtn.y + 1, on = (((MC.time.real / 600) | 0) & 1) === 0;
+        g.rect(dx - 1, dy - 1, 6, 6, '#05040a'); g.rect(dx, dy, 4, 4, on ? '#ffcf4a' : '#c8962a'); g.px(dx, dy, '#fff6d0');
+      }
     }
   }
   function sortY(a, b) {
@@ -15446,6 +15458,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (B.boss && !B.sim) {
       const lost = (B.vars && B.vars['bossLoss.' + B.troop]) | 0, k = 1 - 0.1 * Math.min(3, Math.max(0, lost - 1));
       if (k < 1) for (const e of B.enemies) if (e.boss || B.enemies.length === 1) { e.maxHp = Math.max(1, Math.round(e.maxHp * k)); e.hp = e.maxHp; }
+      B.relief = k < 1;                                                 // [tap3] 화면이 「……놈도 지쳐 있다.」 한 줄을 띄운다(battle_view H.appear)
     }
     const sid = td.script || (B.enemies[0] && B.enemies[0].data.script);
     if (sid && d.scripts && d.scripts[sid]) B.script = { id: sid, d: d.scripts[sid] };
@@ -15468,6 +15481,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       if (!B.resume) for (const l of (B.script.d.intro || [])) S.push({ t: 'say', who: l.who, voice: l.voice, text: fmt(l.t, {}) });   // (S4) 다시 하기(resume)는 등장 대사를 건너뛴다
       // 대사가 끝난 뒤 로그 창이 비어 있지 않게(명령을 고를 때 상황 한 줄)
       if (B.td && B.td.appear) S.push({ t: 'msg', text: fmt(B.td.appear, {}), wait: 'auto', style: 'enemy', fam: B.enemies[0] && B.enemies[0].fam });
+      if (B.relief) S.push({ t: 'msg', text: TX('bossTired'), style: 'think', wait: 'auto' });   // [tap3] 대본 있는 보스도 같은 자리
       const K = kindOf(B);
       if (K && K.introTail) K.introTail(B, S);
       tutorialSteps(B, S);
@@ -15481,6 +15495,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       if (ln) S.push({ t: 'bubble', unit: e, text: fmt(ln, {}) });
     }
     S.push({ t: 'msg', text: fmt(td.appear || (B.enemies.length > 1 ? T('appearN') : T('appear1')), { name: e0 ? e0.name : '' }), wait: 'auto', style: 'enemy', fam: e0 && e0.fam });
+    if (B.relief) S.push({ t: 'msg', text: TX('bossTired'), style: 'think', wait: 'auto' });   // [tap3] 연패 구제가 걸린 판: 등장 문구 뒤 속마음 한 줄
     if (B.preempt === 'player') S.push({ t: 'msg', text: TX('preemptPlayer'), style: 'gold', wait: 'auto' });
     if (B.preempt === 'enemy') S.push({ t: 'msg', text: TX('preemptEnemy'), style: 'red', wait: 'short' });
     tutorialSteps(B, S);
@@ -47573,6 +47588,7 @@ MC.data.battle = {
     "chooseTarget": "누구에게?",
     "chooseHint": "적 그림을 누른다",
     "back": "뒤로",
+    "bossTired": "……놈도 지쳐 있다.",                    // [tap3] 같은 보스에게 두 번 진 뒤 다시 도전할 때(연패 구제가 걸린 판) 전투 시작 속마음 한 줄 — 사용자 고름
     "repeat": "반복",
     "instant": "{name}{을/를} 가볍게 물리쳤다!",
     "cmdFlee": "달아난다", "cmdItem": "도구", "cmdSkill": "배운 것", "cmdEndure": "버티기", "cmdAttack": "맞선다",
@@ -66493,6 +66509,8 @@ MC.addLang('ko', {
     "rec.subject": "과목",
     "rec.tenth": "할",
     "rec.hpNone": "거의 없음",
+    "rec.assist": "손놀림 보조",
+    "rec.assistV": "받음",
     "rec.grade": "등급",
     "rec.gradeS": "파도가 등을 밀어 주었다.",
     "rec.gradeA": "거친 바다를 끝내 건넜다.",
@@ -66989,7 +67007,7 @@ MC.addLang('ko', {
     "story.beamNearFaria": { "w": 170, "font": "small", "lines": 2, "note": "들보 세우기에서 보초가 바로 위일 때 눌렀을 때 한 번, 파리아(하게체 노학자)의 속삭임: 쉿, 지금 바로 머리 위다" },
     "story.beamNearSelf": { "w": 170, "font": "small", "lines": 2, "note": "들보 빼기(혼자, 발작 뒤 밤)에서 같은 실수 때 에드몽의 속마음: 아직이다, 바로 위다" },
 
-    "set.assist": { "w": 96, "font": "body", "lines": 1, "note": "설정 '진행' 탭 켬/끔 줄(S4 탈출 손놀림 보조 — 켜면 물속 손놀림이 한 번에 성공, 헤엄 체력이 줄지 않음, 등급 상한 A). 이름 칸 약 96px" },
+    "set.assist": { "w": 96, "font": "body", "lines": 1, "note": "설정 '진행' 탭 켬/끔 줄(S4 탈출 손놀림 보조 — 켜면 물속 손놀림이 한 번에 성공, 헤엄 체력이 줄지 않음, 등급은 그대로 · 기록에 「손놀림 보조」 줄(0.9.17)). 이름 칸 약 96px" },
     "set.oneHand": { "w": 96, "font": "body", "lines": 1, "note": "설정 '진행' 탭 켬/끔 줄(S4 헤엄: 누르고만 있으면 저절로 젓고 방향만 쓴다). 이름 칸 약 96px" },
     "set.bright": { "w": 66, "font": "body", "lines": 1, "note": "설정 '진행' 탭 ◀ 값 ▶ 줄(밝기 보정 — 어두운 장면이 폰에서 안 보일 때 화면 전체를 밝힘). 이름 칸 약 66px" },
     "set.bright0": { "w": 44, "font": "body", "lines": 1, "note": "밝기 보정 값 — 보정 없음(만든 그대로)" },
@@ -67053,6 +67071,8 @@ MC.addLang('ko', {
     "rec.none": { "w": 40, "font": "small", "lines": 1, "note": "기록 값 안의 0(「없음」) — 싸운 밤·과목·약점 수가 0일 때" },
     "rec.subject": { "w": 30, "font": "small", "lines": 1, "note": "기록 값 rec.learnedV의 {a} 뒤 단위(「다섯 과목」)" },
     "rec.tenth": { "w": 20, "font": "small", "lines": 1, "note": "기록 값 rec.escapeV의 {hp} 단위 — 열에 몇(「칠 할」 = 70%)" },
+    "rec.assist": { "w": 86, "font": "small", "lines": 1, "note": "기록 라벨 — 손놀림 보조를 켜고 탈출했을 때만 보이는 줄(설정 set.assist와 같은 말)" },
+    "rec.assistV": { "w": 120, "font": "small", "lines": 1, "note": "기록 값 — 손놀림 보조를 받았다는 짧은 말(장부 말투)" },
     "rec.hpNone": { "w": 60, "font": "small", "lines": 1, "note": "기록 값 rec.escapeV의 {hp}가 5% 미만일 때(「남은 숨 거의 없음」)" },
     "rec.grade": { "w": 60, "font": "small", "lines": 1, "note": "기록 맨 아래 등급 라벨(값은 금색 S/A/B — 0.4.4부터 본문 크기, 라벨 오른쪽)" },
     "rec.gradeS": { "w": 168, "font": "small", "lines": 1, "note": "탈출 등급 S 문구(바다가 도왔다 — 담담하게)" },
@@ -67646,6 +67666,8 @@ MC.addLang('en', {
     "rec.timeV": ["{h} h {m} min", "6950fk"],
     "rec.timeV0": ["{m} min", "1wrlf1g"],
     "rec.timeVh": ["{h} h", "26zzij"],
+    "rec.assist": ["Assist", "b8b2id"],
+    "rec.assistV": ["Used", "mfkdtu"],
     "rec.none": ["None", "1mvjjxr"],
     "rec.subject": ["subj.", "151i4wm"],
     "rec.tenth": ["/10", "1reo5hb"],
@@ -67987,6 +68009,7 @@ MC.addLang('en', {
     "새로운 약점!": "Weakness found!",
     "약점!": "Weak!",
     "누구에게?": "On whom?",
+    "……놈도 지쳐 있다.": "……It’s worn down, too.",
     "적 그림을 누른다": "Tap an enemy",
     "뒤로": "Back",
     "반복": "Repeat",
@@ -71232,6 +71255,8 @@ MC.addLang('ja', {
     "rec.timeV": ["{h}時間{m}分", "6950fk"],
     "rec.timeV0": ["{m}分", "1wrlf1g"],
     "rec.timeVh": ["{h}時間", "26zzij"],
+    "rec.assist": ["手さばき補助", "b8b2id"],
+    "rec.assistV": ["あり", "mfkdtu"],
     "rec.none": ["なし", "1mvjjxr"],
     "rec.subject": ["科目", "151i4wm"],
     "rec.tenth": ["割", "1reo5hb"],
@@ -71553,6 +71578,7 @@ MC.addLang('ja', {
     "새로운 약점!": "弱点発見！",
     "약점!": "弱点！",
     "누구에게?": "誰に？",
+    "……놈도 지쳐 있다.": "……奴も疲れている。",
     "적 그림을 누른다": "敵をタップする",
     "뒤로": "戻る",
     "반복": "くり返す",
@@ -74786,6 +74812,8 @@ MC.addLang('fr', {
     "rec.timeV": ["{h} h {m} min", "6950fk"],
     "rec.timeV0": ["{m} min", "1wrlf1g"],
     "rec.timeVh": ["{h} h", "26zzij"],
+    "rec.assist": ["Assistance", "b8b2id"],
+    "rec.assistV": ["Utilisée", "mfkdtu"],
     "rec.none": ["Aucun", "1mvjjxr"],
     "rec.subject": ["cours", "151i4wm"],
     "rec.tenth": ["/10", "1reo5hb"],
@@ -75107,6 +75135,7 @@ MC.addLang('fr', {
     "새로운 약점!": "Nouvelle faiblesse !",
     "약점!": "Point faible !",
     "누구에게?": "Sur qui ?",
+    "……놈도 지쳐 있다.": "……Lui aussi est épuisé.",
     "적 그림을 누른다": "Touchez un ennemi",
     "뒤로": "Retour",
     "반복": "Répéter",
@@ -78345,6 +78374,8 @@ MC.addLang('zh-Hans', {
     "rec.timeV": ["{h}小时{m}分钟", "6950fk"],
     "rec.timeV0": ["{m}分钟", "1wrlf1g"],
     "rec.timeVh": ["{h}小时", "26zzij"],
+    "rec.assist": ["操作辅助", "b8b2id"],
+    "rec.assistV": ["已使用", "mfkdtu"],
     "rec.none": ["无", "1mvjjxr"],
     "rec.subject": ["门", "151i4wm"],
     "rec.tenth": ["成", "1reo5hb"],
@@ -78666,6 +78697,7 @@ MC.addLang('zh-Hans', {
     "새로운 약점!": "发现新弱点！",
     "약점!": "弱点！",
     "누구에게?": "对谁？",
+    "……놈도 지쳐 있다.": "……那家伙也累了。",
     "적 그림을 누른다": "点击敌人",
     "뒤로": "返回",
     "반복": "重复",
@@ -81905,6 +81937,8 @@ MC.addLang('zh-Hant', {
     "rec.timeV": ["{h}小時{m}分鐘", "6950fk"],
     "rec.timeV0": ["{m}分鐘", "1wrlf1g"],
     "rec.timeVh": ["{h}小時", "26zzij"],
+    "rec.assist": ["操作輔助", "b8b2id"],
+    "rec.assistV": ["已使用", "mfkdtu"],
     "rec.none": ["無", "1mvjjxr"],
     "rec.subject": ["門", "151i4wm"],
     "rec.tenth": ["成", "1reo5hb"],
@@ -82226,6 +82260,7 @@ MC.addLang('zh-Hant', {
     "새로운 약점!": "發現新弱點！",
     "약점!": "弱點！",
     "누구에게?": "對誰？",
+    "……놈도 지쳐 있다.": "……那傢伙也累了。",
     "적 그림을 누른다": "點擊敵人",
     "뒤로": "返回",
     "반복": "重複",
@@ -85463,6 +85498,8 @@ MC.addLang('es', {
     "rec.timeV": ["{h} h {m} min", "6950fk"],
     "rec.timeV0": ["{m} min", "1wrlf1g"],
     "rec.timeVh": ["{h} h", "26zzij"],
+    "rec.assist": ["Asistencia", "b8b2id"],
+    "rec.assistV": ["Usada", "mfkdtu"],
     "rec.none": ["Nada", "1mvjjxr"],
     "rec.subject": ["temas", "151i4wm"],
     "rec.tenth": ["/10", "1reo5hb"],
@@ -85784,6 +85821,7 @@ MC.addLang('es', {
     "새로운 약점!": "¡Nueva debilidad!",
     "약점!": "¡Punto débil!",
     "누구에게?": "¿A quién?",
+    "……놈도 지쳐 있다.": "……También está agotado.",
     "적 그림을 누른다": "Toca un enemigo",
     "뒤로": "Volver",
     "반복": "Repetir",
@@ -88680,11 +88718,26 @@ MC.addLang('es', {
     tintMemo.set(k, c); if (tintMemo.size > 48) tintMemo.delete(tintMemo.keys().next().value);
     return c;
   }
-  U.hintHand = function (x, y, lv, kind, bg) {
+  U.hintHand = function (x, y, lv, kind, bg, dir) {
     if (!(lv > 0)) return;
     const g = G(), step = MC.clamp(Math.ceil(lv / 16 * 4 - 0.01), 1, 4), hold = kind === 'hold', T = performance.now();
     bg = bg || '#05060c';
     x = Math.round(x); y = Math.round(y);
+    if (kind === 'drag') {                               // [tap3] 끌기 시범: 손끝이 눌린 채 dir 쪽으로 18도트 미끄러지고(지나온 자리에 점선), 끝에서 잠깐 머문다. 'h' = 좌우로 오감(외부 평가 GPT)
+      const img = tintedSpr('ic_hand_tap', step, bg), D = 18, line = g.mix(bg, '#f0e8c8', step / 4);
+      let ox = 0, oy = 0, sx = 0, sy = 0;
+      if (dir === 'h') { const q = Math.sin(T * 0.0045); ox = Math.round(q * 12); sx = -12; }
+      else {
+        const v = { right: [1, 0], left: [-1, 0], up: [0, -1], down: [0, 1] }[dir] || [1, 0], p = (T % 1400) / 1400;
+        const m = p < 0.15 ? 0 : p < 0.7 ? MC.ease.inOutQuad((p - 0.15) / 0.55) : 1;
+        ox = Math.round(v[0] * D * m); oy = Math.round(v[1] * D * m);
+        if (p > 0.92) return;                            // 끝에서 잠깐 사라졌다가 처음 자리에서 다시
+      }
+      const n = Math.max(Math.abs(ox - sx), Math.abs(oy - sy));
+      for (let i = 0; i < n; i += 3) { const k = n ? i / n : 0; g.px(Math.round(x + sx + (ox - sx) * k), Math.round(y - 2 + (oy - sy) * k), line); }
+      if (img) g.ctx.drawImage(img, x + ox - 6, y + oy + 1); else g.rect(x + ox - 2, y + oy + 3, 5, 5, line);
+      return;
+    }
     const ph = (T % 1400) / 1400, press = hold && ph > 0.08 && ph < 0.86 ? 1 : 0;
     const by = hold ? press : Math.round(Math.sin(T * 0.008) * 2);
     const img = tintedSpr('ic_hand_tap', step, bg);
@@ -88771,6 +88824,8 @@ MC.addLang('es', {
         const tip = (r.tipOn != null ? !!r.tipOn : s.failed) && o.tip ? guideLines(U.tf(o.tip), 'small', maxW).map(l => MC.text.bake(l, 'small', g.mix(bg, GUIDE_TIP, step / 4), { shadow: '#000' })).filter(Boolean) : [];
         let y = Math.round(r.y != null ? r.y : U.guideBottom());
         y -= ls.reduce((h, im) => h + im.height, 0);
+        // [tap3] 끌기 안내: 스테이지가 손 자리를 따로 주지 않으면 글 바로 위에서 손가락이 그 방향으로 미끄러지는 시범(처음 뜰 때·다시 뜰 때)
+        if (o.icon === 'drag' && !r.hand) { const hy = y - 16 - (o.dir === 'down' ? 18 : 0); if (hy > 4) U.hintHand(cx, hy, Math.min(12, k * 16), 'drag', bg, o.dir); }
         ls.forEach((im, i) => {
           let x = cx - (im.width >> 1);
           if (i === 0 && o.icon !== false) { const ix = Math.max(r.cx != null ? 5 : g.X0 + 5, x - 9); x = Math.max(x, ix + 9); guideIcon(o.icon, ix, y + (im.height >> 1) - 1, col, o.dir, T); }
@@ -99941,7 +99996,7 @@ MC.addLang('es', {
     const v = n => +getVar(n) || 0, lv = (MC.state && MC.state.party && MC.state.party[0] && MC.state.party[0].lv) || 1;
     const tries = v('s4_try2') + v('s4_try3'), hp = v('s4_swimHp');
     let gr = tries <= 1 && hp >= (lv >= 15 ? 40 : 60) ? 'S' : (tries <= 4 || hp >= 30) ? 'A' : 'B';
-    if (v('s4_assist') === 1 && gr === 'S') gr = 'A';
+    // [tap3] 옛: 손놀림 보조를 켜면 S → A(접근성 기능에 불이익 — 외부 평가 GPT). 이제 등급은 그대로, 기록에 「손놀림 보조 · 받음」 줄만 더한다(record)
     return gr;
   }
   /* [s44-director C2③ 장부 말투] 기록 숫자를 한글 셈말로(제미나이·a42-snd 남은 것 4): 「12/19」→「열아홉 중 열둘」, 「기운 72%」→「남은 숨 칠 할」, 「2시간 20분」→「두 시간 이십 분」.
@@ -100007,6 +100062,7 @@ MC.addLang('es', {
       else if (vk === 'rec.timeV' && prm && prm.rawM === 0) vk = 'rec.timeVh';  // [s44-director] 「두 시간 영 분」 대신 「두 시간」
       return [U.tf(String(r[0])), U.tf(vk, prm)];
     });
+    if ((+getVar('s4_assist') || 0) === 1) vals.push([U.tf('rec.assist'), U.tf('rec.assistV')]);   // [tap3] 보조를 받은 판만
     // [s44-director C2③] back:true = 타이틀 「＿＿＿＿ · 끝」에서 연 기록 — 닫으면 검정이 아니라 타이틀 위로 디더로 걷힌다(엔딩 흐름에서는 더 부르지 않는다)
     const back = a.back === true;
     const IN = 400, tRow0 = 600, ROW = 160, tGrade = tRow0 + rows.length * ROW + 500, tMark = tGrade + 900, OUT_MS = 600;
@@ -103104,7 +103160,7 @@ MC.addLang('es', {
        · 갈 곳: ① op goal로 정한 곳(같은 맵일 때) ② 아래 GOAL_AT 표(할 일 id → 맵 → 오브젝트 id) ③ 그 맵의 반짝임(glow) 중 가장 가까운 것
      B8-3(S4 빈 하루 — s4m.morning·!s4m.sit, 제 방·신부님 방): 반짝임 위에 따뜻한 빛을 한 겹 더하고, 두 칸 안으로 다가가면 그 물건에 흰 외곽선이 깜빡인다(글 없음) */
   const GD = { wasRun: false, talked: false, lastG: '', lastGT: -1e9, idleT: 0, px: -1, py: -1, pmap: null, outl: {} };
-  const GOAL_IDLE = 10000, GOAL_REPEAT = 60000;
+  const GOAL_IDLE = 4000, GOAL_REPEAT = 60000;   // [tap3] 옛 10초 — 서 있으면 4초 뒤 목표 쪽 화살표(외부 평가 그록)
   const BEDS = { cell: 'bed' }, FARIA = { cell: 'faria', faria_cell: 'faria' };
   const GOAL_AT = {
     s1_north: { port: 'to_town' }, s1_west: { port: 'to_catalan' },
