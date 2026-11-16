@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.21';
+  var VERSION = '0.9.22';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -12057,7 +12057,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     return null;
   }
   // 계약 9.2: (1) 탭한 지점이 인접 오브젝트면 그쪽을 보고 실행 (2) 아니면 바라보는 칸/발밑 (3) 없으면 무반응
-  function interactAt(sx, sy) { return interactWorld(sx + rcam.x, sy + rcam.y); }   // 화면 좌표
+  function interactAt(sx, sy) { const wp = scrToWorld(sx, sy); return interactWorld(wp[0], wp[1]); }   // 화면 좌표 · [land4] scrToWorld(옛: sx + rcam.x — 배율 1이면 같은 값)
   // fixer-s3: (1') 인접하지 않아도 반짝이는(S3 glow) 대상이면 그쪽을 보고 실행 — 반짝임은 곧 조작 대상 /
   //           (2') 인접하지 않은 조사 대상 그림을 탭했으면 바라보는 대상으로 넘기지 않는다(오발 방지 — 촛불을 누르면 침대가 실행되던 것)
   function interactWorld(wx, wy) {                         // 월드 px 좌표
@@ -12287,7 +12287,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const key = map.id + '/' + o.id;
     if (!MC.state.chests) MC.state.chests = {};
     if (MC.state.chests[key] || o.opened) {
-      MC.fx.floatText(MC.i18n.tf('field.empty'), o.x * TS + 8 - rcam.x, o.y * TS - 2 - rcam.y, { color: '#9a98a8', font: 'small', rise: 8, ms: 700 });
+      { const fp = rzScreen(o.x * TS + 8 - rcam.x, o.y * TS - 2 - rcam.y);   // [land4] 방 배율이면 그 화면 자리(옛: 1배 좌표 그대로 — 방 배율이 없으면 같은 값)
+        MC.fx.floatText(MC.i18n.tf('field.empty'), fp[0], fp[1], { color: '#9a98a8', font: 'small', rise: 8, ms: 700 }); }
       return;
     }
     busy++;
@@ -12331,7 +12332,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     MC.fx.particles.emit('sparkle', wx, wy + 4, 5);
     if (nm) {
       const itN = MC.i18n.N(nm, 'item');
-      MC.fx.floatText(MC.i18n.tf(n > 1 ? 'field.plusN' : 'field.plus', { item: itN, n }), wx - rcam.x, wy - rcam.y, { color: '#ffcf4a', font: 'small', rise: 12, ms: 1000 });
+      const fp = rzScreen(wx - rcam.x, wy - rcam.y);       // [land4] 방 배율이면 그 화면 자리(옛: 1배 좌표 그대로 — 방 배율이 없으면 같은 값)
+      MC.fx.floatText(MC.i18n.tf(n > 1 ? 'field.plusN' : 'field.plus', { item: itN, n }), fp[0], fp[1], { color: '#ffcf4a', font: 'small', rise: 12, ms: 1000 });
       if (MC.ui) MC.ui.toast(MC.i18n.tf(n > 1 ? 'field.pickedN' : 'field.picked', { item: itN, n }), 1600);
     }
     if (d.event) await runEvent(d.event, o);
@@ -12619,29 +12621,117 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (MC.fx && MC.fx.fadeLevel && MC.fx.fadeLevel() >= 0.99) { ANC.k = w; return; }   // 페이드로 덮인 동안(맵 → 빛 → 걷기)은 바로
     ANC.k = w > ANC.k ? Math.min(1, ANC.k + dt / 400) : Math.max(0, ANC.k - dt / 400);
   }
+  /* [land4] 방 기본 배율 — 가로 화면에서 지도 데이터에 landZoom(2|3)이 있는 작은 실내는 월드를 그 배율로 보여 준다(HUD·대화창·메뉴는 1배 그대로).
+     방식: 카메라가 「화면 ÷ 배율」 크기의 창(vpW × vpH)으로 주인공(또는 cam 대상)을 따라가고 방 안쪽 끝에서 멈춘다 → render가 화면 왼쪽 위 그 창만큼을
+     정수 배율로 화면 가득 옮긴다(컷신 줌 Z와 같은 후처리 zoomPost). 방이 그 창보다 작은 축은 방을 가운데에 둔다.
+     컷신 줌(Z)이 켜지면 둘 중 큰 배율 · 컷신 초점(zoomCrop)으로 그리고, 컷신이 1로 돌아가면(잠금이 풀리면) 방 배율로 돌아온다.
+     옛: 가로에서도 1배 — 작은 방이 넓은 화면 가운데 작게 떴다. 세로 · landZoom 없는 지도는 roomK() = 1 = 옛 그대로. 되돌리기: 지도 데이터의 landZoom 줄을 지운다 */
+  function roomK() {
+    if (!map || !map.def || !G().land) return 1;
+    const k = map.def.landZoom | 0;
+    return k >= 3 ? 3 : k === 2 ? 2 : 1;
+  }
+  const vpW = () => { const k = roomK(); return k > 1 ? Math.ceil(G().W / k) : G().W; };   // [land4] 카메라 창 크기(월드 px) — 방 배율이 없으면 화면 그대로
+  // [land4] 대화창이 떠 있는 동안(조작 잠금 중)은 창 높이에서 아래 대화창 자리(RZ_BOX 화면 px)를 뺀다 — 주인공·말하는 사람이 대화창 위쪽 칸의 가운데에 오고, 방 아랫줄이 대화창 윗변까지 올라온다
+  //   (세로 화면의 「작은 방은 대화창 바로 위」와 같은 뜻 — 옛 1배 가로는 방 아래 두 줄이 대화창에 가렸다). 0.25초에 걸쳐 부드럽게(RZ.t).
+  //   대화창이 닫히고 RZ_LINGER(1.5초)가 지나면 — 걷기·기다림·손 장면 등 글 없는 컷 — 다시 화면 전체로 방을 보여 준다(줄과 줄 사이 짧은 틈에는 카메라가 오르내리지 않게 머문다). 조작이 돌아오면 바로 화면 전체.
+  //   대화창이 위에 뜨는 줄(pos top — 아래쪽을 보여 주려는 연출)은 거꾸로: 아래를 비우지 않고 위 대화창 밑으로 방을 내린다(RZ.pT · RZ.p).
+  const RZ = { t: 0, fy: null, talk: -1e9, p: 0, pT: 0, top: 82, bot: 68 }, RZ_BOX = 68, RZ_LINGER = 1500, RZ_PAD = 10;   // RZ_BOX = 대화창 높이 62 + 아래 4 + 틈 2(화면 px — 이름표 16은 왼쪽 일부만 가려 넣지 않았다) · RZ.bot/top = 지금 대화창이 가리는 아래/위 높이(화면 px — 올린 질문 상자도 반영)
+  const rzWant = () => {
+    if (!(roomK() > 1 && extLock > 0 && !free && !evFree())) { RZ.talk = -1e9; RZ.pT = 0; RZ.bot = RZ_BOX; return 0; }
+    if (MC.dialogue && MC.dialogue.active) {
+      RZ.talk = nowR();
+      try { const L = MC.dialogue.boxRect(); if (L.pos === 'top') { RZ.pT = 1; RZ.top = L.y + L.h + 2; } else { RZ.pT = 0; RZ.bot = Math.max(RZ_BOX, G().H - L.y + 2); } } catch (_) { RZ.pT = 0; RZ.bot = RZ_BOX; }
+    }
+    return nowR() - RZ.talk < RZ_LINGER ? 1 : 0;
+  };
+  const rzEase = () => RZ.t * RZ.t * (3 - 2 * RZ.t);
+  // 대화 동안 가려지는 [위, 아래] 높이(화면 px). e = 옮겨 가는 정도(0~1) · p = 0 아래 대화창(위는 레터박스 띠 20) ~ 1 위 대화창(아래는 레터박스 띠)
+  const rzIns = (e, p) => { const lb = 20 * (MC.fx && MC.fx.letterboxLevel ? MC.fx.letterboxLevel() : 0); return [(lb + (RZ.top - lb) * p) * e, (RZ.bot + (lb - RZ.bot) * p) * e]; };
+  const vpH = () => { const k = roomK(); return k > 1 ? Math.ceil(G().H / k) - Math.round(rzIns(rzEase(), RZ.p)[1] / k) : G().H; };
+  // [land4] 대화 동안 카메라가 세로로 설 자리(카메라 위쪽 · 월드 px)를 고른다: 주인공은 꼭 · 주인공이 바라보는 물건(지금 살피는 것) · 지금 말하는 사람(MC.dialogue.who) · 가까운 인물 순으로, 줄어든 창 높이에 들어가는 만큼 함께 담는다.
+  //   (2배에서는 대화창 위에 네 줄 남짓만 보인다 — 방 전체가 보이던 1배 연출에서 살피는 물건·말하는 사람이 창 밖으로 나가지 않게.) cam op로 카메라를 따로 잡은 동안(track·fixed·tween)은 쓰지 않는다
+  function rzFocusY() {
+    // 다 옮겨 간 값(e = 1 · 지금 대화창 자리)으로 잰다 — 옮겨 가는 0.25초 사이에 담는 대상이 바뀌지 않게
+    const k = roomK(), ins = rzIns(1, RZ.pT), vh = Math.ceil(G().H / k) - Math.round(ins[1] / k), ti = Math.round(ins[0]) / k, who = MC.dialogue && MC.dialogue.who;
+    const vis = vh - ti;                                   // 보이는 칸(월드 px): 위 가림(ti) 아래 ~ 아래 가림 위
+    const soft = RZ.pT ? Math.ceil(G().H / k) - vh : ti;   // 레터박스 띠 쪽으로는 조금 넘쳐도 된다(머리 끝·발끝이 띠 밑으로)
+    let y0 = apy(pl) - 6, y1 = apy(pl) + 16;
+    const add = (a0, a1) => { const n0 = Math.min(y0, a0), n1 = Math.max(y1, a1); if (n1 - n0 <= vis + soft + 2) { y0 = n0; y1 = n1; return true; } return false; };
+    const chars = [];
+    for (const o of map.objs) if (o !== pl && o.present && o.visible !== false && o.sprite && (o.type === 'npc' || o.type === 'guard')) chars.push(o);
+    if (fol && fol.present !== false && fol.visible !== false && chars.indexOf(fol) < 0) chars.push(fol);
+    const fx = pl.x + DV[pl.dir][0], fy = pl.y + DV[pl.dir][1];
+    for (const o of map.objs) if (o !== pl && o.present && o.visible !== false && o.type !== 'trigger' && o.type !== 'exit' && inRect(o, fx, fy)) { const r = drawRect(o); add(Math.max(r[1], fy * TS - 8), Math.max(r[1] + r[3], (fy + 1) * TS)); break; }
+    if (who && who !== 'narr' && who !== 'think' && who !== 'dantes') for (const o of chars) if (o.id === who || String(o.sprite).indexOf('ch_' + who) === 0) { add(apy(o) - 6, apy(o) + 16); break; }
+    chars.sort((a, b) => Math.abs(a.y - pl.y) - Math.abs(b.y - pl.y));
+    for (const o of chars) add(apy(o) - 6, apy(o) + 16);
+    // 담을 것이 보이는 칸에 들어가면 그 가운데에, 넘치면 대화창 쪽 끝을 맞추고 반대쪽이 레터박스 띠 밑으로 조금 들어간다
+    return y1 - y0 <= vis ? (y0 + y1) / 2 - (ti + vh) / 2 : RZ.pT ? y0 - ti : y1 - vh;   // 카메라 위쪽 자리(월드 px) — rzFollow가 방 범위로 묶어 쓴다
+  }
+  // [land4] 대화 동안 위쪽이 가려지는 높이(월드 px — 레터박스 띠 또는 위 대화창) — 방 윗줄이 그 바로 아래까지 내려올 수 있게 camClamp가 쓴다(대화가 없으면 0)
+  const rzTop = () => (RZ.t > 0 && roomK() > 1 ? Math.round(rzIns(rzEase(), RZ.p)[0]) / roomK() : 0);
+  function roomBox() {                                     // [land4] 카메라가 머무는 칸(지도 px) = 바깥 테두리 천장('^')을 뺀 방 안쪽
+    if (map._roomBox) return map._roomBox;
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const r of innerRuns()) { x0 = Math.min(x0, r[0]); y0 = Math.min(y0, r[1]); x1 = Math.max(x1, r[0] + r[2]); y1 = Math.max(y1, r[1] + r[3]); }
+    if (!(x1 > x0 && y1 > y0)) { x0 = 0; y0 = 0; x1 = map.w * TS; y1 = map.h * TS; }
+    return (map._roomBox = [x0, y0, x1 - x0, y1 - y0]);
+  }
   function camClamp(x, y) {
     const g = G(), mw = map.w * TS, mh = map.h * TS;
+    if (roomK() > 1) {                                     // [land4] 방 배율: 창이 방 안쪽을 벗어나지 않게(방이 창보다 작은 축은 가운데)
+      const vw = vpW(), vh = vpH(), b = roomBox(), ti = rzTop();   // ti = 위 레터박스 띠·위 대화창(대화 동안만 — 평소 0)
+      return [b[2] <= vw ? b[0] + (b[2] - vw) / 2 : MC.clamp(x, b[0], b[0] + b[2] - vw), b[3] <= vh - ti ? b[1] - ti - (vh - ti - b[3]) / 2 : MC.clamp(y, b[1] - ti, b[1] + b[3] - vh)];
+    }
     x = mw <= g.W ? (mw - g.W) / 2 : MC.clamp(x, 0, mw - g.W);
     if (mh <= g.H) { const ay = anchorY(mh); y = ay != null ? ay : (mh - g.H) / 2; }
     else y = MC.clamp(y, 0, mh - g.H);
     return [x, y];
   }
+  /* [land4] 방 배율일 때 따라가기 카메라 — 평소 자리(y)와 대화 자리(yT)를 따로 구해 RZ.t(0.25초)로 섞는다.
+     평소: 방이 창보다 조금 큰(또는 꼭 맞는) 세로는 주인공이 방 안에서 선 높이에 비례해 조금씩만 움직인다(위 끝 ↔ 아래 끝 사이 — 가운데를 넘을 때 덜컥 밀리지 않게).
+           끝에서는 방 밖으로 RZ_PAD만큼 더 가서, 방 윗줄·아랫줄이 화면 끝(비네트 띠 · 폰 아래 가장자리)에 붙지 않는다. 방이 창보다 훨씬 크면 보통 따라가기.
+     대화: rzFocusY가 고른 자리(RZ.fy — updateCamera가 부드럽게 따라간 값)를 대화창·레터박스에 가리지 않는 범위로 묶는다. */
+  function rzFollow() {
+    const k = roomK(), b = roomBox(), vw = vpW(), full = Math.ceil(G().H / k), e = rzEase();
+    const x = b[2] <= vw ? b[0] + (b[2] - vw) / 2 : MC.clamp(Math.round(apx(pl)) + 8 + Math.round(cam.lookX) - vw / 2, b[0], b[0] + b[2] - vw);
+    const lo = b[1] - RZ_PAD, hi = b[1] + b[3] + RZ_PAD - full;
+    let y = hi <= lo ? b[1] + (b[3] - full) / 2
+      : hi - lo < full ? lo + (hi - lo) * MC.clamp((apy(pl) - b[1]) / Math.max(1, b[3] - TS), 0, 1)
+      : MC.clamp(Math.round(apy(pl)) + 8 + Math.round(cam.lookY) - full / 2, lo, hi);
+    if (e > 0 && RZ.fy != null) {
+      const ins = rzIns(1, RZ.p), vh = full - Math.round(ins[1] / k), ti = Math.round(ins[0]) / k;
+      const yT = b[3] <= vh - ti ? b[1] - ti - (vh - ti - b[3]) / 2 : MC.clamp(RZ.fy, b[1] - ti, b[1] + b[3] - vh);
+      y += (yT - y) * e;
+    }
+    return [x, Math.round(y)];
+  }
   function followPos() {
-    const g = G();
-    return camClamp(Math.round(apx(pl)) + 8 + Math.round(cam.lookX) - g.W / 2, Math.round(apy(pl)) + 8 + Math.round(cam.lookY) - g.H / 2);
+    if (roomK() > 1) return rzFollow();                    // [land4] 방 배율(가로 · landZoom 지도)만 — 아래는 옛 식 그대로(옛: return camClamp(… − g.W / 2, … − g.H / 2) — vpW·vpH는 방 배율이 없으면 g.W·g.H)
+    return camClamp(Math.round(apx(pl)) + 8 + Math.round(cam.lookX) - vpW() / 2, Math.round(apy(pl)) + 8 + Math.round(cam.lookY) - vpH() / 2);
   }
   function targetPos(to) {
-    const g = G();
     if (to == null || to === 'player') return followPos();
-    if (Array.isArray(to)) return camClamp(to[0] * TS + 8 - g.W / 2, to[1] * TS + 8 - g.H / 2);
+    if (Array.isArray(to)) return camClamp(to[0] * TS + 8 - vpW() / 2, to[1] * TS + 8 - vpH() / 2);
     const o = objById(String(to));
     if (!o) { warn('camto:' + to, 'cam 대상 없음: ' + to); return followPos(); }
     const r = drawRect(o);
-    return camClamp(r[0] + r[2] / 2 - g.W / 2, r[1] + r[3] / 2 - g.H / 2);
+    return camClamp(r[0] + r[2] / 2 - vpW() / 2, r[1] + r[3] / 2 - vpH() / 2);
   }
   function updateCamera(dt) {
     if (!map) return;
     ancStep(dt);                                           // [r5 UW-4] 조건부 가운데 옮겨 가기
+    { // [land4] 방 배율: ① 대화·컷신 동안 창 높이 줄이기(RZ.t)를 0.25초에 걸쳐 옮긴다(페이드로 덮인 동안은 바로) ② 고정 카메라(cam [x,y])는 방 배율인 동안 매 프레임 다시 잰다
+      //   (창 크기가 ①이나 가로 ↔ 세로로 바뀌어도 맞게 — 따라가기·track은 아래에서 원래 매 프레임 잰다). 방 배율이 없으면 아무것도 하지 않는다
+      const rk = roomK(), w = rzWant();
+      const covered = !!(MC.fx && MC.fx.fadeLevel && MC.fx.fadeLevel() >= 0.99);
+      if (RZ.p !== RZ.pT) RZ.p = (RZ.t <= 0 || covered) ? RZ.pT : (RZ.pT > RZ.p ? Math.min(1, RZ.p + dt / 250) : Math.max(0, RZ.p - dt / 250));   // 대화창 위 ↔ 아래 자리 바꿈도 0.25초에 걸쳐
+      if (RZ.t !== w) RZ.t = (rk <= 1 || covered) ? w : (w > RZ.t ? Math.min(1, RZ.t + dt / 250) : Math.max(0, RZ.t - dt / 250));
+      if (rk > 1 && (w || RZ.t > 0)) { const ty = rzFocusY(); RZ.fy = RZ.fy == null || covered ? ty : RZ.fy + (ty - RZ.fy) * (1 - Math.exp(-dt / 160)); }   // 함께 담을 가운데를 부드럽게(0.16초 시간 상수)
+      else RZ.fy = null;
+      if (rk > 1 && cam.mode === 'fixed' && cam.fix) { const p = targetPos(cam.fix); cam.x = p[0]; cam.y = p[1]; }
+    }
     if (cam.mode === 'follow') {
       if (pl.moving) {                                    // 진행 방향 8px 앞(지수 스무딩)
         const k = 1 - Math.exp(-dt / 90);
@@ -12661,7 +12751,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const done = () => {
       if (tok !== camTok) return;
       if (to == null || to === 'player') { cam.mode = 'follow'; cam.track = null; }
-      else if (Array.isArray(to)) { cam.mode = 'fixed'; cam.track = null; }
+      else if (Array.isArray(to)) { cam.mode = 'fixed'; cam.track = null; cam.fix = [to[0], to[1]]; }   // [land4] cam.fix = 고정 초점(방 배율이 바뀔 때 다시 재려고 기억 — 다른 데서는 안 읽음)
       else { cam.mode = 'track'; cam.track = String(to); }
     };
     if (!(ms > 0)) { cam.x = p[0]; cam.y = p[1]; done(); return Promise.resolve(); }
@@ -12672,7 +12762,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       done();
     });
   }
-  function snapCamera() { ANC.k = ancWant(); cam.mode = 'follow'; cam.track = null; cam.lookX = 0; cam.lookY = 0; const p = followPos(); cam.x = p[0]; cam.y = p[1]; camTok++; }   // [r5 UW-4] ANC.k = ancWant() — 맵을 들면 바로(되돌리기: 그 문장 삭제)
+  function snapCamera() { RZ.t = rzWant(); RZ.fy = RZ.t > 0 ? rzFocusY() : null; ANC.k = ancWant(); cam.mode = 'follow';   /* [land4] RZ.t = rzWant() — 맵을 들면 창 높이도 바로(방 배율이 없으면 0) */ cam.track = null; cam.lookX = 0; cam.lookY = 0; const p = followPos(); cam.x = p[0]; cam.y = p[1]; camTok++; }   // [r5 UW-4] ANC.k = ancWant() — 맵을 들면 바로(되돌리기: 그 문장 삭제)
 
   /* ================================================================ [c50-cine B5-1] 컷신 정수 줌 — op {cam, zoom:1|2|3, at:[x,y]|id|'player', ms?, y?}
      잠긴 컷신(이벤트 잠금 · player free 아님)에서만 켜진다 — 조작이 풀리면(unlocked)·맵이 바뀌면 1로 돌아온다.
@@ -12684,6 +12774,17 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   const Z = { k: 1, at: null, y: null, cx: 0, cy: 0, cw: 0, ch: 0, buf: null, last: null, lastT: -1e9, old: null, tmp: null, t0: -1, ms: 0, pats: null, raw: false, wrap: null };
   function zoomOn() { return Z.k > 1 && extLock > 0 && !free && !evFree() && !!map && !!Z.at; }
   function zoomReset() { Z.k = 1; Z.at = null; Z.y = null; Z.t0 = -1; }
+  // [land4] 지금 실제로 그려지는 배율 = 컷신 줌과 방 기본 배율 중 큰 값. 잘라 낼 칸의 왼쪽 위(zoomOrg): 컷신 줌이면 zoomCrop이 정한 자리, 방 배율만이면 화면 왼쪽 위(0,0 — 카메라가 그 창에 맞춰 있다).
+  //   방 배율이 없으면(세로 등) zoomK() = 옛 「zoomOn() ? Z.k : 1」과 같은 값
+  function zoomK() { return Math.max(zoomOn() ? Z.k : 1, roomK()); }
+  const Z0 = { cx: 0, cy: 0 };
+  function zoomOrg() { return zoomOn() ? Z : Z0; }
+  function scrToWorld(sx, sy) {                             // [land4] 화면 좌표 → 월드 px(탭·누르기 판정). 배율 1이면 옛 식(sx + rcam.x) 그대로
+    const k = zoomK();
+    if (k <= 1) return [sx + rcam.x, sy + rcam.y];
+    const o = zoomOrg();
+    return [sx / k + o.cx + rcam.x, sy / k + o.cy + rcam.y];
+  }
   function zAxis(c, len, scr, m0, mLen) {                   // 한 축: 화면 안 → 맵이 잘라 낼 칸보다 크면 맵 안으로
     c = MC.clamp(c, 0, Math.max(0, scr - len));
     const lo = Math.max(0, m0), hi = Math.min(scr, m0 + mLen);
@@ -12698,6 +12799,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     Z.cw = Math.ceil(W / k); Z.ch = Math.ceil(H / k);
     Z.cx = zAxis(sx - W / 2 / k, Z.cw, W, -rcam.x, map.w * TS);
     Z.cy = zAxis(sy - fy / k, Z.ch, H, -rcam.y, map.h * TS);
+    if (roomK() > 1) { const b = roomBox(); if (b[2] <= Z.cw) Z.cx = Math.round(b[0] - rcam.x + (b[2] - Z.cw) / 2); }   // [land4] 방 배율: 방이 잘라 낼 칸보다 좁으면 가로는 방을 가운데에 둔다(옛: 초점 인물을 가운데에 — 방이 옆으로 밀리고 한쪽이 검게 비었다)
   }
   function zoomPat(r) {                                     // tmp 캔버스용 Bayer 덮개(BAYER < r 칸만 칠함)
     if (!Z.pats) Z.pats = [];
@@ -12758,8 +12860,9 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   }
   // 줌 위에 그리는 비불투명 스테이지(숨 일곱 등)용: fn을 평소 크기 화면 좌표로 그린 뒤 같은 칸·같은 배율로 옮긴다(줌이 아니면 그냥 fn)
   function zoomWrap(fn) {
-    if (!zoomOn()) { fn(); return; }
-    const g = G(), W = g.W, H = g.H, k = Z.k;
+    const k = zoomK();                                     // [land4] 방 기본 배율도(옛: 컷신 줌만 — if (!zoomOn()) … k = Z.k)
+    if (k <= 1) { fn(); return; }
+    const g = G(), W = g.W, H = g.H, zo = zoomOrg(), zcx = zo.cx, zcy = zo.cy, zcw = zoomOn() ? Z.cw : Math.ceil(W / k), zch = zoomOn() ? Z.ch : Math.ceil(H / k);
     if (!Z.wrap || Z.wrap.width !== W || Z.wrap.height !== H) Z.wrap = g.makeCanvas(W, H);
     g.withCtx(Z.wrap, x => {
       x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.imageSmoothingEnabled = false;
@@ -12769,10 +12872,17 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     });
     const ctx = g.ctx;
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(Z.wrap, Z.cx, Z.cy, Z.cw, Z.ch, 0, 0, Z.cw * k, Z.ch * k);
+    ctx.drawImage(Z.wrap, zcx, zcy, zcw, zch, 0, 0, zcw * k, zch * k);
     ctx.restore();
   }
-  function zoomScreen(sx, sy) { return (!Z.raw && zoomOn()) ? [(sx - Z.cx) * Z.k, (sy - Z.cy) * Z.k] : [sx, sy]; }
+  const rzScreen = (sx, sy) => (roomK() > 1 ? zoomScreen(sx, sy) : [sx, sy]);   // [land4] 방 배율이 있을 때만 줌 화면 좌표(떠오르는 글 등 — 방 배율이 없으면 옛 1배 좌표 그대로)
+  function zoomScreen(sx, sy) {                             // [land4] 방 기본 배율도(옛: (!Z.raw && zoomOn()) ? [(sx − Z.cx) · Z.k, …] : [sx, sy])
+    if (Z.raw) return [sx, sy];
+    const k = zoomK();
+    if (k <= 1) return [sx, sy];
+    const o = zoomOrg();
+    return [(sx - o.cx) * k, (sy - o.cy) * k];
+  }
 
   /* ================================================================ 조명 */
   function centerOf(at) {
@@ -13628,6 +13738,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   function drawVistaBg() {
     const v = map && VBG[map.id];
     if (!v || map.w * TS > G().W || map.h * TS > G().H) return;
+    if (roomK() > 1) return;                               // [land4] 방 배율(가로 2배)에서는 방이 화면을 채워 위 빈자리가 없다 — 위 그림 띠를 그리지 않는다(옛: 방 위 빈 검정에 180폭 띠)
     if (v.sw && !uw2(v.sw)) return;                        // [r5 A5] 스위치로 넣은 자리(villefort · house)는 꺼지면 예전처럼 검정
     const g = G(), vh = Math.round(-rcam.y) - 2;
     if (vh < 24 || !(light.dark < 0.9)) return;
@@ -13770,8 +13881,11 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     drawWeather(rcam.x, rcam.y);
     drawVistaBg();                                     // [r3 B5-2] 작은 방 위 빈자리에 어둡게 깐 장소 그림(조명 뒤 · 그레이드 앞)
     // [c50-cine B5-1] 줌: 그레이드·색 온도 뒤, 비네트·레터박스 앞에서 잘라 옮긴다(fx.applyWorldPost 둘째 인자)
-    const zk = zoomOn() ? Z.k : 1;
-    if (zk > 1) zoomCrop(zk);
+    // [land4] 방 기본 배율(roomK): 컷신 줌이 없으면 화면 왼쪽 위 「화면 ÷ 배율」 칸을 그 배율로 옮긴다(카메라가 그 창에 맞춰 따라간다 — camClamp). 컷신 줌이 있으면 둘 중 큰 배율 · 컷신 초점.
+    //   옛: const zk = zoomOn() ? Z.k : 1; if (zk > 1) zoomCrop(zk); — 방 배율이 없으면 지금도 같은 값
+    const zkC = zoomOn() ? Z.k : 1, zkR = roomK(), zk = Math.max(zkC, zkR);
+    if (zkC > 1) zoomCrop(zk);
+    else if (zkR > 1) { Z.cw = Math.ceil(g.W / zkR); Z.ch = Math.ceil(g.H / zkR); Z.cx = 0; Z.cy = 0; }
     const zpost = (zk > 1 || Z.t0 >= 0 || extLock > 0) ? () => zoomPost(zk) : null;
     MC.fx.applyWorldPost(GLOW.on ? drawGlowPost : null, zpost);
     GLOW.on = false;
@@ -13825,7 +13939,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     holdTick();                                           // S3 길게 누름(뗌 → tapEvent, 이 누름의 짧은 탭은 삼킴)
     if (stick) {                                          // 짧은 탭=조사. 걷는 중이면 칸에 닿을 때까지(최대 300ms) 미뤄 둔다
       const tp = stick.consumeTap();
-      if (tp && nowR() >= tapGuard) { pendTap.x = tp.x + rcam.x; pendTap.y = tp.y + rcam.y; pendTap.t = nowR(); pendTap.on = ctl; pendTap.key = false; }
+      if (tp && nowR() >= tapGuard) { const wp = scrToWorld(tp.x, tp.y); pendTap.x = wp[0]; pendTap.y = wp[1]; pendTap.t = nowR(); pendTap.on = ctl; pendTap.key = false; }   // [land4] scrToWorld(옛: tp.x + rcam.x — 배율 1이면 같은 값)
     }
     if (pendTap.on && (!ctl || nowR() - pendTap.t > 300)) pendTap.on = false;
     if (pendTap.on && !pl.moving) {
@@ -13874,7 +13988,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (menuVisible() && menuBtn.onInput(ev)) return true;
     if (!controlsOn()) { if (keepStickN && stick && !ev.key) stick.onInput(ev); return true; }   // keepStick 이벤트 중: 손을 떼면 스틱도 안다
     if (ev.type === 'down' && !ev.key && stick && !stick.touching && !S3.hold && !pl.moving && !pl.path && nowR() >= tapGuard && stick.canStart(ev.x, ev.y)) {
-      const ho = ev.x >= 0 && ev.x < G().W ? holdTargetAt(ev.x + rcam.x, ev.y + rcam.y) : null;   // S3: hold 오브젝트를 누르기 시작(스틱도 같은 누름을 받는다 — 끌면 취소). [fold] 장식 여백 누름은 스틱만
+      const hw = scrToWorld(ev.x, ev.y);                   // [land4] 화면 → 월드(옛: ev.x + rcam.x — 배율 1이면 같은 값)
+      const ho = ev.x >= 0 && ev.x < G().W ? holdTargetAt(hw[0], hw[1]) : null;   // S3: hold 오브젝트를 누르기 시작(스틱도 같은 누름을 받는다 — 끌면 취소). [fold] 장식 여백 누름은 스틱만
       if (ho) holdStart(ho, false);
     }
     if (stick && stick.onInput(ev)) return true;
@@ -14176,7 +14291,10 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     tileToScreen(x, y) { return zoomScreen(x * TS - rcam.x, y * TS - rcam.y); },   // [c50-cine] 줌 중이면 줌 화면 좌표(zoomWrap 안에서는 평소 좌표)
     // [c50-cine B5-1] 컷신 정수 줌: k 1|2|3, at [x,y](타일, 소수 가능)|id|'player', o {ms(디더 컷, 기본 280 · 0이면 바로), y(0~1 초점 높이), keepCam}
     zoom(k, at, o) { return zoomTo(k, at, o); },
-    zoomInfo() { const on = zoomOn(); return { k: on ? Z.k : 1, x: Z.cx, y: Z.cy, w: Z.cw, h: Z.ch, at: Z.at, want: Z.k }; },
+    zoomInfo() { const on = zoomOn(); return { k: on ? Z.k : 1, x: Z.cx, y: Z.cy, w: Z.cw, h: Z.ch, at: Z.at, want: Z.k, room: roomK(), eff: zoomK() }; },   // [land4] room = 방 기본 배율 · eff = 지금 그려지는 배율(나머지 칸은 옛 그대로)
+    // [land4] 방 기본 배율이 지금 화면에 적용되고 있으면 그 배율(2|3), 아니면 1(세로 · 표시 없는 지도 · 컷신 줌이 초점을 잡고 있는 동안 · zoomWrap 안).
+    //   tileToScreen으로 받은 칸 왼쪽 위에 「칸 가운데 +8」 같은 덧셈을 하는 쪽이 그 덧셈에 곱한다
+    roomZoom() { return Z.raw || zoomOn() ? 1 : roomK(); },
     zoomWrap,                                          // 줌 위 비불투명 스테이지용(fn을 평소 좌표로 그려 같은 칸·배율로 옮김)
     refresh,
     // [r5 F1] 맵 톤(op mappal): name "dusk"|"night"|null(낮), ms>0이면 4단 팔레트 페이드 → Promise. tone() = 지금 상태(확인용). 되돌리기: 이 두 줄 삭제
@@ -48145,6 +48263,7 @@ MC.addMaps({
   "villefort": {
     "name": "검사 대리의 집무실", "tileset": "indoor", "ui": "act2",
     "edgeFill": false,   // [land2] 가로 화면: 방 바깥은 어둠 그대로(옛: 가장자리 줄 반복 — 아래 문이 둘로 보였다). field.js render가 읽는다
+    "landZoom": 2,       // [land4] 가로 화면: 방을 2배로(카메라가 주인공·cam 대상을 따라가고 방 끝에서 멈춤). 옛: 1배. field.js roomK가 읽는다
     "tiles": [
       "^^^^^^^^^^^^",
       "^SSW#D#WF#S^",
@@ -48318,6 +48437,7 @@ MC.addMaps({
     "if_room": {
       "name": "이프 성 · 위층 방", "tileset": "prison", "ui": "act2",
       "edgeFill": false,   // [land2] 가로 화면: 방 바깥은 어둠 그대로(옛: 가장자리 줄 반복). field.js render가 읽는다
+      "landZoom": 2,       // [land4] 가로 화면: 방을 2배로. 옛: 1배. field.js roomK가 읽는다
       "tiles": [
         "^^^^^^^",
         "^#W#D#^",
@@ -48414,6 +48534,7 @@ MC.addMaps({
   "house": {
     "name": "아버지의 집", "tileset": "house", "ui": "act1",
     "edgeFill": false,   // [land2] 가로 화면: 방 바깥은 어둠 그대로(옛: 가장자리 줄 반복 — 아래 문이 셋으로 보였다). field.js render가 읽는다
+    "landZoom": 2,       // [land4] 가로 화면: 방을 2배로(카메라가 주인공을 따라가고 방 끝에서 멈춤). 옛: 1배 — 방이 가운데 작게 떴다. field.js roomK가 읽는다
     "tiles": [
       "^^^^^^^^^",
       "^#W#F#W#^",
@@ -48482,6 +48603,7 @@ MC.addMaps({
       "name": "이프 성 · 독방",
       "tileset": "prison",
       "edgeFill": false,   // [land2] 가로 화면: 방 바깥은 어둠 그대로(옛: 가장자리 줄 반복). field.js render가 읽는다
+      "landZoom": 2,       // [land4] 가로 화면: 방을 2배로. 옛: 1배. field.js roomK가 읽는다
       "base": true,
       "vignette": 0.4,
       "camAnchor": { "center": { "minDark": 0.7 } },   // [r5 UW-4] 방 어둠 0.7 이상(촛불 밤 — 첫 만남·세 번째 발작·결심 등)이면 방을 화면 가운데로(field.js anchorY · ?uw2off=UW-4면 예전). 낮(0.4)·새벽(0.6)은 그대로 대화창 위. 되돌리기: 이 줄 삭제
@@ -48588,6 +48710,7 @@ MC.addMaps({
       "name": "이프 성 · 27번의 방",
       "tileset": "prison",
       "edgeFill": false,   // [land2] 가로 화면: 방 바깥은 어둠 그대로(옛: 가장자리 줄 반복). field.js render가 읽는다
+      "landZoom": 2,       // [land4] 가로 화면: 방을 2배로. 옛: 1배. field.js roomK가 읽는다
       "vignette": 0.4,
       // [fix 11-10 UW4] 27번의 방도 독방처럼: 방 어둠 0.7 이상(S3·S4 밤 장면 — 세 번째 발작 앞뒤·결심 등 등잔 0.8)이면 방을 화면 가운데로(field.js anchorY · [r5 UW-4] 조건부 가운데).
       //   등잔 켠 보통 때(0.5)는 그대로 대화창 위(위에 방 그림 vs_faria). 되돌리기: ?uw2off=UW4(이 방만 예전) · ?uw2off=UW-4(독방까지 예전) 또는 아래 한 줄 삭제
@@ -49437,6 +49560,7 @@ MC.addMaps({
     "s4_despair": {
       "tileset": "prison",
       "edgeFill": false,   // [land2] 가로 화면: 방 바깥은 어둠 그대로(옛: 가장자리 줄 반복). field.js render가 읽는다
+      "landZoom": 2,       // [land4] 가로 화면: 방을 2배로. 옛: 1배. field.js roomK가 읽는다
       "ui": "despair",
       "save": false,
       "bgm": null,
@@ -90167,7 +90291,8 @@ MC.addLang('es', {
     if (q >= 1) { FL.t0 = -1; return; }
     const g = G();
     for (const p of FL.pts) {
-      const s = MC.field.tileToScreen(p[0], p[1]), cx = s[0] + 8, cy = s[1] + 2;
+      const rz = MC.field.roomZoom ? MC.field.roomZoom() : 1;   // [land4] 방 기본 배율이면 칸 가운데 덧셈(+8·+2)을 배율만큼(옛: 고정 — 배율 1이면 같은 값)
+      const s = MC.field.tileToScreen(p[0], p[1]), cx = s[0] + 8 * rz, cy = s[1] + 2 * rz;
       g.ring(cx, cy, 6 + Math.round(q * 12), q < 0.5 ? '#fff6d0' : '#a89a70');
       if (q < 0.3) g.ring(cx, cy, 4 + Math.round(q * 8), '#ffffff');
     }
@@ -92573,6 +92698,7 @@ MC.addLang('es', {
       const p = tile();
       if (ev.key || !p || !MC.field || !MC.field.tileToScreen) { finish(); return true; }
       const s = MC.field.tileToScreen(p[0], p[1]);
+      { const rz = MC.field.roomZoom ? MC.field.roomZoom() : 1; if (rz > 1) { s[0] += 8 * (rz - 1); s[1] += 8 * (rz - 1); } }   // [land4] 방 기본 배율: 판정 네모(16칸 기준)를 커진 칸의 가운데로(옛: 칸 왼쪽 위 기준 — 배율 1이면 그대로)
       // [a43-ui P10] 판정을 사방 12px 넓힌다(창 한 칸이 폰에서 약 20 CSS px — 녹화에서 6분 막힘)
       if (ev.x >= s[0] - 18 && ev.x < s[0] + 34 && ev.y >= s[1] - 22 && ev.y < s[1] + 34) { U.vibrate(10); finish(); }
       else if (args.other && MC.fx.floatText) MC.fx.floatText(String(args.other), ev.x, ev.y - 8, { color: '#9a98a8', font: 'small', rise: 8, ms: 700 });
@@ -92583,6 +92709,7 @@ MC.addLang('es', {
       const p = tile();
       if (!p || !MC.field || !MC.field.tileToScreen) return;
       const s = MC.field.tileToScreen(p[0], p[1]), bob = ((MC.time.real / 300) | 0) % 2;
+      { const rz = MC.field.roomZoom ? MC.field.roomZoom() : 1; if (rz > 1) { s[0] += 8 * (rz - 1); s[1] += 8 * (rz - 1); } }   // [land4] 방 기본 배율: 고리·모서리·손가락(16칸 기준)을 커진 칸의 가운데로(옛: 칸 왼쪽 위 기준 — 배율 1이면 그대로)
       // [a43-ui P10] 입력 잠금(250ms)이 풀리는 순간 누를 칸이 한 번 반짝인다(고리가 퍼짐 + 흰 테 한 번)
       if (sc.t >= 250 && sc.t < 700) {
         const k = (sc.t - 250) / 450;
@@ -92732,7 +92859,10 @@ MC.addLang('es', {
     if (!F || !F.map || !F.actor || !F.tileToScreen || !MC.scene.has(F.scene || {})) return null;
     const a = F.actor(id); if (!a) return null;
     const p = F.tileToScreen(a.x, a.y);
-    return { x: p[0], y: p[1], a };
+    // [land4] 방 기본 배율(가로 2배 방): 쓰는 쪽이 「칸 가운데 +8」 같은 16칸 기준 덧셈을 하므로, 커진 칸의 가운데에 16칸이 놓이게 왼쪽 위를 8·(배율−1)만큼 옮겨 준다.
+    //   옛: 칸 왼쪽 위 그대로(배율 1 · 컷신 줌 · zoomWrap 안에서는 roomZoom() = 1이라 지금도 그대로)
+    const rz = F.roomZoom ? F.roomZoom() : 1, sh = rz > 1 ? 8 * (rz - 1) : 0;
+    return { x: p[0] + sh, y: p[1] + sh, a };
   }
   const fieldOn = () => !!(MC.field && MC.field.map && MC.field.scene);
 
@@ -103489,8 +103619,10 @@ MC.addLang('es', {
     const dx = tgt[0] - (pl.x + 0.5), dy = tgt[1] - (pl.y + 0.5);
     if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;              // 이미 그 칸 위면 화살표 없음(곁이면 그쪽을 가리킨다 — 어두운 방의 한 걸음)
     const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4), ux = Math.round(Math.cos(a) * 100) / 100, uy = Math.round(Math.sin(a) * 100) / 100;
-    const p0 = F.tileToScreen(pl.x, pl.y), cx = p0[0] + 8, cy = p0[1] + 2, bob = ((now / 250) | 0) % 2;
-    const tx = Math.round(cx + ux * (17 + bob)), ty = Math.round(cy + uy * (17 + bob));
+    // [land4] 방 기본 배율(가로 2배 방)이면 주인공이 그만큼 크다 — 머리 자리(+8·+2)와 화살표까지 거리(17)를 배율에 맞춘다(화살표 자체는 1배 그대로). 옛: +8·+2·17 고정(배율 1이면 같은 값)
+    const rz = F.roomZoom ? F.roomZoom() : 1;
+    const p0 = F.tileToScreen(pl.x, pl.y), cx = p0[0] + 8 * rz, cy = p0[1] + 2 * rz, bob = ((now / 250) | 0) % 2, far = 17 + (rz - 1) * 10;
+    const tx = Math.round(cx + ux * (far + bob)), ty = Math.round(cy + uy * (far + bob));
     const seg = (x0, y0, x1, y1, col) => { g.line(x0, y0, x1, y1, col); g.line(x0 + 1, y0, x1 + 1, y1, col); g.line(x0, y0 + 1, x1, y1 + 1, col); };
     const bx = Math.round(tx - ux * 7), by = Math.round(ty - uy * 7);
     const h1 = [Math.round(tx - (ux * 4 - uy * 4)), Math.round(ty - (uy * 4 + ux * 4))], h2 = [Math.round(tx - (ux * 4 + uy * 4)), Math.round(ty - (uy * 4 - ux * 4))];
@@ -103518,7 +103650,10 @@ MC.addLang('es', {
       const F = MC.field, g = G();
       if (!F || !F.map || !(F.controls && F.controls())) return;
       if (MC.events && MC.events.running) return;
-      if (dayFree()) drawDayGlow(g);
+      if (dayFree()) {
+        // [land4] 방 기본 배율이면 낮 반짝임(빛 원·흰 외곽선)을 필드와 같은 칸·같은 배율로 옮겨 그린다(field.zoomWrap — 그 안에서는 1배 좌표). 옛: 늘 1배 좌표에 직접
+        if (F.roomZoom && F.roomZoom() > 1 && F.zoomWrap) F.zoomWrap(() => drawDayGlow(g)); else drawDayGlow(g);
+      }
       if (GD.idleT >= GOAL_IDLE) { const t = goalTarget(); if (t) drawGoalArrow(g, t); }
     }
   };
