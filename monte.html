@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.28';
+  var VERSION = '0.9.29';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -1256,6 +1256,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     dream: ['#9fb0ff', '#070a1e', '#2f3a78'],
     despair: ['#7a2f4a', '#08050a', '#3a1020']
   };
+  // [R928 11-17] B4 「절망」 창(대사·이름표) 테두리 #7a2f4a(검정 위 약 2.2:1 — 묻힘) → #9a405e(약 3.1:1, 같은 자주 결). 되돌리기: ?uw2off=R928 또는 이 줄 삭제
+  if (MC.uw2 && MC.uw2('R928')) PAL_SRC.despair[0] = '#9a405e';
   const UIPALS = {};
   for (const k in PAL_SRC) {
     const [W, f, D] = PAL_SRC[k];
@@ -5401,6 +5403,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   F.flash = function (color, alpha, ms) {
     let a = alpha == null ? 0.6 : alpha;
     a = Math.min(0.6, a) * (0.45 + 0.55 * F.intensity);          // D-12: 플래시는 0.6 이하
+    // [R928 11-17] B5 번쩍임 줄이기: 설정 「흔들림: 끔」이거나 기기 「동작 줄이기」면 번쩍임을 0.15 이하로(새 설정 줄 없이 — 빛에 민감한 사람). 되돌리기: ?uw2off=R928 또는 이 줄 삭제
+    if (MC.uw2 && MC.uw2('R928') && (settingsShake() <= 0 || reduceMotion)) a = Math.min(a, 0.15);
     flashS.color = color || '#fff'; flashS.a0 = a; flashS.a = a; flashS.ms = ms == null ? 120 : Math.max(16, ms); flashS.t = 0; flashS.fr = 0;
   };
   F.hitstop = ms => MC.core.hitstop(ms);
@@ -5895,6 +5899,8 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     if (!toasts.length) return;
     const g = G();
     let y = 4 + g.safe.top;
+    // [R928 11-17] B1 토스트가 왼쪽 위 장소 줄(field drawPlace 「이프 성 · 독방」)을 가렸다 → 이 프레임에 장소 줄이 그려졌으면 그 줄 아래에서 시작(둘 다 읽힘). 되돌리기: ?uw2off=R928 또는 이 줄 삭제
+    if (MC.uw2 && MC.uw2('R928') && F.placeLine && F.placeLine.rid === g.renderId) y = Math.max(y, F.placeLine.y + 2);
     for (const t of toasts) {
       let w = 0; for (const l of t.lines) w = Math.max(w, MC.text.width(l, 'body'));
       w += 16; const h = t.lines.length * 16 + 8;
@@ -13755,6 +13761,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       }
     }
     MC.text.draw(placeTx.text, g.land ? 7 + g.safe.left : g.X0 + 5, g.safe.top + 4, { font: 'small', color: '#a8a4b4', shadow: '#000' });   // [land2] 가로: 왼쪽 위(이름표와 같은 줄 맞춤). 옛: X0 + 5
+    if (MC.fx) MC.fx.placeLine = { rid: g.renderId, y: g.safe.top + 4 + PLACE_H };   // [R928 11-17] B1 이 프레임에 장소 줄을 그렸다 — 토스트가 그 아래에서 시작(fx renderToasts). 되돌리기: 이 줄 삭제
   }
   /* [r3 B5-2] 작은 방 위 빈 검정에 이미 있는 장소 그림(data/vistas.js)을 어둡게 깐다 — 새 그림 없이 하는 첫 시도(IMPROVEMENT_PLAN_3 B5 · 도 E · 편 E8 · 감 #3).
      그림 360×480칸에서 짝수 칸만 집어 180×240(논리 1px = 1칸 — 방 타일과 같은 도트 결). 형태는 그대로, 색만 바꾼다(채도 ↓ · 빈칸 색 쪽 안개 · 어둡게).
@@ -19927,7 +19934,9 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       else if (known && g.hasSprite(fd.icon)) g.sprite(fd.icon, bx - 8, by - 1);
       else MC.text.draw('?', bx - 7, by - 5, { font: 'small', color: P.dim, outline: ev.h > 60 ? '#000' : null });   // [c43-ui B2-5] 올린 막대 앞 「?」는 몸 위라 검은 외곽선
       const hpLab = e.data.hpLabel && !ev.noLabel && !barOff;            // (S4) 금이 간 뒤엔 '???' 대신 유한한 막대 · [r5 B-04] !barOff
-      if (hpLab) MC.text.draw(trB(e.data.hpLabel), bx + bw + 4, by - 5, { font: 'small', color: '#c8b0c0' });
+      // [R928 11-17] B4 「???」 #c8b0c0 → #ecdce6 + 큰 적은 검은 외곽선(앞 「?」와 같은 규칙 — 파도 그림 위에서 묻혔다). 되돌리기: ?uw2off=R928 또는 옛 한 줄(color '#c8b0c0', 외곽선 없음)
+      const r928 = !!(MC.uw2 && MC.uw2('R928'));
+      if (hpLab) MC.text.draw(trB(e.data.hpLabel), bx + bw + 4, by - 5, { font: 'small', color: r928 ? '#ecdce6' : '#c8b0c0', outline: r928 && ev.h > 60 ? '#000' : null });
       // 약점 표시(간파·역사의 교훈·도감): 막대 오른쪽 ◎ + 계열색 점
       const kw = barOff ? null : knownWeakOf(ev);                        // [r5 B-04] 옛: knownWeakOf(ev)
       if (kw && !hpLab) {
@@ -20030,7 +20039,7 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
       const top = b.dead || b.despair ? ev.cy - 8 : ev.top - 20 - b.row * 18;
       const y = Math.max(g.safe.top + 14, top) - rise;
       const fade = clamp((b.dur - q) / 240, 0, 1), a = fade >= 1 ? 1 : (fade > 0.5 ? 0.66 : 0.33);
-      g.frame(x, y, w, h, { small: true, alpha: a, over: { W: b.despair ? '#7a2f4a' : fd.dark, f: '#07060a', k: '#000000' } });
+      g.frame(x, y, w, h, { small: true, alpha: a, over: { W: b.despair ? (MC.uw2 && MC.uw2('R928') ? '#9a405e' : '#7a2f4a') : fd.dark, f: '#07060a', k: '#000000' } });   // [R928 11-17] B4 절망 말풍선 테두리도 창과 같은 색. 되돌리기: ?uw2off=R928
       const col = b.despair ? COL.despair : (b.toast ? '#ffe9a0' : fd.text);   // (S3) 1815의 건배는 따뜻한 빛깔
       if (b.despair) {
         let cx = x + 5; const chars = Array.from(b.text);
@@ -50311,7 +50320,7 @@ MC.addEvents({
     { "op": "cam", "to": "player", "ms": 500 },
     { "op": "face", "id": "mercedes", "dir": "down" },
     { "op": "face", "id": "player", "dir": "up" },
-    { "op": "say", "who": "mercedes", "t": "신경 쓰지 마. 어릴 때부터 저랬어." },
+    { "op": "say", "who": "mercedes", "t": "신경 쓰지 마.{p:200} 사촌이라고\n어릴 때부터 제 짝인 줄 알아." },   // [0.9.29 C6①] 관계(사촌)와 집착을 한 줄에(옛: 「신경 쓰지 마. 어릴 때부터 저랬어.」)
     { "op": "say", "who": "mercedes", "t": [ "다음 항해 때도 기다릴게.", "대신 석 달은 넘기지 마.{p:200} 약속해." ] },
     { "op": "say", "who": "dantes", "face": "smile", "t": "약속!" },
     { "op": "say", "who": "mercedes", "face": "smile", "t": "모레, 레제르브에서.{p:300} 오늘 저녁은 아버님이랑 먹고." },
@@ -50443,9 +50452,9 @@ MC.addEvents({
 
   /* [a1-plot 11-06] 1-7 끝(11-06 사용자 선택 ①): 원작 4장 「음모」를 1막에서 그대로 보여 준다. 플레이어는 알고 에드몽만 모르는 극적 아이러니(원작과 같음).
      순서: 잔 → 장부에 없는 짐 → 칼/펜 → 왼손 → 카드루스가 말림 → 「장난일세」·구겨 던짐 → 에드몽을 위해 → 가세(카드루스를 끼고 나감) → 돌아보는 당글라르
-       → [탭] 페르낭이 주워 품에 넣음 → 마르세유 쪽 어둠으로 → 겹쳐 보이지? → 저 혼자 굴러가겠군 → 세 손(끝 그림) → 정지 → 암전
+       → [탭] 페르낭이 주워 품에 넣음 → 마르세유 쪽 어둠으로 → 겹쳐 보이지? → 당글라르의 말없는 「……」(0.9.29 C7: 옛 「저 혼자 굴러가겠군」 뺌) → 세 손(끝 그림) → 정지 → 암전
      잉크·종이는 종업원에게 청하지 않고 인사 때 심어 둔 r_inkpot을 쓴다(원작과 다른 점: 인사 때 에드몽이 본 잉크병이 추리의 밤 되감기 ①의 단서여야 함, r3 C5).
-     1막이라 먹구름(emote cloud)은 쓰지 않는다. 상자: 탭 앞 10, 탭 뒤 4 + a1e.start 6 = 10(MC.dbg.tapRuns 한도에 꼭 맞음 — 줄여야 하면 13번 상자를 emote dots로). 약 73초.
+     1막이라 먹구름(emote cloud)은 쓰지 않는다. 상자: 탭 앞 10, 탭 뒤 3 + a1e.start 7 = 10(MC.dbg.tapRuns 한도에 꼭 맞음 — 0.9.29 C7로 13번 상자를 emote dots로 바꾸고, 그 자리를 a1e.start의 C1 「붉은 허리띠가 골목으로」가 쓴다). 약 72초.
      카드루스 「칼보다 펜이 무섭다」(원작)는 상자 한도 때문에 당글라르의 칼/펜 줄(③)이 대신 맡는다.
      되돌리기: 이 블록(주석부터 "a1.hands" 끝 ]까지)을 docs/art_wip/a1_plot/backup/events_a1.js의 "a1.hands" 블록(옛 25초판: 잔 → 장부 → 그래서? → 세 손)으로 통째 바꾼다. 스위치 없음 */
   "a1.hands": [
@@ -50569,7 +50578,7 @@ MC.addEvents({
     { "op": "say", "who": "caderousse", "face": "nervous", "t": "……그런가?{p:300}\n술이 원수로군.", "pos": "top" },   // 원작 「술은 배신자야」
     { "op": "face", "id": "r_danglars", "dir": "up" },                     // 빈 탁자 쪽 — 이 시선을 따라 카메라가 탁자로
     { "op": "wait", "ms": 500 },
-    { "op": "say", "who": "danglars", "t": "……이제 저 혼자{p:200}\n굴러가겠군.", "pos": "top" },   // 원작 「이제 저 혼자 굴러가게 두면 된다」
+    { "op": "emote", "id": "r_danglars", "kind": "dots", "ms": 900 },      // [0.9.29 C7] 옛 독백 「……이제 저 혼자 굴러가겠군.」을 빼고 말없는 시선만(플레이어가 이미 다 본 뒤의 설명을 덜어 냄)
     // ⑪ [a1-plot 11-06] 빈 탁자 → 세 손(끝 그림, 그대로) → 정지
     { "op": "light", "dark": 0.5, "r": 60, "at": [7, 8], "ms": 900, "async": true },   // 잔과 잉크병만 남은 탁자
     { "op": "cam", "to": [7, 8], "ms": 900 },
@@ -50654,6 +50663,8 @@ MC.addEvents({
       { "op": "banner", "t": "마르세유 항구" },
       { "op": "sfx", "id": "gull", "pan": -0.3 },
       { "op": "wait", "ms": 500 },
+      // [0.9.29 C1] 플레이어만 아는 긴장 — 전날 밤 카드루스의 「카탈루냐는 저쪽인데」를 에드몽이 영문도 모르고 되풀이한다(페르낭은 투서를 들고 시내로). a1.hands 끝 상자를 뺀 C7과 짝(탭 연속 10 그대로)
+      { "op": "say", "who": "think", "t": "붉은 허리띠가 골목으로\n꺾인다.{p:300} ……페르낭?\n카탈루냐는 저쪽인데." },
       { "op": "move", "id": "player", "path": "U1", "speed": 220 },
       { "op": "face", "id": "morrel_e", "dir": "down" },
       { "op": "say", "who": "morrel", "t": "잘 잤나.{p:300} 짐은 다 내렸네.{p:200}\n오늘은 쉬게." },
@@ -51225,7 +51236,7 @@ MC.addEvents({
     { "op": "wait", "ms": 260 },
     { "op": "sfx", "id": "quill", "pitch": 0.95 },
     { "op": "emote", "id": "r_danglars", "kind": "cloud", "ms": 1200, "async": true },
-    { "op": "say", "who": "think", "t": "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠다.", "pos": "top" },   // M34 「왼손」. 추리 2 「제 글씨를 숨기려는 사람의 글씨」를 이 탁자에 놓는다
+    { "op": "say", "who": "think", "t": "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠겠지.", "pos": "top" },   // [0.9.29 C8] 본 것이 아니라 맞춰 본 것(옛 「채웠다.」) — n3의 「……겠군요」와 같은 결. M34 「왼손」. 추리 2 「제 글씨를 숨기려는 사람의 글씨」를 이 탁자에 놓는다
     // ③ 골무 — 먹구름 없음(카드루스는 휩쓸린 사람). 물음으로 남겨 n3에서 푼다(플레이어는 1막에서 말리는 것을 봤다 — 아이러니)
     { "op": "jump", "id": "r_caderousse", "h": 2, "ms": 180 },
     { "op": "sfx", "id": "glass_clink" },
@@ -51517,6 +51528,7 @@ MC.addEvents({
     { "op": "say", "who": "villefort", "t": "기다리게 했소.{p:300} 나도 약혼 파티에서 불려 나왔소." },
     { "op": "say", "who": "dantes", "face": "shock", "t": "검사님도……{p:200} 오늘이셨습니까?" },
     { "op": "say", "who": "villefort", "t": "한날에 신랑 둘이 한 방에 있군.{p:300} 빨리 끝내고 둘 다 돌아갑시다." },
+    { "op": "say", "who": "villefort", "t": "장인 될 댁이 대대로 왕당파라,{p:300}\n오래 자리를 비울 수 없소." },   // [0.9.29 C6②] 처가의 정치 — 2년 뒤 「누아르티에는 그자의 아버지일세」와 플레이어가 스스로 잇는다(위 「한날에 신랑 둘이」는 기억 카드·추리가 글자 그대로 되풀이하니 건드리지 않음)
     { "op": "sfx", "id": "page" },
     { "op": "say", "who": "villefort", "t": "이 투서요. 아는 글씨요?" },
     { "op": "custom", "id": "letter", "args": {} },
@@ -59015,8 +59027,7 @@ MC.addEvents({
       // fixer-s3: 역사 강의를 다섯 상자 줄였다(금고 두 줄·'보르자는 집을 다 뒤졌지만' 삭제, 열쇠+반지·성탄절+불 붙이기를 한 상자로) — 감정이 식지 않게 불에 쬐기로 빨리 간다
       { "op": "say", "who": "faria", "t": "나는 스파다 가문의 마지막 어른을\n모셨네. 비서로." },
       { "op": "custom", "id": "s3", "args": { "stage": "shadow", "panel": 2 } },
-      { "op": "say", "who": "faria", "t": "삼백 년 전,{p:200} 보르자라는 교황이\n돈이 급했네." },
-      { "op": "say", "who": "faria", "t": "스파다와 또 한 부자를 추기경으로.\n모자값을 받고." },
+      { "op": "say", "who": "faria", "t": "삼백 년 전, 돈이 급한\n교황이 부자 둘에게\n추기경 모자를 팔았네." },   // [0.9.29 C4②] 두 상자를 하나로(「보르자」 이름을 덜고, 편지의 「모자값」을 받친다)
       when(F("a4.lesson_hist"), [ { "op": "say", "who": "faria", "t": "역사는 배신의 장부라 했지.\n여기 첫 장일세." } ]),
       { "op": "custom", "id": "s3", "args": { "stage": "shadow", "panel": 3 } },
       { "op": "say", "who": "faria", "t": "교황 아들한텐 바늘 든 열쇠,\n악수하면 무는 사자 반지가 있었지." },
@@ -59029,13 +59040,11 @@ MC.addEvents({
       { "op": "say", "who": "faria", "t": "결국 둘을 포도밭 저녁에 불렀네.\n잔에 독을 타서." },
       { "op": "say", "who": "think", "t": "……파티에서." },
       { "op": "custom", "id": "s3", "args": { "stage": "shadow", "panel": 5 } },
-      { "op": "say", "who": "faria", "t": "스파다는 눈치챘지. 가기 전에\n조카에게 한 줄 남겼네." },
-      { "op": "say", "who": "faria", "t": "'내 기도서를 조카에게 준다.'\n그게 다였네." },
+      { "op": "say", "who": "faria", "t": "스파다는 눈치채고, 한 줄만 남겼네.{p:300}\n'내 기도서를 조카에게 준다.'" },   // [0.9.29 C4③] 두 상자를 하나로
       { "op": "custom", "id": "s3", "args": { "stage": "shadow", "panel": 6 } },
       { "op": "say", "who": "faria", "t": "그 밤, 스파다도 조카도 죽었네.\n버섯 탓이라더군." },
-      { "op": "say", "who": "faria", "t": "그 뒤 삼백 년,\n그 집안은 가난했네." },
       { "op": "custom", "id": "s3", "args": { "stage": "shadow", "panel": 7 } },
-      { "op": "say", "who": "faria", "t": "마지막 어른이 1807년에 가시며\n내게 서재를 남겼네." },
+      { "op": "say", "who": "faria", "t": "삼백 년 가난했던 그 집,\n마지막 어른이 1807년에\n가시며 내게 서재를 남겼네." },   // [0.9.29 C4④] 「그 뒤 삼백 년, 그 집안은 가난했네.」를 7장 첫 줄로 합침(조카가 죽는 줄은 그대로)
       { "op": "say", "who": "faria", "t": "그해 성탄절 밤, 캄캄해서\n기도서의 헌 종이로 불을 붙였지." },
       { "op": "custom", "id": "s3", "args": { "stage": "shadow", "clear": true } },
       { "op": "set", "flag": "s3t.tale" },
@@ -59509,7 +59518,6 @@ MC.addEvents({
   const WARM = "#ffcf6a";
   const HOLD1 = { "op": "set", "var": "s3hold", "v": 1 };
   const IRON4 = { "item": "iron_scrap", "n": 4 };
-  const RECITE_CARDS = "몬테크리스토 섬의 동굴|동쪽 작은 만|곧게, 스무 번째 바위|입구는 둘|두 번째 입구|가장 깊은 구석";
   const DICT_MISS = { "who": "faria", "t": "내가 부른 순서대로.", "t2": "천천히.{p:200} 다시." };
   const LB_OFF = { "op": "letterbox", "on": false, "ms": 200 }, LB_ON = { "op": "letterbox", "on": true, "ms": 300 };   // fixer-s3: order 스테이지 앞뒤(검은 띠가 카드를 자르던 것)
   // 예감의 밤(제 방·신부님 방): 촛불/등잔만, 푸른 밤빛
@@ -59934,10 +59942,12 @@ MC.addEvents({
       { "op": "letterbox", "on": true, "ms": 300 },
       { "op": "face", "id": "faria", "dir": "player" },
       { "op": "say", "who": "faria", "t": "에드몽.{p:200} 그 편지,\n한 번 더 외워 보게." },
-      LB_OFF,
-      { "op": "custom", "id": "s3", "args": { "stage": "order", "cards": RECITE_CARDS, "blanks": [ 1, 3, 5 ], "blanksN": { "8": [ 1, 5, 7 ] }, "var": "recite_miss", "sfx": "quill",
-        "miss": { "who": "faria", "t": "천천히.", "t2": "다시.{p:200} 처음부터." } } },
-      LB_ON,
+      // [0.9.29 C4①] 두 번째 외우기는 시험이 아니라 '다 외웠다'를 보여 주는 자리 — 순서 맞추기 조작(옛: custom s3 order · blanks [1,3,5] · 띠 끄고 켜기)을 빼고 에드몽이 외는 두 상자.
+      //   글은 편지(M71) 5번 줄의 섬 이름 + 7·8번 줄 그대로. recite_miss는 첫 외우기(s3t.recite)가 정한다
+      //   두 상자는 auto(탭 없이 흘러감 — 막힘없이 외는 모습). 탭으로 넘기면 조작이 빠진 자리가 탭 연속으로 이어져 기절 뒤 길이 12상자(>10)가 되던 것
+      { "op": "wait", "ms": 500 },
+      { "op": "say", "who": "dantes", "t": "……몬테크리스토 섬의 동굴.\n{p:300}동쪽 작은 만에서 곧게,\n스무 번째 바위를 들라.", "auto": 1600 },
+      { "op": "say", "who": "dantes", "t": "입구는 둘.{p:300}\n두 번째 입구의 가장 깊은 구석이다.", "auto": 1800 },
       { "op": "say", "who": "faria", "t": "좋아." },
       { "op": "say", "who": "faria", "face": "smile", "t": "이제 자네 머리가\n내 머리보다 낫군." },
       { "op": "say", "who": "faria", "t": "나가거든 곧장 그 섬일세.\n핑계를 대고, 혼자 남게." },
@@ -61717,6 +61727,8 @@ MC.addEvents({
       { "op": "grade", "sat": 0.5, "tint": "#5a2a10", "ta": 0.16, "ms": 3200, "async": true },
       { "op": "light", "dark": 0.55, "r": 60, "at": "window", "color": "#ffc890", "flicker": false, "post": false, "ms": 3200 },   // 창빛이 기운다
       W(1400),
+      // [0.9.29 C2] 시한 한 줄(처음 앉을 때만 — 꿈에서 깨어 다시 앉을 때는 s4m.sit이 켜져 있다). 「바다로」는 뒤에 스승 대신 바다로 가는 장면과 맞물린다
+      when(NF("s4m.sit"), [ { "op": "say", "who": "think", "t": "밤 열 시면,{p:300}\n신부님도 바다로 가신다." } ]),
       { "op": "say", "who": "narr", "t": "자루 곁에서, 눈을 감았다." },
       { "op": "set", "flag": "s4m.sit" },
       { "op": "set", "var": "s4phase", "v": "dream" },
@@ -62459,6 +62471,7 @@ MC.addEvents({
       { "op": "face", "id": "player", "dir": "left" },
       KNEEL,
       W(1500),
+      { "op": "say", "who": "think", "t": "이마가 차다.{p:300}\n돌벽보다 차다." },   // [0.9.29 C3①] 작별을 몸으로(고정 대사 「……이제 갑니다.」는 그대로)
       { "op": "say", "who": "dantes", "t": "……이제 갑니다." },
       { "op": "set", "var": "s4_kiss", "v": 1 },
       BED(5),
@@ -62536,11 +62549,13 @@ MC.addEvents({
       { "op": "fade", "to": 1, "ms": 900 },
       { "op": "hud", "show": false },
       W(600),
+      { "op": "say", "who": "think", "t": "그을음 냄새.{p:300} 등잔 기름 냄새.\n{p:300}……신부님 냄새." },   // [0.9.29 C3②] 자루 속 — 스승의 그을음 잉크·기름 등잔
       when(V("s3_knife", "vow"), [ { "op": "say", "who": "think", "t": "들키면 찢고 달린다.\n……칼은, 천에만." } ], [
         when(V("s3_knife", "silent"), [ { "op": "say", "who": "think", "t": "들키면, 그때는." } ], [
           { "op": "say", "who": "think", "t": "들키면 찢고 달린다." } ]) ]),
       { "op": "custom", "id": "s4", "args": { "stage": "sew", "n": 6, "sfx": "stitch" } },
       { "op": "fade", "to": 1, "ms": 0 },                                // 스테이지가 남긴 검정을 이어받는다
+      { "op": "say", "who": "think", "t": "숨이 천에 막혀{p:200}\n내 얼굴로 돌아온다." },   // [0.9.29 C3③] 꿰맨 뒤의 막힌 숨(저장 ⑤ 앞)
       { "op": "set", "flag": "s4x.sewn" },
       { "op": "set", "var": "s4phase", "v": "sack" },
       { "op": "letterbox", "on": false, "ms": 0 },
@@ -62830,6 +62845,7 @@ MC.addEvents({
     ].concat(ROCK_CUT, [
       W(600),
       SAY("think", "……바위."),
+      SAY("think", "빗물이 얼굴을 때린다.{p:300}\n……천장이 없다."),   // [0.9.29 C3④] 14년 만의 천장 없는 하늘(숫자는 엔딩 몫)
       LB_OFF,
       { "op": "hud", "show": true },
       { "op": "glow", "at": [ 6, 6 ] }
@@ -62882,10 +62898,12 @@ MC.addEvents({
       SAY("think", "저 배에도 사람이 있었다.{p:300} 바다는 나를 남겼다."),   // [s44-writer B3-14 · C7③] 난파선 번개 뒤 — 살아남은 것이 섭리임을(뒤3)
       W(800),
       { "op": "weather", "rain": 0.25 },
+      SAY("think", "구름 틈으로 별.{p:400}\n……이렇게 많았나."),   // [0.9.29 C3⑤] S2 「여름밤마다, 한 뼘 하늘의 별.」을 받는다
       { "op": "narr", "t": "새벽 다섯 시쯤이었다.", "ms": 2400 }
     ], DAWN_LOOK(4000), [
       { "op": "set", "flag": "s4t.dawn" },                               // 붉은 모자·널빤지 · 수평선의 타르탄선
       W(1400),
+      SAY("think", "이프 성이 보인다.{p:400}\n……손톱만 하다."),   // [0.9.29 C3⑥] 바깥에서 본 성 — 뒤의 두려운 줄 셋과 맞선다
       SAY("think", "두세 시간 뒤면,\n내 침대에 누운 신부님을 보겠지."),
       // [s44-writer B3-14] 「헝겊을 풀면, 알겠지. 자루에 누가 있었는지.」 삭제 — 바로 다음 12½이 소리로 보여 준다(작11)
       SAY("think", "……배가 뜨겠지.\n무장한 배가."),
@@ -66318,6 +66336,7 @@ MC.addLang('ko', {
     "set.toneSfc": "16비트",
     "set.toneNes": "클래식",
     "set.mute": "소리 끄기",
+    "set.allSound": "모든 소리",
     "set.sndCap": "소리 자막",
     "set.textSpeed": "대사 속도",
     "set.battleSpeed": "전투 속도",
@@ -66879,6 +66898,7 @@ MC.addLang('ko', {
     "set.sfx": { "w": 52, "font": "body", "lines": 1, "note": "설정 행(효과음 음량) — 음량 줄, 이름 칸 약 52px" },
     "set.voice": { "w": 96, "font": "body", "lines": 1, "note": "설정 행(대사 타자음 켬/끔) — 켬/끔 줄은 이름 칸 약 96px" },
     "set.mute": { "w": 96, "font": "body", "lines": 1, "note": "설정 행(모든 소리 끄기) — 켬/끔 줄, 이름 칸 약 96px" },
+    "set.allSound": { "w": 96, "font": "body", "lines": 1, "note": "[R928] 설정 행(모든 소리 켬/끔 — set.mute를 뜻만 뒤집은 새 이름: 켬 = 소리가 난다). 켬/끔 줄, 이름 칸 약 96px" },
     "set.phoneBass": { "w": 96, "font": "body", "lines": 1, "note": "설정 '소리' 탭 켬/끔 줄([s46-sound B4-2] 폰 스피커 저음 보강 — 이름 칸 96px에 「폰 스피커 저음 보강」(111px)이 안 들어가 「폰 저음 보강」(70px). 음악의 낮은 베이스를 한 옥타브 위로 겹쳐 작은 스피커에서도 들리게. 이어폰이면 끄는 사람도 있음). 이름 칸 약 96px" },
     "set.tone": { "w": 96, "font": "body", "lines": 1, "note": "설정 '소리' 탭 ◀ ▶ 줄([snd75] 음악 음색 — 16비트(기본: 현·관·하프 같은 샘플 결 악기 + 늘린 곡) / 클래식(예전 8비트 펄스 음색, 비교·회귀용). 바꾸면 지금 곡이 같은 자리에서 새 음색으로 이어진다). 이름 칸 약 96px" },
     "set.toneSfc": { "w": 44, "font": "body", "lines": 1, "note": "음색 값 — 16비트(슈퍼패미컴 결 악기). 값 칸 ◀ ▶ 사이 44px, 38px를 넘으면 그 줄 값 전부 small" },
@@ -67473,6 +67493,7 @@ MC.addLang('en', {
     "set.sfx": ["Effects", "q4fgg7"],
     "set.voice": ["Typing Sound", "p8vrz3"],
     "set.mute": ["Mute All", "1yijd37"],
+    "set.allSound": ["All Sound", "12931bj"],
     "set.textSpeed": ["Text", "13byngi"],
     "set.battleSpeed": ["Battle", "qzwfy6"],
     "set.moveSpeed": ["Walking", "ff8iy3"],
@@ -68332,9 +68353,8 @@ MC.addLang('en', {
     "어, 페르낭?{p:200}\n카탈루냐는 저쪽인데……": "Eh? Fernand?{p:200} The Catalans are that way...",
     "취했구먼, 자네.{p:200}\n길이 겹쳐 보이지?": "You’re drunk, my friend.{p:200}\nSeeing double, are you?",
     "……그런가?{p:300}\n술이 원수로군.": "...Am I?{p:300}\nWine’s a traitor.",
-    "……이제 저 혼자{p:200}\n굴러가겠군.": "...Now it’ll roll on{p:200}\nall by itself.",
     "술잔 사이에 잉크병과 종이.\n{p:300}……장부가 아니었다.": "Ink and paper among the glasses.\n{p:300}...It was no ledger.",
-    "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠다.": "A left hand, hiding its writing,{p:200} filled that page.",
+    "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠겠지.": "A left hand, hiding its writing,{p:200} must have filled that page.",
     "골무 낀 손은 잔을 들었다.{p:300}\n……말리기는 했을까.": "Thimble and all, he drank.{p:300} ...Did he even try to stop them?",
     "검사에게 간 건{p:200}\n쓴 손이 아니었다.": "The hand that wrote it{p:200}\nnever went to the prosecutor.",
     "……붉은 허리띠.": "...A red sash.",
@@ -68447,7 +68467,7 @@ MC.addLang('en', {
     "……알아.": "...I know.",
     "문틀에 걸린 것을 본다.": "Look at the doorframe.",
     "……붉은 허리띠가\n문틀에 걸렸다.\n{p:300}페르낭은 거칠게 잡아 뺐다.": "...His red sash caught on the doorframe.\n{p:300}Fernand yanked it free.",
-    "신경 쓰지 마. 어릴 때부터 저랬어.": "Don’t mind him. He’s been like that since we were children.",
+    "신경 쓰지 마.{p:200} 사촌이라고\n어릴 때부터 제 짝인 줄 알아.": "Don’t mind him.{p:200} We’re cousins—he’s thought me his since childhood.",
     "다음 항해 때도 기다릴게.": "I’ll wait next voyage, too.",
     "대신 석 달은 넘기지 마.{p:200} 약속해.": "But not a day past three months.{p:200} Promise me.",
     "약속!": "I promise!",
@@ -68543,6 +68563,7 @@ MC.addLang('en', {
     "땡——": "Dong——",
     "─── 이튿날 ───": "─ The next morning ─",
     "파티 전날": "The eve of the feast",
+    "붉은 허리띠가 골목으로\n꺾인다.{p:300} ……페르낭?\n카탈루냐는 저쪽인데.": "A red sash turns down an alley.{p:300} ...Fernand? The Catalans are that way.",
     "잘 잤나.{p:300} 짐은 다 내렸네.{p:200}\n오늘은 쉬게.": "Sleep well?{p:300} The cargo’s all ashore.{p:200}\nTake today off, my boy.",
     "아, 하나만.{p:300} 앞돛 밧줄을 봐 주게.\n자네 손이 제일 낫지.": ["Ah, just one thing.{p:300} Would you see to the foresail line?", "Nobody has better hands for it than you."],
     "형!{p:150} 어제 말한 등대 헤엄이요!{p:200}\n오늘 보여 주세요!": "Edmond!{p:150} The lighthouse swim you told me about!{p:200}\nShow me today!",
@@ -68659,6 +68680,7 @@ MC.addLang('en', {
     "기다리게 했소.{p:300} 나도 약혼 파티에서 불려 나왔소.": "I have kept you waiting.{p:300} I was called away from my own betrothal feast.",
     "검사님도……{p:200} 오늘이셨습니까?": "You too, sir...?{p:200} Today?",
     "한날에 신랑 둘이 한 방에 있군.{p:300} 빨리 끝내고 둘 다 돌아갑시다.": ["Two bridegrooms in one room, on the same day.", "{p:300}Let us be quick, and both go back."],
+    "장인 될 댁이 대대로 왕당파라,{p:300}\n오래 자리를 비울 수 없소.": "My bride’s family are royalists born and bred.{p:300} I cannot be away long.",
     "이 투서요. 아는 글씨요?": "This letter. Do you know the hand?",
     "찬탈자라면…… 엘바의 나폴레옹.{p:300}\n그 편지가, 나를?": "‘The usurper’... Napoleon, on Elba.{p:300} And this letter names me?",
     "……처음 봅니다. 글씨를 막 배운 사람 같네요.": "...I’ve never seen it. It looks like someone just learning to write.",
@@ -70139,8 +70161,8 @@ MC.addLang('en', {
     "사다리 끝을 조금 더 풀었다.": "I unpicked a little more from the ladder’s end.",
     "신부님의 짚 침대.{p:200}\n뒤에 줄사다리가 있다.": "The Abbé’s straw bed.{p:200}\nBehind it, the rope ladder.",
     "에드몽.{p:200} 그 편지,\n한 번 더 외워 보게.": "Edmond.{p:200} The letter—\nrecite it once more.",
-    "천천히.": "Slowly.",
-    "다시.{p:200} 처음부터.": "Again.{p:200} From the beginning.",
+    "……몬테크리스토 섬의 동굴.\n{p:300}동쪽 작은 만에서 곧게,\n스무 번째 바위를 들라.": ["...The isle of Monte Cristo, a cave.", "{p:300}Small east creek: go straight, lift the twentieth rock."],
+    "입구는 둘.{p:300}\n두 번째 입구의 가장 깊은 구석이다.": "Two openings.{p:300}\nIn the second opening, the farthest corner.",
     "좋아.": "Good.",
     "이제 자네 머리가\n내 머리보다 낫군.": "Your head is better\nthan mine now.",
     "나가거든 곧장 그 섬일세.\n핑계를 대고, 혼자 남게.": ["When you get out, go straight to that island.", "Make some excuse, and stay there alone."],
@@ -70218,19 +70240,16 @@ MC.addLang('en', {
     "자네는 검사를 믿었다지.\n날 믿는 건 더 어렵나.": "You trusted the prosecutor, you said. Is trusting me harder?",
     "그러니 믿든 말든, 듣게.": "So believe it or not—listen.",
     "나는 스파다 가문의 마지막 어른을\n모셨네. 비서로.": "I served the last head of the Spada family. As his secretary.",
-    "삼백 년 전,{p:200} 보르자라는 교황이\n돈이 급했네.": "Three hundred years ago,{p:200} a pope named Borgia needed money.",
-    "스파다와 또 한 부자를 추기경으로.\n모자값을 받고.": ["So he made Spada and another rich man cardinals.", "For the price of the hat."],
+    "삼백 년 전, 돈이 급한\n교황이 부자 둘에게\n추기경 모자를 팔았네.": ["Three hundred years ago, a pope was short of money.", "So he sold cardinals’ hats to two rich men."],
     "역사는 배신의 장부라 했지.\n여기 첫 장일세.": "History is a ledger of betrayal, I told you.\nHere is its first page.",
     "교황 아들한텐 바늘 든 열쇠,\n악수하면 무는 사자 반지가 있었지.": ["The Pope’s son had a key with a hidden needle,", "and a lion ring that bit when you shook his hand."],
     "……한 손으론 사자가 이만하네.": "...With one hand, this is all the lion I can manage.",
     "……이제야 사자 같군.": "...Now that looks like a lion.",
     "결국 둘을 포도밭 저녁에 불렀네.\n잔에 독을 타서.": ["In the end, he invited them both to supper in a vineyard.", "With poison in the cups."],
     "……파티에서.": "...At a feast.",
-    "스파다는 눈치챘지. 가기 전에\n조카에게 한 줄 남겼네.": "Spada guessed. Before he went, he left a line for his nephew.",
-    "'내 기도서를 조카에게 준다.'\n그게 다였네.": "‘I leave my breviary to my nephew.’\nThat was all.",
+    "스파다는 눈치채고, 한 줄만 남겼네.{p:300}\n'내 기도서를 조카에게 준다.'": "Spada guessed. He left one line:{p:300} ‘I leave my breviary to my nephew.’",
     "그 밤, 스파다도 조카도 죽었네.\n버섯 탓이라더군.": ["That night, Spada and his nephew both died.", "Bad mushrooms, they said."],
-    "그 뒤 삼백 년,\n그 집안은 가난했네.": "For three hundred years after,\nthat family was poor.",
-    "마지막 어른이 1807년에 가시며\n내게 서재를 남겼네.": "When the last of them died in 1807,\nhe left me his library.",
+    "삼백 년 가난했던 그 집,\n마지막 어른이 1807년에\n가시며 내게 서재를 남겼네.": ["That house stayed poor for three hundred years.", "Its last head died in 1807 and left me his library."],
     "그해 성탄절 밤, 캄캄해서\n기도서의 헌 종이로 불을 붙였지.": ["That Christmas night, in the dark,", "I lit a fire with an old page from the breviary."],
     "모자값으론 모자라,……": "The hat’s price fell short...",
     "조카 귀도 스파다에게……": "To my nephew Guido Spada...",
@@ -70376,6 +70395,7 @@ MC.addLang('en', {
     "옆방 · 철문 닫히는 소리": "Next cell · iron door shutting",
     "곁에 앉는다": "Sit beside him",
     "아직": "Not yet",
+    "밤 열 시면,{p:300}\n신부님도 바다로 가신다.": "At ten tonight,{p:300}\nthe Abbé, too, goes to the sea.",
     "자루 곁에서, 눈을 감았다.": "Beside the sack, he closed his eyes.",
     "자루 곁에서 눈을 떴다.": "He woke beside the sack.",
     "……한 사람쯤은.": "...One soul, at least.",
@@ -70409,10 +70429,13 @@ MC.addLang('en', {
     "눈을 뜨니, 창빛이 붉었다.": "When he opened his eyes, the window light was red.",
     "여기서 나가는 방법은 하나뿐이다.": "There is only one way out of here.",
     "죽은 사람이 되는 것.": "To become a dead man.",
+    "이마가 차다.{p:300}\n돌벽보다 차다.": "His brow is cold.{p:300}\nColder than the stone wall.",
     "……이제 갑니다.": "...I am going now.",
     "들키면 찢고 달린다.\n……칼은, 천에만.": "If they find me, I cut and run. ...The knife, only on cloth.",
     "들키면, 그때는.": "If they find me—then.",
+    "그을음 냄새.{p:300} 등잔 기름 냄새.\n{p:300}……신부님 냄새.": "Soot.{p:300} Lamp tallow.\n{p:300}...The smell of the Abbé.",
     "들키면 찢고 달린다.": "If they find me, I cut and run.",
+    "숨이 천에 막혀{p:200}\n내 얼굴로 돌아온다.": "My breath hits the cloth{p:200} and comes back to my face.",
     "안뜰이 붉다.{p:300} 곧 저녁이다.": "The courtyard is red.{p:300} Evening soon.",
     "창 한 뼘의 하늘이 붉다.": "The palm of sky in the window was red.",
     "바늘은 신부님 방에\n숨겨 두었다.": "I hid the needle\nin the Abbé’s cell.",
@@ -70437,9 +70460,12 @@ MC.addLang('en', {
     "셋!": "Three!",
     "물에 떨어지는 소리": "Splash",
     "……바위.": "...Rock.",
+    "빗물이 얼굴을 때린다.{p:300}\n……천장이 없다.": "Rain beats on my face.{p:300}\n...There is no ceiling.",
     "……신부님의 하느님.{p:400} 오늘은, 고맙습니다.": "...The Abbé’s God.{p:400} Today, I thank You.",
     "저 배에도 사람이 있었다.{p:300} 바다는 나를 남겼다.": "There were men on that ship too.{p:300} The sea spared me.",
+    "구름 틈으로 별.{p:400}\n……이렇게 많았나.": "Stars, through a break in the clouds.{p:400} ...Were there always so many?",
     "새벽 다섯 시쯤이었다.": "It was about five in the morning.",
+    "이프 성이 보인다.{p:400}\n……손톱만 하다.": "I can see the Château d’If.{p:400} ...No bigger than a fingernail.",
     "두세 시간 뒤면,\n내 침대에 누운 신부님을 보겠지.": "In two or three hours,\nthey’ll find the Abbé in my bed.",
     "……배가 뜨겠지.\n무장한 배가.": "...They’ll send out a boat. An armed one.",
     "……칼마저 잃었다.": "...Even the knife is gone.",
@@ -71084,6 +71110,7 @@ MC.addLang('ja', {
     "set.sfx": ["効果音", "q4fgg7"],
     "set.voice": ["文字送り音", "p8vrz3"],
     "set.mute": ["すべて消音", "1yijd37"],
+    "set.allSound": ["すべての音", "12931bj"],
     "set.textSpeed": ["文字の速さ", "13byngi"],
     "set.battleSpeed": ["戦闘の速さ", "qzwfy6"],
     "set.moveSpeed": ["歩く速さ", "ff8iy3"],
@@ -71905,9 +71932,8 @@ MC.addLang('ja', {
     "어, 페르낭?{p:200}\n카탈루냐는 저쪽인데……": "あれ、フェルナン？{p:200}\nカタロニアはあっちだぞ……",
     "취했구먼, 자네.{p:200}\n길이 겹쳐 보이지?": "酔ってるな、君は。{p:200}\n道が二重に見えるんだろう？",
     "……그런가?{p:300}\n술이 원수로군.": "……そうか？{p:300}\n酒ってのは、裏切り者だな。",
-    "……이제 저 혼자{p:200}\n굴러가겠군.": "……あとは、ひとりでに{p:200}\n転がっていくな。",
     "술잔 사이에 잉크병과 종이.\n{p:300}……장부가 아니었다.": "杯のあいだにインク壺と紙。\n{p:300}……帳簿では、なかった。",
-    "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠다.": "自分の字を隠した左手が、{p:200}\nその紙を埋めていった。",
+    "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠겠지.": "自分の字を隠した左手が、{p:200}\nその紙を埋めたのだろう。",
     "골무 낀 손은 잔을 들었다.{p:300}\n……말리기는 했을까.": "指ぬきの手は、杯を上げた。{p:300}\n……止めはしたのだろうか。",
     "검사에게 간 건{p:200}\n쓴 손이 아니었다.": "検事のもとへ行ったのは、{p:200}\n書いた手ではなかった。",
     "……붉은 허리띠.": "……赤い腰帯。",
@@ -72018,7 +72044,7 @@ MC.addLang('ja', {
     "……알아.": "……知ってる。",
     "문틀에 걸린 것을 본다.": "戸口にかかったものを見る。",
     "……붉은 허리띠가\n문틀에 걸렸다.\n{p:300}페르낭은 거칠게 잡아 뺐다.": ["……赤い腰帯が、\n戸口に引っかかった。","{p:300}フェルナンは、乱暴に引き抜いた。"],
-    "신경 쓰지 마. 어릴 때부터 저랬어.": "気にしないで。小さいころから、ああなの。",
+    "신경 쓰지 마.{p:200} 사촌이라고\n어릴 때부터 제 짝인 줄 알아.": "気にしないで。{p:200}\nいとこだからって、昔から\n許嫁のつもりでいるの。",
     "다음 항해 때도 기다릴게.": "次の航海のときも、待ってる。",
     "대신 석 달은 넘기지 마.{p:200} 약속해.": "そのかわり、三か月は越えないで。{p:200}約束して。",
     "약속!": "約束する！",
@@ -72112,6 +72138,7 @@ MC.addLang('ja', {
     "땡——": "カーン──",
     "─── 이튿날 ───": "─── 明くる日 ───",
     "파티 전날": "宴の前日",
+    "붉은 허리띠가 골목으로\n꺾인다.{p:300} ……페르낭?\n카탈루냐는 저쪽인데.": "赤い腰帯が、路地へ折れる。{p:300}\n……フェルナン？\nカタロニアはあっちなのに。",
     "잘 잤나.{p:300} 짐은 다 내렸네.{p:200}\n오늘은 쉬게.": "よく眠れたかね。{p:300}\n荷は全部下ろした。{p:200}\n今日は休みたまえ。",
     "아, 하나만.{p:300} 앞돛 밧줄을 봐 주게.\n자네 손이 제일 낫지.": "ああ、ひとつだけ。{p:300}\n前の帆綱を見てやってくれ。\n君の手が、いちばん確かだ。",
     "형!{p:150} 어제 말한 등대 헤엄이요!{p:200}\n오늘 보여 주세요!": "兄ちゃん！{p:150}\nきのうの灯台の話、{p:200}\n今日、泳いで見せてよ！",
@@ -72227,6 +72254,7 @@ MC.addLang('ja', {
     "기다리게 했소.{p:300} 나도 약혼 파티에서 불려 나왔소.": "お待たせしました。{p:300}\n私も、婚約の宴から呼び出されたのです。",
     "검사님도……{p:200} 오늘이셨습니까?": "検事さまも……{p:200}今日だったんですか？",
     "한날에 신랑 둘이 한 방에 있군.{p:300} 빨리 끝내고 둘 다 돌아갑시다.": ["同じ日に、花婿が二人、ひとつの部屋に。","{p:300}手早く済ませて、二人とも帰りましょう。"],
+    "장인 될 댁이 대대로 왕당파라,{p:300}\n오래 자리를 비울 수 없소.": "妻の実家となる家は、\n代々の王党派です。{p:300}\n長くは席を外せません。",
     "이 투서요. 아는 글씨요?": "この密告状です。筆跡に見覚えは？",
     "찬탈자라면…… 엘바의 나폴레옹.{p:300}\n그 편지가, 나를?": "簒奪者といえば……エルバのナポレオン。{p:300}\nその手紙が、僕を？",
     "……처음 봅니다. 글씨를 막 배운 사람 같네요.": "……初めて見ます。字を習いたての人のようですね。",
@@ -73701,8 +73729,8 @@ MC.addLang('ja', {
     "사다리 끝을 조금 더 풀었다.": "はしごの端を、もう少しほどいた。",
     "신부님의 짚 침대.{p:200}\n뒤에 줄사다리가 있다.": "神父さまの、わらの寝床。{p:200}\n後ろに、縄ばしごがある。",
     "에드몽.{p:200} 그 편지,\n한 번 더 외워 보게.": "エドモン。{p:200}あの手紙を、\nもう一度、そらで言ってみたまえ。",
-    "천천히.": "ゆっくり。",
-    "다시.{p:200} 처음부터.": "もう一度。{p:200}初めから。",
+    "……몬테크리스토 섬의 동굴.\n{p:300}동쪽 작은 만에서 곧게,\n스무 번째 바위를 들라.": ["……\nモンテ・クリスト島の洞窟。", "{p:300}東の小さな入り江から\nまっすぐ、\n二十番目の岩を起こせ。"],
+    "입구는 둘.{p:300}\n두 번째 입구의 가장 깊은 구석이다.": "入口は二つ。{p:300}\n二つ目の入口の、\n最も奥の隅である。",
     "좋아.": "よし。",
     "이제 자네 머리가\n내 머리보다 낫군.": "もう、君の頭のほうが、\nわしの頭より上だな。",
     "나가거든 곧장 그 섬일세.\n핑계를 대고, 혼자 남게.": "出たら、まっすぐあの島だ。\n口実をつけて、ひとり残りたまえ。",
@@ -73780,19 +73808,16 @@ MC.addLang('ja', {
     "자네는 검사를 믿었다지.\n날 믿는 건 더 어렵나.": "君は、検事を信じたのだな。\nわしを信じるのは、もっと難しいか。",
     "그러니 믿든 말든, 듣게.": "だから、信じようと信じまいと、聞きたまえ。",
     "나는 스파다 가문의 마지막 어른을\n모셨네. 비서로.": "わしは、スパダ家の最後の当主に\n仕えていた。秘書としてな。",
-    "삼백 년 전,{p:200} 보르자라는 교황이\n돈이 급했네.": "三百年前、{p:200}ボルジアという教皇が、\n金に困った。",
-    "스파다와 또 한 부자를 추기경으로.\n모자값을 받고.": ["スパダと、もうひとりの金持ちを、枢機卿にした。","帽子代と引き換えにな。"],
+    "삼백 년 전, 돈이 급한\n교황이 부자 둘에게\n추기경 모자를 팔았네.": "三百年前、金に困った教皇が\n金持ち二人に、\n枢機卿の帽子を売った。",
     "역사는 배신의 장부라 했지.\n여기 첫 장일세.": "歴史は裏切りの帳簿だと、言ったな。\nここが、その一枚目だ。",
     "교황 아들한텐 바늘 든 열쇠,\n악수하면 무는 사자 반지가 있었지.": ["教皇の息子は、針を仕込んだ鍵と、","握手するとかみつく、獅子の指輪を持っていた。"],
     "……한 손으론 사자가 이만하네.": "……片手では、獅子もこの程度だ。",
     "……이제야 사자 같군.": "……これで、獅子らしくなった。",
     "결국 둘을 포도밭 저녁에 불렀네.\n잔에 독을 타서.": ["とうとう、二人をぶどう畑の夕食に招いた。","杯に、毒を入れてな。"],
     "……파티에서.": "……宴の席で。",
-    "스파다는 눈치챘지. 가기 전에\n조카에게 한 줄 남겼네.": "スパダは、気づいていた。出かける前に、\n甥へ一行、書き残した。",
-    "'내 기도서를 조카에게 준다.'\n그게 다였네.": "「わが祈りの書を、甥に遺す」。\nそれだけだった。",
+    "스파다는 눈치채고, 한 줄만 남겼네.{p:300}\n'내 기도서를 조카에게 준다.'": "スパダは気づき、一行だけ\n残した。{p:300}「わが祈りの書を、\n甥に遺す」。",
     "그 밤, 스파다도 조카도 죽었네.\n버섯 탓이라더군.": ["その夜、スパダも甥も死んだ。","きのこのせいだ、ということになった。"],
-    "그 뒤 삼백 년,\n그 집안은 가난했네.": "それから三百年、\nあの家は、貧しかった。",
-    "마지막 어른이 1807년에 가시며\n내게 서재를 남겼네.": "最後の当主が、1807年に亡くなるとき、\nわしに書斎を遺した。",
+    "삼백 년 가난했던 그 집,\n마지막 어른이 1807년에\n가시며 내게 서재를 남겼네.": "三百年貧しかった家の、\n最後の当主が1807年に\n逝き、わしに書斎を遺した。",
     "그해 성탄절 밤, 캄캄해서\n기도서의 헌 종이로 불을 붙였지.": ["その年の降誕祭の夜、暗くてな。","祈りの書の古い紙で、火をつけた。"],
     "모자값으론 모자라,……": "帽子代では足りず、……",
     "조카 귀도 스파다에게……": "甥グイド・スパダに……",
@@ -73937,6 +73962,7 @@ MC.addLang('ja', {
     "옆방 · 철문 닫히는 소리": "隣の房 · 鉄の扉が閉まる音",
     "곁에 앉는다": "そばに座る",
     "아직": "まだ",
+    "밤 열 시면,{p:300}\n신부님도 바다로 가신다.": "夜の十時には、{p:300}\n神父さまも、海へ行かれる。",
     "자루 곁에서, 눈을 감았다.": "袋のそばで、目を閉じた。",
     "자루 곁에서 눈을 떴다.": "袋のそばで、目を覚ました。",
     "……한 사람쯤은.": "……せめてひとりは。",
@@ -73970,10 +73996,13 @@ MC.addLang('ja', {
     "눈을 뜨니, 창빛이 붉었다.": "目を開けると、\n窓の光が赤かった。",
     "여기서 나가는 방법은 하나뿐이다.": "ここから出る方法は、\nひとつしかない。",
     "죽은 사람이 되는 것.": "死人になることだ。",
+    "이마가 차다.{p:300}\n돌벽보다 차다.": "額が、冷たい。{p:300}\n石の壁より、冷たい。",
     "……이제 갑니다.": "……もう、行きます。",
     "들키면 찢고 달린다.\n……칼은, 천에만.": "見つかったら、裂いて走る。\n……ナイフは、布にだけ。",
     "들키면, 그때는.": "見つかったら、そのときは。",
+    "그을음 냄새.{p:300} 등잔 기름 냄새.\n{p:300}……신부님 냄새.": "すすのにおい。{p:300}\nランプの脂のにおい。\n{p:300}……神父さまのにおい。",
     "들키면 찢고 달린다.": "見つかったら、裂いて走る。",
+    "숨이 천에 막혀{p:200}\n내 얼굴로 돌아온다.": "息が布にさえぎられて、{p:200}\n自分の顔へ戻ってくる。",
     "안뜰이 붉다.{p:300} 곧 저녁이다.": "中庭が赤い。{p:300}\nもうすぐ、夕方だ。",
     "창 한 뼘의 하늘이 붉다.": "窓のひと握りの空が、赤い。",
     "바늘은 신부님 방에\n숨겨 두었다.": "針は、神父さまの房に\n隠しておいた。",
@@ -73998,9 +74027,12 @@ MC.addLang('ja', {
     "셋!": "さん！",
     "물에 떨어지는 소리": "水に落ちる音",
     "……바위.": "……岩。",
+    "빗물이 얼굴을 때린다.{p:300}\n……천장이 없다.": "雨が、顔を打つ。{p:300}\n……天井が、ない。",
     "……신부님의 하느님.{p:400} 오늘은, 고맙습니다.": "……神父さまの神よ。{p:400}\n今日は、感謝します。",
     "저 배에도 사람이 있었다.{p:300} 바다는 나를 남겼다.": "あの船にも、人がいた。{p:300}\n海は、私を残した。",
+    "구름 틈으로 별.{p:400}\n……이렇게 많았나.": "雲の切れ間に、星。{p:400}\n……こんなに、多かったか。",
     "새벽 다섯 시쯤이었다.": "明け方の五時ごろだった。",
+    "이프 성이 보인다.{p:400}\n……손톱만 하다.": "イフ城が見える。{p:400}\n……爪ほどの大きさだ。",
     "두세 시간 뒤면,\n내 침대에 누운 신부님을 보겠지.": "二、三時間もすれば、\n私の寝台に眠る神父さまを、\n見つけるだろう。",
     "……배가 뜨겠지.\n무장한 배가.": "……船が出るだろう。\n武装した船が。",
     "……칼마저 잃었다.": "……ナイフまで、失った。",
@@ -74645,6 +74677,7 @@ MC.addLang('fr', {
     "set.sfx": ["Effets", "q4fgg7"],
     "set.voice": ["Son du texte", "p8vrz3"],
     "set.mute": ["Couper le son", "1yijd37"],
+    "set.allSound": ["Tous les sons", "12931bj"],
     "set.textSpeed": ["Texte", "13byngi"],
     "set.battleSpeed": ["Combat", "qzwfy6"],
     "set.moveSpeed": ["Marche", "ff8iy3"],
@@ -75466,9 +75499,8 @@ MC.addLang('fr', {
     "어, 페르낭?{p:200}\n카탈루냐는 저쪽인데……": "Hé, Fernand ?{p:200}\nLes Catalans, c’est par là-bas…",
     "취했구먼, 자네.{p:200}\n길이 겹쳐 보이지?": "Tu es soûl, mon vieux.{p:200}\nTu vois double, hein ?",
     "……그런가?{p:300}\n술이 원수로군.": "…Tu crois ?{p:300}\nSacré vin, il me joue des tours.",
-    "……이제 저 혼자{p:200}\n굴러가겠군.": "…À présent, l’affaire{p:200}\nva rouler toute seule.",
     "술잔 사이에 잉크병과 종이.\n{p:300}……장부가 아니었다.": "Parmi les verres, encrier et papier.\n{p:300}…Pas pour un registre.",
-    "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠다.": "La main gauche qui cachait son écriture{p:200}\na rempli cette feuille.",
+    "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠겠지.": "La main gauche qui cachait son écriture{p:200} a dû remplir cette feuille.",
     "골무 낀 손은 잔을 들었다.{p:300}\n……말리기는 했을까.": ["La main au dé à coudre a levé son verre.","{p:300}…A-t-il seulement voulu les en empêcher ?"],
     "검사에게 간 건{p:200}\n쓴 손이 아니었다.": "La main qui a écrit{p:200}\nn’est pas celle qui est allée chez le procureur.",
     "……붉은 허리띠.": "…La ceinture rouge.",
@@ -75579,7 +75611,7 @@ MC.addLang('fr', {
     "……알아.": "…Je sais.",
     "문틀에 걸린 것을 본다.": "Regarder le chambranle.",
     "……붉은 허리띠가\n문틀에 걸렸다.\n{p:300}페르낭은 거칠게 잡아 뺐다.": ["…La ceinture rouge\ns’est accrochée au chambranle.","{p:300}Fernand l’a arrachée d’un geste brusque."],
-    "신경 쓰지 마. 어릴 때부터 저랬어.": "Ne fais pas attention. Il est comme ça depuis qu’on est petits.",
+    "신경 쓰지 마.{p:200} 사촌이라고\n어릴 때부터 제 짝인 줄 알아.": "Ne fais pas attention.{p:200} On est cousins : depuis petit, il me croit à lui.",
     "다음 항해 때도 기다릴게.": "Au prochain voyage aussi, je t’attendrai.",
     "대신 석 달은 넘기지 마.{p:200} 약속해.": "Mais ne dépasse pas trois mois.{p:200} Promets-le-moi.",
     "약속!": "Promis !",
@@ -75673,6 +75705,7 @@ MC.addLang('fr', {
     "땡——": "Dong——",
     "─── 이튿날 ───": "─ Le lendemain matin ─",
     "파티 전날": "La veille des fiançailles",
+    "붉은 허리띠가 골목으로\n꺾인다.{p:300} ……페르낭?\n카탈루냐는 저쪽인데.": ["Une ceinture rouge tourne dans une ruelle.", "{p:300}…Fernand ? Les Catalans, c’est par là-bas."],
     "잘 잤나.{p:300} 짐은 다 내렸네.{p:200}\n오늘은 쉬게.": "Bien dormi ?\n{p:300}Tout est déchargé.{p:200}\nPrenez votre journée.",
     "아, 하나만.{p:300} 앞돛 밧줄을 봐 주게.\n자네 손이 제일 낫지.": ["Ah, une seule chose.{p:300} Jetez un œil au cordage de misaine.","Personne n’a d’aussi bonnes mains que vous."],
     "형!{p:150} 어제 말한 등대 헤엄이요!{p:200}\n오늘 보여 주세요!": "Edmond !{p:150} Le phare, à la nage, comme tu as dit !{p:200}\nMontre-moi aujourd’hui !",
@@ -75788,6 +75821,7 @@ MC.addLang('fr', {
     "기다리게 했소.{p:300} 나도 약혼 파티에서 불려 나왔소.": "Je vous ai fait attendre.{p:300} Moi aussi, on m’a tiré de mes fiançailles.",
     "검사님도……{p:200} 오늘이셨습니까?": "Vous aussi, monsieur…{p:200} c’était aujourd’hui ?",
     "한날에 신랑 둘이 한 방에 있군.{p:300} 빨리 끝내고 둘 다 돌아갑시다.": ["Deux fiancés dans la même pièce, le même jour.","{p:300}Faisons vite, et rentrons tous deux."],
+    "장인 될 댁이 대대로 왕당파라,{p:300}\n오래 자리를 비울 수 없소.": ["Ma future belle-famille est royaliste de père en fils.", "{p:300}Je ne puis m’absenter longtemps."],
     "이 투서요. 아는 글씨요?": "Cette lettre. Connaissez-vous l’écriture ?",
     "찬탈자라면…… 엘바의 나폴레옹.{p:300}\n그 편지가, 나를?": "« L’usurpateur »… Napoléon, à l’île d’Elbe.{p:300}\nEt la lettre me vise ?",
     "……처음 봅니다. 글씨를 막 배운 사람 같네요.": ["…Je ne la connais pas.","On dirait l’écriture de quelqu’un qui apprend à écrire."],
@@ -77262,8 +77296,8 @@ MC.addLang('fr', {
     "사다리 끝을 조금 더 풀었다.": "J’ai défait encore un peu le bout de l’échelle.",
     "신부님의 짚 침대.{p:200}\n뒤에 줄사다리가 있다.": "La paillasse de l’abbé.{p:200}\nDerrière, il y avait l’échelle de corde.",
     "에드몽.{p:200} 그 편지,\n한 번 더 외워 보게.": "Edmond.{p:200} Cette lettre,\nrécite-la encore une fois.",
-    "천천히.": "Doucement.",
-    "다시.{p:200} 처음부터.": "Encore.{p:200} Depuis le début.",
+    "……몬테크리스토 섬의 동굴.\n{p:300}동쪽 작은 만에서 곧게,\n스무 번째 바위를 들라.": ["…L’île de Monte-Cristo, la grotte.", "{p:300}De la crique à l’est, droit : lève le vingtième rocher."],
+    "입구는 둘.{p:300}\n두 번째 입구의 가장 깊은 구석이다.": "Deux entrées.{p:300}\nLa seconde, au coin le plus reculé.",
     "좋아.": "Bien.",
     "이제 자네 머리가\n내 머리보다 낫군.": "Ta tête vaut mieux que la mienne,\nà présent.",
     "나가거든 곧장 그 섬일세.\n핑계를 대고, 혼자 남게.": ["Une fois dehors, va droit à cette île.","Trouve un prétexte, et restes-y seul."],
@@ -77341,19 +77375,16 @@ MC.addLang('fr', {
     "자네는 검사를 믿었다지.\n날 믿는 건 더 어렵나.": ["Vous avez cru le procureur, disiez-vous.","Me croire, moi, est-ce plus difficile ?"],
     "그러니 믿든 말든, 듣게.": "Alors, croyez-moi ou non, mais écoutez.",
     "나는 스파다 가문의 마지막 어른을\n모셨네. 비서로.": "J’ai servi le dernier chef de la maison Spada.\nComme secrétaire.",
-    "삼백 년 전,{p:200} 보르자라는 교황이\n돈이 급했네.": "Il y a trois cents ans,{p:200} un pape nommé Borgia\navait besoin d’argent.",
-    "스파다와 또 한 부자를 추기경으로.\n모자값을 받고.": ["De Spada et d’un autre homme riche, il a fait des cardinaux.","Contre le prix du chapeau."],
+    "삼백 년 전, 돈이 급한\n교황이 부자 둘에게\n추기경 모자를 팔았네.": ["Il y a trois cents ans, un pape était à court d’argent.", "Il a vendu le chapeau de cardinal à deux hommes riches."],
     "역사는 배신의 장부라 했지.\n여기 첫 장일세.": ["L’histoire, registre des trahisons : je vous l’ai dit.","En voici la première page."],
     "교황 아들한텐 바늘 든 열쇠,\n악수하면 무는 사자 반지가 있었지.": ["Le fils du pape avait une clé qui cachait une aiguille,","et une bague au lion qui mordait la main qu’on serrait."],
     "……한 손으론 사자가 이만하네.": "…D’une seule main, mon lion n’est que cela.",
     "……이제야 사자 같군.": "…Voilà enfin un lion.",
     "결국 둘을 포도밭 저녁에 불렀네.\n잔에 독을 타서.": ["Enfin, il les a conviés tous deux à souper, dans une vigne.","Du poison dans les coupes."],
     "……파티에서.": "…Au milieu d’une fête.",
-    "스파다는 눈치챘지. 가기 전에\n조카에게 한 줄 남겼네.": "Spada a deviné. Avant d’y aller, il a laissé une ligne à son neveu.",
-    "'내 기도서를 조카에게 준다.'\n그게 다였네.": "« Je lègue mon bréviaire à mon neveu. »\nRien de plus.",
+    "스파다는 눈치채고, 한 줄만 남겼네.{p:300}\n'내 기도서를 조카에게 준다.'": ["Spada a deviné, et n’a laissé qu’une ligne.", "{p:300}« Je lègue mon bréviaire à mon neveu. »"],
     "그 밤, 스파다도 조카도 죽었네.\n버섯 탓이라더군.": ["Cette nuit-là, Spada et son neveu sont morts.","Des champignons, a-t-on dit."],
-    "그 뒤 삼백 년,\n그 집안은 가난했네.": "Pendant trois cents ans,\ncette famille a vécu pauvre.",
-    "마지막 어른이 1807년에 가시며\n내게 서재를 남겼네.": "Le dernier d’entre eux, mort en 1807, m’a laissé sa bibliothèque.",
+    "삼백 년 가난했던 그 집,\n마지막 어른이 1807년에\n가시며 내게 서재를 남겼네.": ["Cette maison est restée pauvre trois cents ans.", "Le dernier d’entre eux, mort en 1807, m’a laissé sa bibliothèque."],
     "그해 성탄절 밤, 캄캄해서\n기도서의 헌 종이로 불을 붙였지.": ["Cette nuit de Noël, dans le noir,","j’ai allumé le feu avec une vieille page du bréviaire."],
     "모자값으론 모자라,……": "Non content du chapeau,…",
     "조카 귀도 스파다에게……": "À mon neveu Guido Spada…",
@@ -77498,6 +77529,7 @@ MC.addLang('fr', {
     "옆방 · 철문 닫히는 소리": "À côté · porte qui se ferme",
     "곁에 앉는다": "S’asseoir près de lui",
     "아직": "Pas encore",
+    "밤 열 시면,{p:300}\n신부님도 바다로 가신다.": "Ce soir, à dix heures,{p:300}\nl’abbé, lui aussi, rejoindra la mer.",
     "자루 곁에서, 눈을 감았다.": "Près du sac,\nil ferma les yeux.",
     "자루 곁에서 눈을 떴다.": "Près du sac,\nil rouvrit les yeux.",
     "……한 사람쯤은.": "…Un seul, au moins.",
@@ -77531,10 +77563,13 @@ MC.addLang('fr', {
     "눈을 뜨니, 창빛이 붉었다.": "Quand il ouvrit les yeux, la lumière de la fenêtre était rouge.",
     "여기서 나가는 방법은 하나뿐이다.": "Il n’y a qu’une façon de sortir d’ici.",
     "죽은 사람이 되는 것.": "Devenir un mort.",
+    "이마가 차다.{p:300}\n돌벽보다 차다.": "Son front est froid.{p:300}\nPlus froid que le mur de pierre.",
     "……이제 갑니다.": "…Je pars, maintenant.",
     "들키면 찢고 달린다.\n……칼은, 천에만.": ["S’ils me découvrent, je tranche et je cours.","…Le couteau, pour la toile seulement."],
     "들키면, 그때는.": "S’ils me découvrent… alors.",
+    "그을음 냄새.{p:300} 등잔 기름 냄새.\n{p:300}……신부님 냄새.": "L’odeur de la suie.{p:300} Du suif de la lampe.\n{p:300}…L’odeur de l’abbé.",
     "들키면 찢고 달린다.": "S’ils me découvrent, je tranche et je cours.",
+    "숨이 천에 막혀{p:200}\n내 얼굴로 돌아온다.": "Mon souffle bute contre la toile{p:200}\net me revient au visage.",
     "안뜰이 붉다.{p:300} 곧 저녁이다.": "La cour est rouge.{p:300} Bientôt le soir.",
     "창 한 뼘의 하늘이 붉다.": "L’empan de ciel de la fenêtre était rouge.",
     "바늘은 신부님 방에\n숨겨 두었다.": "J’ai caché l’aiguille\nchez l’abbé.",
@@ -77559,9 +77594,12 @@ MC.addLang('fr', {
     "셋!": "Trois !",
     "물에 떨어지는 소리": "Chute dans l’eau",
     "……바위.": "…Un rocher.",
+    "빗물이 얼굴을 때린다.{p:300}\n……천장이 없다.": "La pluie me fouette le visage.{p:300} …Il n’y a pas de plafond.",
     "……신부님의 하느님.{p:400} 오늘은, 고맙습니다.": "…Dieu de l’abbé.{p:400}\nAujourd’hui, je vous remercie.",
     "저 배에도 사람이 있었다.{p:300} 바다는 나를 남겼다.": "Ce bateau aussi avait\ndes hommes à bord.{p:300}\nMoi, la mer m’a épargné.",
+    "구름 틈으로 별.{p:400}\n……이렇게 많았나.": "Des étoiles, entre les nuages.{p:400} …Y en avait-il donc autant ?",
     "새벽 다섯 시쯤이었다.": "Il était environ cinq heures du matin.",
+    "이프 성이 보인다.{p:400}\n……손톱만 하다.": "Je vois le château d’If.{p:400}\n…Pas plus grand qu’un ongle.",
     "두세 시간 뒤면,\n내 침대에 누운 신부님을 보겠지.": "Dans deux ou trois heures, ils trouveront l’abbé dans mon lit.",
     "……배가 뜨겠지.\n무장한 배가.": "…Ils vont mettre une barque à l’eau.\nUne barque armée.",
     "……칼마저 잃었다.": "…J’ai même perdu le couteau.",
@@ -78211,6 +78249,7 @@ MC.addLang('zh-Hans', {
     "set.sfx": ["音效", "q4fgg7"],
     "set.voice": ["文字音效", "p8vrz3"],
     "set.mute": ["全部静音", "1yijd37"],
+    "set.allSound": ["所有声音", "12931bj"],
     "set.textSpeed": ["对白速度", "13byngi"],
     "set.battleSpeed": ["战斗速度", "qzwfy6"],
     "set.moveSpeed": ["行走速度", "ff8iy3"],
@@ -79032,9 +79071,8 @@ MC.addLang('zh-Hans', {
     "어, 페르낭?{p:200}\n카탈루냐는 저쪽인데……": "咦，费尔南？{p:200}\n加泰兰村在那边啊……",
     "취했구먼, 자네.{p:200}\n길이 겹쳐 보이지?": "你醉了。{p:200}\n路都看成两条了吧？",
     "……그런가?{p:300}\n술이 원수로군.": "……是吗？{p:300}\n酒这东西，真是冤家。",
-    "……이제 저 혼자{p:200}\n굴러가겠군.": "……往后，这事{p:200}\n自己就会滚下去了。",
     "술잔 사이에 잉크병과 종이.\n{p:300}……장부가 아니었다.": "酒杯之间，有墨水瓶和纸。\n{p:300}……那不是账本。",
-    "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠다.": "藏起笔迹的左手，{p:200}\n写满了那张纸。",
+    "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠겠지.": "藏起笔迹的左手，{p:200}\n想必写满了那张纸。",
     "골무 낀 손은 잔을 들었다.{p:300}\n……말리기는 했을까.": "戴着顶针的手，端起了酒杯。{p:300}\n……他究竟劝过没有。",
     "검사에게 간 건{p:200}\n쓴 손이 아니었다.": "送到检察官那里的，{p:200}\n不是写信的那只手。",
     "……붉은 허리띠.": "……红腰带。",
@@ -79145,7 +79183,7 @@ MC.addLang('zh-Hans', {
     "……알아.": "……我知道。",
     "문틀에 걸린 것을 본다.": "看门框上钩住的东西。",
     "……붉은 허리띠가\n문틀에 걸렸다.\n{p:300}페르낭은 거칠게 잡아 뺐다.": "……红腰带\n钩在了门框上。\n{p:300}费尔南狠狠一扯，挣脱了。",
-    "신경 쓰지 마. 어릴 때부터 저랬어.": "别理他。他从小就是那样。",
+    "신경 쓰지 마.{p:200} 사촌이라고\n어릴 때부터 제 짝인 줄 알아.": "别理他。{p:200}就因为是表亲，\n他从小就当我是他的人。",
     "다음 항해 때도 기다릴게.": "下次出海，我也等你。",
     "대신 석 달은 넘기지 마.{p:200} 약속해.": "不过，别超过三个月。{p:200}答应我。",
     "약속!": "我答应你！",
@@ -79239,6 +79277,7 @@ MC.addLang('zh-Hans', {
     "땡——": "当——",
     "─── 이튿날 ───": "─── 翌日 ───",
     "파티 전날": "订婚宴前夕",
+    "붉은 허리띠가 골목으로\n꺾인다.{p:300} ……페르낭?\n카탈루냐는 저쪽인데.": "一条红腰带拐进了小巷。{p:300}\n……费尔南？加泰兰村在那边啊。",
     "잘 잤나.{p:300} 짐은 다 내렸네.{p:200}\n오늘은 쉬게.": "睡得好吗？{p:300}货都卸完了。{p:200}\n今天你就歇着吧。",
     "아, 하나만.{p:300} 앞돛 밧줄을 봐 주게.\n자네 손이 제일 낫지.": "啊，就一件事。{p:300}\n帮我看看前帆的缆绳。\n数你的手最巧。",
     "형!{p:150} 어제 말한 등대 헤엄이요!{p:200}\n오늘 보여 주세요!": "大哥！{p:150}昨天说的游到灯塔，{p:200}\n今天就游给我看吧。",
@@ -79354,6 +79393,7 @@ MC.addLang('zh-Hans', {
     "기다리게 했소.{p:300} 나도 약혼 파티에서 불려 나왔소.": "让您久等了。{p:300}我也是从订婚宴上被叫过来的。",
     "검사님도……{p:200} 오늘이셨습니까?": "检察官先生也是……{p:200}今天？",
     "한날에 신랑 둘이 한 방에 있군.{p:300} 빨리 끝내고 둘 다 돌아갑시다.": "同一天，两个新郎在同一间屋里。{p:300}尽快办完，我们都好回去。",
+    "장인 될 댁이 대대로 왕당파라,{p:300}\n오래 자리를 비울 수 없소.": "未来岳父家世代都是保王党，{p:300}\n我不便离席太久。",
     "이 투서요. 아는 글씨요?": "这封告密信。认得这笔迹吗？",
     "찬탈자라면…… 엘바의 나폴레옹.{p:300}\n그 편지가, 나를?": "篡位者……厄尔巴的拿破仑。{p:300}\n这封信，说的是我？",
     "……처음 봅니다. 글씨를 막 배운 사람 같네요.": "……没见过。像刚学写字的人写的。",
@@ -80828,8 +80868,8 @@ MC.addLang('zh-Hans', {
     "사다리 끝을 조금 더 풀었다.": "从梯子尾端，又拆下了一点。",
     "신부님의 짚 침대.{p:200}\n뒤에 줄사다리가 있다.": "神父的稻草床。{p:200}\n后面藏着绳梯。",
     "에드몽.{p:200} 그 편지,\n한 번 더 외워 보게.": "孩子。{p:200}那封信，\n再背一遍给我听。",
-    "천천히.": "慢慢来。",
-    "다시.{p:200} 처음부터.": "再来。{p:200}从头开始。",
+    "……몬테크리스토 섬의 동굴.\n{p:300}동쪽 작은 만에서 곧게,\n스무 번째 바위를 들라.": "……基督山岛的洞窟。\n{p:300}从东边小湾径直走，\n第二十块岩石，掀开。",
+    "입구는 둘.{p:300}\n두 번째 입구의 가장 깊은 구석이다.": "入口有两处。{p:300}\n就在第二处入口最深的角落。",
     "좋아.": "好。",
     "이제 자네 머리가\n내 머리보다 낫군.": "如今，你的脑子\n比我的好使了。",
     "나가거든 곧장 그 섬일세.\n핑계를 대고, 혼자 남게.": "出去以后，直接去那座岛。\n找个借口，一个人留下。",
@@ -80907,19 +80947,16 @@ MC.addLang('zh-Hans', {
     "자네는 검사를 믿었다지.\n날 믿는 건 더 어렵나.": "你说你信过检察官。\n信我，就更难吗？",
     "그러니 믿든 말든, 듣게.": "所以，信不信由你——听着。",
     "나는 스파다 가문의 마지막 어른을\n모셨네. 비서로.": "斯帕达家族的最后一位家主，\n我侍奉过他。做他的秘书。",
-    "삼백 년 전,{p:200} 보르자라는 교황이\n돈이 급했네.": "三百年前，{p:200}\n一位名叫博尔贾的教皇，\n手头缺钱。",
-    "스파다와 또 한 부자를 추기경으로.\n모자값을 받고.": "于是封了斯帕达\n和另一个富人做红衣主教。\n收了帽子钱。",
+    "삼백 년 전, 돈이 급한\n교황이 부자 둘에게\n추기경 모자를 팔았네.": "三百年前，缺钱的教皇\n把红衣主教的帽子\n卖给了两个富人。",
     "역사는 배신의 장부라 했지.\n여기 첫 장일세.": "我说过，历史是背叛的账本。\n这里，是第一页。",
     "교황 아들한텐 바늘 든 열쇠,\n악수하면 무는 사자 반지가 있었지.": "教皇之子，有藏针的钥匙，\n还有狮子戒指——\n握手时，会咬人。",
     "……한 손으론 사자가 이만하네.": "……一只手比出来的狮子，\n也就这样了。",
     "……이제야 사자 같군.": "……这下，才像狮子了。",
     "결국 둘을 포도밭 저녁에 불렀네.\n잔에 독을 타서.": "最后，他请两人\n到葡萄园赴晚宴，\n在酒杯里下了毒。",
     "……파티에서.": "……在宴席上。",
-    "스파다는 눈치챘지. 가기 전에\n조카에게 한 줄 남겼네.": "斯帕达察觉了。赴宴之前，\n给侄儿留了一句话。",
-    "'내 기도서를 조카에게 준다.'\n그게 다였네.": "“我的祈祷书，留给侄儿。”\n就这么一句。",
+    "스파다는 눈치채고, 한 줄만 남겼네.{p:300}\n'내 기도서를 조카에게 준다.'": "斯帕达察觉了，只留下一句话。{p:300}\n“我的祈祷书，留给侄儿。”",
     "그 밤, 스파다도 조카도 죽었네.\n버섯 탓이라더군.": "那一夜，斯帕达死了，\n侄儿也死了。\n说是蘑菇的缘故。",
-    "그 뒤 삼백 년,\n그 집안은 가난했네.": "此后三百年，\n那个家族一直很穷。",
-    "마지막 어른이 1807년에 가시며\n내게 서재를 남겼네.": "最后一位家主1807年过世，\n把书房留给了我。",
+    "삼백 년 가난했던 그 집,\n마지막 어른이 1807년에\n가시며 내게 서재를 남겼네.": "那个家族穷了三百年。\n最后一位家主1807年过世，\n把书房留给了我。",
     "그해 성탄절 밤, 캄캄해서\n기도서의 헌 종이로 불을 붙였지.": "那年圣诞夜，屋里太黑，\n我用祈祷书里的旧纸点了火。",
     "모자값으론 모자라,……": "帽子钱尚嫌不足，……",
     "조카 귀도 스파다에게……": "侄儿圭多·斯帕达……",
@@ -81064,6 +81101,7 @@ MC.addLang('zh-Hans', {
     "옆방 · 철문 닫히는 소리": "隔壁 · 铁门关闭声",
     "곁에 앉는다": "在他身边坐下",
     "아직": "再等等",
+    "밤 열 시면,{p:300}\n신부님도 바다로 가신다.": "夜里十点，{p:300}\n神父也要往海里去了。",
     "자루 곁에서, 눈을 감았다.": "在麻袋旁，闭上了眼。",
     "자루 곁에서 눈을 떴다.": "在麻袋旁睁开了眼。",
     "……한 사람쯤은.": "……至少对一个人。",
@@ -81097,10 +81135,13 @@ MC.addLang('zh-Hans', {
     "눈을 뜨니, 창빛이 붉었다.": "睁开眼时，窗光已经红了。",
     "여기서 나가는 방법은 하나뿐이다.": "从这里出去的办法，\n只有一个。",
     "죽은 사람이 되는 것.": "变成死人。",
+    "이마가 차다.{p:300}\n돌벽보다 차다.": "额头冰凉。{p:300}\n比石墙还凉。",
     "……이제 갑니다.": "……我走了。",
     "들키면 찢고 달린다.\n……칼은, 천에만.": "被发现了，就划开袋子跑。\n……刀，只用在布上。",
     "들키면, 그때는.": "被发现了，到那时再说。",
+    "그을음 냄새.{p:300} 등잔 기름 냄새.\n{p:300}……신부님 냄새.": "烟灰的气味。{p:300}油灯的油味。\n{p:300}……神父的气味。",
     "들키면 찢고 달린다.": "被发现了，就划开袋子跑。",
+    "숨이 천에 막혀{p:200}\n내 얼굴로 돌아온다.": "呼出的气被布挡住，{p:200}\n又扑回我脸上。",
     "안뜰이 붉다.{p:300} 곧 저녁이다.": "院子红了。{p:300}快到傍晚了。",
     "창 한 뼘의 하늘이 붉다.": "窗口那一拃天空，红了。",
     "바늘은 신부님 방에\n숨겨 두었다.": "针，我藏在神父的牢房里了。",
@@ -81125,9 +81166,12 @@ MC.addLang('zh-Hans', {
     "셋!": "三！",
     "물에 떨어지는 소리": "落水声",
     "……바위.": "……礁石。",
+    "빗물이 얼굴을 때린다.{p:300}\n……천장이 없다.": "雨水打在脸上。{p:300}\n……没有天花板。",
     "……신부님의 하느님.{p:400} 오늘은, 고맙습니다.": "……神父的上帝。{p:400}\n今天，谢谢您。",
     "저 배에도 사람이 있었다.{p:300} 바다는 나를 남겼다.": "那条船上也有人。{p:300}\n海，把我留了下来。",
+    "구름 틈으로 별.{p:400}\n……이렇게 많았나.": "云缝间露出星星。{p:400}\n……原来有这么多。",
     "새벽 다섯 시쯤이었다.": "大约是凌晨五点。",
+    "이프 성이 보인다.{p:400}\n……손톱만 하다.": "看得见伊夫堡。{p:400}\n……只有指甲那么大。",
     "두세 시간 뒤면,\n내 침대에 누운 신부님을 보겠지.": "再过两三个钟头，\n他们就会看见我床上的神父。",
     "……배가 뜨겠지.\n무장한 배가.": "……会有船出来。\n武装的船。",
     "……칼마저 잃었다.": "……连刀也丢了。",
@@ -81778,6 +81822,7 @@ MC.addLang('zh-Hant', {
     "set.sfx": ["音效", "q4fgg7"],
     "set.voice": ["文字音效", "p8vrz3"],
     "set.mute": ["全部靜音", "1yijd37"],
+    "set.allSound": ["所有聲音", "12931bj"],
     "set.textSpeed": ["對白速度", "13byngi"],
     "set.battleSpeed": ["戰鬥速度", "qzwfy6"],
     "set.moveSpeed": ["行走速度", "ff8iy3"],
@@ -82599,9 +82644,8 @@ MC.addLang('zh-Hant', {
     "어, 페르낭?{p:200}\n카탈루냐는 저쪽인데……": "咦，費爾南？{p:200}\n加泰隆村在那邊啊……",
     "취했구먼, 자네.{p:200}\n길이 겹쳐 보이지?": "你醉了。{p:200}\n路都看成兩條了吧？",
     "……그런가?{p:300}\n술이 원수로군.": "……是嗎？{p:300}\n酒這東西，真是冤家。",
-    "……이제 저 혼자{p:200}\n굴러가겠군.": "……往後，這事{p:200}\n自己就會滾下去了。",
     "술잔 사이에 잉크병과 종이.\n{p:300}……장부가 아니었다.": "酒杯之間，有墨水瓶和紙。\n{p:300}……那不是帳本。",
-    "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠다.": "藏起筆跡的左手，{p:200}\n寫滿了那張紙。",
+    "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠겠지.": "藏起筆跡的左手，{p:200}\n想必寫滿了那張紙。",
     "골무 낀 손은 잔을 들었다.{p:300}\n……말리기는 했을까.": "戴著頂針的手，端起了酒杯。{p:300}\n……他究竟勸過沒有。",
     "검사에게 간 건{p:200}\n쓴 손이 아니었다.": "送到檢察官那裡的，{p:200}\n不是寫信的那隻手。",
     "……붉은 허리띠.": "……紅腰帶。",
@@ -82712,7 +82756,7 @@ MC.addLang('zh-Hant', {
     "……알아.": "……我知道。",
     "문틀에 걸린 것을 본다.": "看門框上鉤住的東西。",
     "……붉은 허리띠가\n문틀에 걸렸다.\n{p:300}페르낭은 거칠게 잡아 뺐다.": "……紅腰帶\n鉤在了門框上。\n{p:300}費爾南狠狠一扯，掙脫了。",
-    "신경 쓰지 마. 어릴 때부터 저랬어.": "別理他。他從小就是那樣。",
+    "신경 쓰지 마.{p:200} 사촌이라고\n어릴 때부터 제 짝인 줄 알아.": "別理他。{p:200}就因為是表親，\n他從小就當我是他的人。",
     "다음 항해 때도 기다릴게.": "下次出海，我也等你。",
     "대신 석 달은 넘기지 마.{p:200} 약속해.": "不過，別超過三個月。{p:200}答應我。",
     "약속!": "我答應你！",
@@ -82806,6 +82850,7 @@ MC.addLang('zh-Hant', {
     "땡——": "噹——",
     "─── 이튿날 ───": "─── 翌日 ───",
     "파티 전날": "訂婚宴前夕",
+    "붉은 허리띠가 골목으로\n꺾인다.{p:300} ……페르낭?\n카탈루냐는 저쪽인데.": "一條紅腰帶拐進了小巷。{p:300}\n……費爾南？加泰隆村在那邊啊。",
     "잘 잤나.{p:300} 짐은 다 내렸네.{p:200}\n오늘은 쉬게.": "睡得好嗎？{p:300}貨都卸完了。{p:200}\n今天你就歇著吧。",
     "아, 하나만.{p:300} 앞돛 밧줄을 봐 주게.\n자네 손이 제일 낫지.": "啊，就一件事。{p:300}\n幫我看看前帆的纜繩。\n數你的手最巧。",
     "형!{p:150} 어제 말한 등대 헤엄이요!{p:200}\n오늘 보여 주세요!": "大哥！{p:150}昨天說的游到燈塔，{p:200}\n今天就游給我看吧。",
@@ -82921,6 +82966,7 @@ MC.addLang('zh-Hant', {
     "기다리게 했소.{p:300} 나도 약혼 파티에서 불려 나왔소.": "讓您久等了。{p:300}我也是從訂婚宴上被叫過來的。",
     "검사님도……{p:200} 오늘이셨습니까?": "檢察官先生也是……{p:200}今天？",
     "한날에 신랑 둘이 한 방에 있군.{p:300} 빨리 끝내고 둘 다 돌아갑시다.": "同一天，兩個新郎在同一間屋裡。{p:300}儘快辦完，我們都好回去。",
+    "장인 될 댁이 대대로 왕당파라,{p:300}\n오래 자리를 비울 수 없소.": "未來岳父家世代都是保王黨，{p:300}\n我不便離席太久。",
     "이 투서요. 아는 글씨요?": "這封告密信。認得這筆跡嗎？",
     "찬탈자라면…… 엘바의 나폴레옹.{p:300}\n그 편지가, 나를?": "篡位者……厄爾巴的拿破崙。{p:300}\n這封信，說的是我？",
     "……처음 봅니다. 글씨를 막 배운 사람 같네요.": "……沒見過。像剛學寫字的人寫的。",
@@ -84395,8 +84441,8 @@ MC.addLang('zh-Hant', {
     "사다리 끝을 조금 더 풀었다.": "從梯子尾端，又拆下了一點。",
     "신부님의 짚 침대.{p:200}\n뒤에 줄사다리가 있다.": "神父的稻草床。{p:200}\n後面藏著繩梯。",
     "에드몽.{p:200} 그 편지,\n한 번 더 외워 보게.": "孩子。{p:200}那封信，\n再背一遍給我聽。",
-    "천천히.": "慢慢來。",
-    "다시.{p:200} 처음부터.": "再來。{p:200}從頭開始。",
+    "……몬테크리스토 섬의 동굴.\n{p:300}동쪽 작은 만에서 곧게,\n스무 번째 바위를 들라.": "……基度山島的洞窟。\n{p:300}從東邊小灣徑直走，\n第二十塊岩石，掀開。",
+    "입구는 둘.{p:300}\n두 번째 입구의 가장 깊은 구석이다.": "入口有兩處。{p:300}\n就在第二處入口最深的角落。",
     "좋아.": "好。",
     "이제 자네 머리가\n내 머리보다 낫군.": "如今，你的腦子\n比我的好用了。",
     "나가거든 곧장 그 섬일세.\n핑계를 대고, 혼자 남게.": "出去以後，直接去那座島。\n找個藉口，一個人留下。",
@@ -84474,19 +84520,16 @@ MC.addLang('zh-Hant', {
     "자네는 검사를 믿었다지.\n날 믿는 건 더 어렵나.": "你說你信過檢察官。\n信我，就更難嗎？",
     "그러니 믿든 말든, 듣게.": "所以，信不信由你——聽著。",
     "나는 스파다 가문의 마지막 어른을\n모셨네. 비서로.": "斯帕達家族的最後一位家主，\n我侍奉過他。做他的祕書。",
-    "삼백 년 전,{p:200} 보르자라는 교황이\n돈이 급했네.": "三百年前，{p:200}\n一位名叫波吉亞的教宗，\n手頭缺錢。",
-    "스파다와 또 한 부자를 추기경으로.\n모자값을 받고.": "於是封了斯帕達\n和另一個富人做紅衣主教。\n收了帽子錢。",
+    "삼백 년 전, 돈이 급한\n교황이 부자 둘에게\n추기경 모자를 팔았네.": "三百年前，缺錢的教宗\n把紅衣主教的帽子\n賣給了兩個富人。",
     "역사는 배신의 장부라 했지.\n여기 첫 장일세.": "我說過，歷史是背叛的帳本。\n這裡，是第一頁。",
     "교황 아들한텐 바늘 든 열쇠,\n악수하면 무는 사자 반지가 있었지.": "教宗之子，有藏針的鑰匙，\n還有獅子戒指——\n握手時，會咬人。",
     "……한 손으론 사자가 이만하네.": "……一隻手比出來的獅子，\n也就這樣了。",
     "……이제야 사자 같군.": "……這下，才像獅子了。",
     "결국 둘을 포도밭 저녁에 불렀네.\n잔에 독을 타서.": "最後，他請兩人\n到葡萄園赴晚宴，\n在酒杯裡下了毒。",
     "……파티에서.": "……在宴席上。",
-    "스파다는 눈치챘지. 가기 전에\n조카에게 한 줄 남겼네.": "斯帕達察覺了。赴宴之前，\n給姪兒留了一句話。",
-    "'내 기도서를 조카에게 준다.'\n그게 다였네.": "「我的祈禱書，留給姪兒。」\n就這麼一句。",
+    "스파다는 눈치채고, 한 줄만 남겼네.{p:300}\n'내 기도서를 조카에게 준다.'": "斯帕達察覺了，只留下一句話。{p:300}\n「我的祈禱書，留給姪兒。」",
     "그 밤, 스파다도 조카도 죽었네.\n버섯 탓이라더군.": "那一夜，斯帕達死了，\n姪兒也死了。\n說是蘑菇的緣故。",
-    "그 뒤 삼백 년,\n그 집안은 가난했네.": "此後三百年，\n那個家族一直很窮。",
-    "마지막 어른이 1807년에 가시며\n내게 서재를 남겼네.": "最後一位家主1807年過世，\n把書房留給了我。",
+    "삼백 년 가난했던 그 집,\n마지막 어른이 1807년에\n가시며 내게 서재를 남겼네.": "那個家族窮了三百年。\n最後一位家主1807年過世，\n把書房留給了我。",
     "그해 성탄절 밤, 캄캄해서\n기도서의 헌 종이로 불을 붙였지.": "那年聖誕夜，屋裡太黑，\n我用祈禱書裡的舊紙點了火。",
     "모자값으론 모자라,……": "帽子錢尚嫌不足，……",
     "조카 귀도 스파다에게……": "姪兒圭多·斯帕達……",
@@ -84631,6 +84674,7 @@ MC.addLang('zh-Hant', {
     "옆방 · 철문 닫히는 소리": "隔壁 · 鐵門關閉聲",
     "곁에 앉는다": "在他身邊坐下",
     "아직": "再等等",
+    "밤 열 시면,{p:300}\n신부님도 바다로 가신다.": "夜裡十點，{p:300}\n神父也要往海裡去了。",
     "자루 곁에서, 눈을 감았다.": "在麻袋旁，閉上了眼。",
     "자루 곁에서 눈을 떴다.": "在麻袋旁睜開了眼。",
     "……한 사람쯤은.": "……至少對一個人。",
@@ -84664,10 +84708,13 @@ MC.addLang('zh-Hant', {
     "눈을 뜨니, 창빛이 붉었다.": "睜開眼時，窗光已經紅了。",
     "여기서 나가는 방법은 하나뿐이다.": "從這裡出去的辦法，\n只有一個。",
     "죽은 사람이 되는 것.": "變成死人。",
+    "이마가 차다.{p:300}\n돌벽보다 차다.": "額頭冰涼。{p:300}\n比石牆還涼。",
     "……이제 갑니다.": "……我走了。",
     "들키면 찢고 달린다.\n……칼은, 천에만.": "被發現了，就劃開袋子跑。\n……刀，只用在布上。",
     "들키면, 그때는.": "被發現了，到那時再說。",
+    "그을음 냄새.{p:300} 등잔 기름 냄새.\n{p:300}……신부님 냄새.": "煙灰的氣味。{p:300}油燈的油味。\n{p:300}……神父的氣味。",
     "들키면 찢고 달린다.": "被發現了，就劃開袋子跑。",
+    "숨이 천에 막혀{p:200}\n내 얼굴로 돌아온다.": "呼出的氣被布擋住，{p:200}\n又撲回我臉上。",
     "안뜰이 붉다.{p:300} 곧 저녁이다.": "院子紅了。{p:300}快到傍晚了。",
     "창 한 뼘의 하늘이 붉다.": "窗口那一掌天空，紅了。",
     "바늘은 신부님 방에\n숨겨 두었다.": "針，我藏在神父的牢房裡了。",
@@ -84692,9 +84739,12 @@ MC.addLang('zh-Hant', {
     "셋!": "三！",
     "물에 떨어지는 소리": "落水聲",
     "……바위.": "……礁石。",
+    "빗물이 얼굴을 때린다.{p:300}\n……천장이 없다.": "雨水打在臉上。{p:300}\n……沒有天花板。",
     "……신부님의 하느님.{p:400} 오늘은, 고맙습니다.": "……神父的上帝。{p:400}\n今天，謝謝您。",
     "저 배에도 사람이 있었다.{p:300} 바다는 나를 남겼다.": "那條船上也有人。{p:300}\n海，把我留了下來。",
+    "구름 틈으로 별.{p:400}\n……이렇게 많았나.": "雲縫間露出星星。{p:400}\n……原來有這麼多。",
     "새벽 다섯 시쯤이었다.": "大約是凌晨五點。",
+    "이프 성이 보인다.{p:400}\n……손톱만 하다.": "看得見伊夫堡。{p:400}\n……只有指甲那麼大。",
     "두세 시간 뒤면,\n내 침대에 누운 신부님을 보겠지.": "再過兩三個鐘頭，\n他們就會看見我床上的神父。",
     "……배가 뜨겠지.\n무장한 배가.": "……會有船出來。\n武裝的船。",
     "……칼마저 잃었다.": "……連刀也丟了。",
@@ -85343,6 +85393,7 @@ MC.addLang('es', {
     "set.sfx": ["Efectos", "q4fgg7"],
     "set.voice": ["Tecleo", "p8vrz3"],
     "set.mute": ["Silenciar todo", "1yijd37"],
+    "set.allSound": ["Todo el sonido", "12931bj"],
     "set.textSpeed": ["Texto", "13byngi"],
     "set.battleSpeed": ["Combate", "qzwfy6"],
     "set.moveSpeed": ["Caminar", "ff8iy3"],
@@ -86164,9 +86215,8 @@ MC.addLang('es', {
     "어, 페르낭?{p:200}\n카탈루냐는 저쪽인데……": "Eh, ¿Fernand?{p:200}\nLos Catalanes quedan por allá…",
     "취했구먼, 자네.{p:200}\n길이 겹쳐 보이지?": "Estás borracho, amigo.{p:200}\nVes doble, ¿eh?",
     "……그런가?{p:300}\n술이 원수로군.": "…¿Tú crees?{p:300}\nEste vino me la tiene jurada.",
-    "……이제 저 혼자{p:200}\n굴러가겠군.": "…Ahora la cosa{p:200}\nrodará sola.",
     "술잔 사이에 잉크병과 종이.\n{p:300}……장부가 아니었다.": "Tintero y papel entre los vasos.\n{p:300}…No era un registro.",
-    "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠다.": "La mano izquierda, que escondía su letra,{p:200}\nllenó aquella hoja.",
+    "글씨를 숨긴 왼손이{p:200}\n그 종이를 채웠겠지.": "La mano izquierda, que escondía su letra,{p:200} debió de llenar aquella hoja.",
     "골무 낀 손은 잔을 들었다.{p:300}\n……말리기는 했을까.": ["La mano del dedal alzó el vaso.","{p:300}…¿Quiso siquiera impedirlo?"],
     "검사에게 간 건{p:200}\n쓴 손이 아니었다.": "No fue al procurador{p:200}\nla mano que escribió.",
     "……붉은 허리띠.": "…La faja roja.",
@@ -86277,7 +86327,7 @@ MC.addLang('es', {
     "……알아.": "…Lo sé.",
     "문틀에 걸린 것을 본다.": "Mirar el marco de la puerta.",
     "……붉은 허리띠가\n문틀에 걸렸다.\n{p:300}페르낭은 거칠게 잡아 뺐다.": ["…La faja roja\nse enganchó en el marco de la puerta.","{p:300}Fernand la arrancó de un tirón."],
-    "신경 쓰지 마. 어릴 때부터 저랬어.": "No le hagas caso. Es así desde que éramos niños.",
+    "신경 쓰지 마.{p:200} 사촌이라고\n어릴 때부터 제 짝인 줄 알아.": "No le hagas caso.{p:200} Somos primos: desde niño se cree mi prometido.",
     "다음 항해 때도 기다릴게.": "En el próximo viaje también te esperaré.",
     "대신 석 달은 넘기지 마.{p:200} 약속해.": "Pero no pases de tres meses.{p:200} Prométemelo.",
     "약속!": "¡Prometido!",
@@ -86371,6 +86421,7 @@ MC.addLang('es', {
     "땡——": "Dong——",
     "─── 이튿날 ───": "─ La mañana siguiente ─",
     "파티 전날": "Víspera del compromiso",
+    "붉은 허리띠가 골목으로\n꺾인다.{p:300} ……페르낭?\n카탈루냐는 저쪽인데.": ["Una faja roja tuerce por un callejón.", "{p:300}…¿Fernand? Los Catalanes quedan por allá."],
     "잘 잤나.{p:300} 짐은 다 내렸네.{p:200}\n오늘은 쉬게.": "¿Durmió bien?{p:300} Ya está toda la carga en tierra.{p:200}\nTómese el día libre.",
     "아, 하나만.{p:300} 앞돛 밧줄을 봐 주게.\n자네 손이 제일 낫지.": ["Ah, solo una cosa.{p:300} Échele un vistazo al cabo del trinquete.","Nadie tiene mejor mano que usted."],
     "형!{p:150} 어제 말한 등대 헤엄이요!{p:200}\n오늘 보여 주세요!": "¡Edmond!{p:150} ¡Lo del faro a nado, como dijiste ayer!{p:200}\n¡Enséñamelo hoy!",
@@ -86486,6 +86537,7 @@ MC.addLang('es', {
     "기다리게 했소.{p:300} 나도 약혼 파티에서 불려 나왔소.": ["Lo hice esperar.","{p:300}A mí también me sacaron de mi fiesta de compromiso."],
     "검사님도……{p:200} 오늘이셨습니까?": "¿Usted también, señor…?{p:200} ¿Hoy?",
     "한날에 신랑 둘이 한 방에 있군.{p:300} 빨리 끝내고 둘 다 돌아갑시다.": ["Dos novios en la misma sala, el mismo día.","{p:300}Acabemos pronto, y volvamos los dos."],
+    "장인 될 댁이 대대로 왕당파라,{p:300}\n오래 자리를 비울 수 없소.": ["Mi futura familia política es realista desde hace generaciones.", "{p:300}No puedo ausentarme mucho."],
     "이 투서요. 아는 글씨요?": "Esta carta. ¿Conoce usted la letra?",
     "찬탈자라면…… 엘바의 나폴레옹.{p:300}\n그 편지가, 나를?": "«El usurpador»… Napoleón, en Elba.{p:300} ¿Y esa carta, contra mí?",
     "……처음 봅니다. 글씨를 막 배운 사람 같네요.": ["…No la conozco.","Parece la letra de alguien que está aprendiendo a escribir."],
@@ -87960,8 +88012,8 @@ MC.addLang('es', {
     "사다리 끝을 조금 더 풀었다.": "Deshice un poco más la punta de la escala.",
     "신부님의 짚 침대.{p:200}\n뒤에 줄사다리가 있다.": "El jergón del abate.{p:200}\nDetrás, la escala de cuerda.",
     "에드몽.{p:200} 그 편지,\n한 번 더 외워 보게.": "Edmond.{p:200} Esa carta,\nrecítala una vez más.",
-    "천천히.": "Despacio.",
-    "다시.{p:200} 처음부터.": "Otra vez.{p:200} Desde el principio.",
+    "……몬테크리스토 섬의 동굴.\n{p:300}동쪽 작은 만에서 곧게,\n스무 번째 바위를 들라.": ["…La gruta de la isla de Montecristo.", "{p:300}De la pequeña cala del este, recto: alza la vigésima roca."],
+    "입구는 둘.{p:300}\n두 번째 입구의 가장 깊은 구석이다.": "Dos entradas:{p:300}\nen la segunda, en el rincón más apartado.",
     "좋아.": "Bien.",
     "이제 자네 머리가\n내 머리보다 낫군.": "Ahora tu cabeza\nes mejor que la mía.",
     "나가거든 곧장 그 섬일세.\n핑계를 대고, 혼자 남게.": ["En cuanto salgas, derecho a esa isla.","Busca un pretexto, y quédate solo."],
@@ -88039,19 +88091,16 @@ MC.addLang('es', {
     "자네는 검사를 믿었다지.\n날 믿는 건 더 어렵나.": ["Usted creyó en el procurador, me dijo.","¿Tan difícil es creer en mí?"],
     "그러니 믿든 말든, 듣게.": "Así que, crea o no, escuche.",
     "나는 스파다 가문의 마지막 어른을\n모셨네. 비서로.": "Serví al último jefe de la casa Spada.\nComo secretario.",
-    "삼백 년 전,{p:200} 보르자라는 교황이\n돈이 급했네.": "Hace trescientos años,{p:200}\nun papa llamado Borgia\nnecesitaba dinero.",
-    "스파다와 또 한 부자를 추기경으로.\n모자값을 받고.": ["Hizo cardenales a Spada y a otro hombre rico.","Cobrándoles el precio del capelo."],
+    "삼백 년 전, 돈이 급한\n교황이 부자 둘에게\n추기경 모자를 팔았네.": ["Hace trescientos años, un papa andaba falto de dinero.", "Vendió el capelo de cardenal a dos ricos."],
     "역사는 배신의 장부라 했지.\n여기 첫 장일세.": ["«La historia, registro de traiciones», le dije.","Esta es su primera página."],
     "교황 아들한텐 바늘 든 열쇠,\n악수하면 무는 사자 반지가 있었지.": ["El hijo del papa tenía una llave con una aguja escondida,","y un anillo con un león que mordía al estrechar la mano."],
     "……한 손으론 사자가 이만하네.": "…Con una sola mano, el león no da para más.",
     "……이제야 사자 같군.": "…Ahora sí parece un león.",
     "결국 둘을 포도밭 저녁에 불렀네.\n잔에 독을 타서.": ["Al final, los invitó a los dos a cenar en una viña.","Con veneno en las copas."],
     "……파티에서.": "…En una fiesta.",
-    "스파다는 눈치챘지. 가기 전에\n조카에게 한 줄 남겼네.": "Spada lo adivinó. Antes de ir, le dejó una línea a su sobrino.",
-    "'내 기도서를 조카에게 준다.'\n그게 다였네.": "«Lego mi breviario a mi sobrino».\nEso fue todo.",
+    "스파다는 눈치채고, 한 줄만 남겼네.{p:300}\n'내 기도서를 조카에게 준다.'": "Spada lo adivinó y dejó una sola línea:{p:300} «Lego mi breviario a mi sobrino».",
     "그 밤, 스파다도 조카도 죽었네.\n버섯 탓이라더군.": ["Esa noche murieron Spada y su sobrino.","Dijeron que fueron los hongos."],
-    "그 뒤 삼백 년,\n그 집안은 가난했네.": "Durante trescientos años,\nesa familia vivió pobre.",
-    "마지막 어른이 1807년에 가시며\n내게 서재를 남겼네.": "El último de ellos, al morir en 1807, me dejó su biblioteca.",
+    "삼백 년 가난했던 그 집,\n마지막 어른이 1807년에\n가시며 내게 서재를 남겼네.": ["Aquella casa vivió pobre trescientos años.", "El último de ellos, al morir en 1807, me dejó su biblioteca."],
     "그해 성탄절 밤, 캄캄해서\n기도서의 헌 종이로 불을 붙였지.": ["Aquella noche de Navidad, a oscuras,","encendí el fuego con una hoja vieja del breviario."],
     "모자값으론 모자라,……": "No contento con el capelo,…",
     "조카 귀도 스파다에게……": "A mi sobrino Guido Spada…",
@@ -88196,6 +88245,7 @@ MC.addLang('es', {
     "옆방 · 철문 닫히는 소리": "Al lado · cierran la puerta",
     "곁에 앉는다": "Sentarse a su lado",
     "아직": "Todavía no",
+    "밤 열 시면,{p:300}\n신부님도 바다로 가신다.": "Esta noche, a las diez,{p:300}\ntambién el abate irá al mar.",
     "자루 곁에서, 눈을 감았다.": "Junto al saco, cerró los ojos.",
     "자루 곁에서 눈을 떴다.": "Junto al saco, abrió los ojos.",
     "……한 사람쯤은.": "…A uno, al menos.",
@@ -88229,10 +88279,13 @@ MC.addLang('es', {
     "눈을 뜨니, 창빛이 붉었다.": "Cuando abrió los ojos, la luz de la ventana era roja.",
     "여기서 나가는 방법은 하나뿐이다.": "Solo hay una manera de salir de aquí.",
     "죽은 사람이 되는 것.": "Convertirse en un muerto.",
+    "이마가 차다.{p:300}\n돌벽보다 차다.": "Tiene la frente fría.{p:300}\nMás fría que el muro de piedra.",
     "……이제 갑니다.": "…Ahora me voy.",
     "들키면 찢고 달린다.\n……칼은, 천에만.": ["Si me descubren, corto y corro.","…El cuchillo, solo para la tela."],
     "들키면, 그때는.": "Si me descubren… entonces.",
+    "그을음 냄새.{p:300} 등잔 기름 냄새.\n{p:300}……신부님 냄새.": "Olor a hollín.{p:300} A sebo de candil.\n{p:300}…El olor del abate.",
     "들키면 찢고 달린다.": "Si me descubren, corto y corro.",
+    "숨이 천에 막혀{p:200}\n내 얼굴로 돌아온다.": "El aliento choca con la tela{p:200}\ny me vuelve a la cara.",
     "안뜰이 붉다.{p:300} 곧 저녁이다.": "El patio se ve rojo.{p:300} Pronto anochece.",
     "창 한 뼘의 하늘이 붉다.": "El palmo de cielo de la ventana estaba rojo.",
     "바늘은 신부님 방에\n숨겨 두었다.": "Escondí la aguja en el calabozo del abate.",
@@ -88257,9 +88310,12 @@ MC.addLang('es', {
     "셋!": "¡Tres!",
     "물에 떨어지는 소리": "Caída al agua",
     "……바위.": "…Una roca.",
+    "빗물이 얼굴을 때린다.{p:300}\n……천장이 없다.": "La lluvia me azota la cara.{p:300}\n…No hay techo.",
     "……신부님의 하느님.{p:400} 오늘은, 고맙습니다.": "…Dios del abate.{p:400} Hoy, te doy las gracias.",
     "저 배에도 사람이 있었다.{p:300} 바다는 나를 남겼다.": "En aquel barco también había hombres.{p:300} A mí, el mar me dejó vivir.",
+    "구름 틈으로 별.{p:400}\n……이렇게 많았나.": "Estrellas, entre las nubes.{p:400}\n…¿Siempre hubo tantas?",
     "새벽 다섯 시쯤이었다.": "Eran cerca de las cinco de la madrugada.",
+    "이프 성이 보인다.{p:400}\n……손톱만 하다.": "Veo el castillo de If.{p:400}\n…No es más grande que una uña.",
     "두세 시간 뒤면,\n내 침대에 누운 신부님을 보겠지.": "En dos o tres horas,\nencontrarán al abate\nen mi cama.",
     "……배가 뜨겠지.\n무장한 배가.": "…Echarán una barca al agua.\nUna barca armada.",
     "……칼마저 잃었다.": "…Perdí hasta el cuchillo.",
@@ -89221,9 +89277,14 @@ MC.addLang('es', {
           if (over > 0) y -= over;
         }
         // [land2] r.plate(가로에서만): 글 뒤에 어두운 디더 판 — 밝은 그림 위에 글이 겹쳐 안 읽히는 장면(바다 헤엄)용. 옛: 판 없음
-        if (g.land && r.plate) {
-          const pw = Math.max(0, ...ls.map(im => im.width), ...tip.map(im => im.width)) + 24, ph = ls.reduce((h, im) => h + im.height, 0) + (tip.length ? 1 + tip.reduce((h, im) => h + im.height, 0) : 0) + 3;
-          if (pw > 24) g.ditherRect(cx - (pw >> 1), y - 2, pw, ph, typeof r.plate === 'string' ? r.plate : bg, Math.round(11 * MC.clamp(k, 0, 1)));
+        // [R928 11-17] B4 세로에도 늘 어두운 디더 띠(밝은 그림 h03 갑판·h04 바다·h13 돌벽 위 안내 글이 무늬에 묻혔다) — 아이콘 자리까지 덮고 가장자리 3px는 반 세기로 녹인다.
+        //   어두운 장면에서는 거의 안 보인다. 되돌리기: ?uw2off=R928 또는 plateP를 false로
+        const plateP = !g.land && !!(MC.uw2 && MC.uw2('R928'));
+        if ((g.land && r.plate) || plateP) {
+          const pw = Math.max(0, ...ls.map(im => im.width), ...tip.map(im => im.width)) + 24 + (plateP && o.icon !== false ? 14 : 0), ph = ls.reduce((h, im) => h + im.height, 0) + (tip.length ? 1 + tip.reduce((h, im) => h + im.height, 0) : 0) + 3;
+          const pc = typeof r.plate === 'string' ? r.plate : plateP ? '#06070c' : bg, pl = Math.round(11 * MC.clamp(k, 0, 1));
+          if (pw > 24 && plateP) g.ditherRect(cx - (pw >> 1) - 3, y - 5, pw + 6, ph + 6, pc, pl >> 1);
+          if (pw > 24) g.ditherRect(cx - (pw >> 1), y - 2, pw, ph, pc, pl);
         }
         // [tap3] 끌기 안내: 스테이지가 손 자리를 따로 주지 않으면 글 바로 위에서 손가락이 그 방향으로 미끄러지는 시범(처음 뜰 때·다시 뜰 때)
         if (o.icon === 'drag' && !r.hand) { const hy = y - 16 - (o.dir === 'down' ? 18 : 0); if (hy > 4) U.hintHand(cx, hy, Math.min(12, k * 16), 'drag', bg, o.dir); }
@@ -90626,7 +90687,8 @@ MC.addLang('es', {
     //   ② 굵은 획은 약 4%, 앞 굵은 글자에서 6글자 안에는 다시 굵히지 않는다(한 낱말에 몰리지 않게)
     //   ③ 접힌 자국은 가운데에 가장 가까운 줄 사이 틈으로 ④ 얼룩 디더는 글자 칸 밖 가장자리에만(오른쪽 띠 9px · 아래 띠는 마지막 줄 아래)
     //   ⑤ 기울기·높이 흔들림(왼손 글씨, M34)은 그대로
-    const g = G(), PW = g.land ? Math.max(156, Math.min(250, g.W - 40)) : 156, X0 = 9, XR = PW - 12, LH = 13, TOP = 12;
+    // [R928 11-17] B2 줄 간격 13 → 15: 글자 높이 흔들림(±1)으로 위아래 줄 글자가 맞닿던 곳을 뗀다(기울기·흔들림·굵은 획은 그대로). 되돌리기: ?uw2off=R928 또는 LH = 13
+    const g = G(), PW = g.land ? Math.max(156, Math.min(250, g.W - 40)) : 156, X0 = 9, XR = PW - 12, LH = MC.uw2 && MC.uw2('R928') ? 15 : 13, TOP = 12;
     const lx0 = li => X0 + Math.floor(U.hash(li, 3, 12) * 4);
     const gap = (ci, li) => (U.hash(ci, li, 14) < 0.3 ? 1 : 0);
     const boldAt = (ln, li) => { const out = []; let last = -99; Array.from(ln).forEach((ch, ci) => { if (ch !== ' ' && U.hash(li * 50 + ci, 5, 13) > 0.96 && ci - last > 6) { out[ci] = 1; last = ci; } }); return out; };
@@ -100497,7 +100559,7 @@ MC.addLang('es', {
             g.ditherRect(cx - 60, ly + 14, 120, 1, '#a89878', lv);
           }
           if (l27.length && t >= IN + PAPER_MS) {                                                 // [c50-cine B5-8] 27번 칸(흐린 옛 잉크) + 「생존」에 줄
-            const lv = Math.min(9, U.lvl(t, IN + PAPER_MS, 400));
+            const lv = Math.min(MC.uw2 && MC.uw2('R928') ? 12 : 9, U.lvl(t, IN + PAPER_MS, 400));   // [R928 11-17] B4 흐린 옛 잉크 색은 그대로 두되 디더 9 → 12(4단 기준 한 단 — 획이 덜 끊겨 읽힘). 되돌리기: ?uw2off=R928 또는 9
             l27.forEach((l, i) => { const img = MC.text.bake(l, 'small', '#8a7a62'); U.drawDither(img, cx - 58, Y.y27 + i * LH27, lv); });
             if (seg27 && t >= tS0) {
               const sx = cx - 58 + MC.text.width(seg27[0], 'small'), w = MC.text.width(seg27[1], 'small'), yy = Y.y27 + s27 * LH27 + 6;
@@ -104141,7 +104203,8 @@ MC.addLang('es', {
       if (la > 0 && MC.uw2 && MC.uw2('U5')) { const orn = bakeOrn(); U.drawDither(orn, (W - orn.width) >> 1, ly + logo.height + 2, la); }   // [r5 U5] 로고 아래 놋쇠 장식 줄(글자 없음). 되돌리기: ?uw2off=U5 또는 이 줄 삭제
       // 1단계 안내
       if (sc.stage === 0 && t > 1100) {
-        const k = ((t - 1100) / 533 | 0) % 4, colr = ['#6a7088', '#9aa8c8', '#e8ecf4', '#9aa8c8'][k];
+        // [R928 11-17] B4 깜빡임의 가장 어두운 단 #6a7088(검정 위 약 1.8:1 — 그 순간 캡처하면 안 읽힘) → #8a92aa. 되돌리기: ?uw2off=R928 또는 첫 색을 #6a7088로
+        const k = ((t - 1100) / 533 | 0) % 4, colr = [MC.uw2 && MC.uw2('R928') ? '#8a92aa' : '#6a7088', '#9aa8c8', '#e8ecf4', '#9aa8c8'][k];
         const lv = U.lvl(t, 1100, 400), py = H - (g.land ? 38 : 90) - g.safe.bottom;   // [land] 가로는 바다 위(로고 장식 줄과 겹치지 않게)
         const a = MC.text.bake(tf('title.tapToStart'), 'body', colr, { shadow: '#03050b' });
         U.drawDither(a, (W - a.width) >> 1, py, lv);
@@ -104360,7 +104423,8 @@ MC.addLang('es', {
       { k: 'phoneBass', label: L('set.phoneBass'), type: 'bool' },   // [s46-sound B4-2] 폰 스피커 저음 보강(음악 베이스 한 옥타브 위 — music.js가 박동마다 따라감)
       // [snd75] 음악 음색: ◀ 클래식(8비트) / 16비트 ▶ — 저장값 없으면 16비트(opt 기본 칸 1). music.js가 박동마다 따라가 지금 곡을 같은 마디에서 새 음색으로 잇는다
       { k: 'tone', label: L('set.tone'), type: 'opt', opts: [['nes', L('set.toneNes')], ['sfc', L('set.toneSfc')]] },
-      { k: 'mute', label: L('set.mute'), type: 'bool' },
+      // [R928 11-17] C11 「소리 끄기: 켬」(이중 부정) → 「모든 소리: 켬/끔」 — 저장값 settings.mute는 그대로, 화면만 뒤집는다(inv: 켬 = mute false). 되돌리기: ?uw2off=R928 또는 옛 줄 { k: 'mute', label: L('set.mute'), type: 'bool' }
+      MC.uw2 && MC.uw2('R928') ? { k: 'mute', label: L('set.allSound'), type: 'bool', inv: true } : { k: 'mute', label: L('set.mute'), type: 'bool' },
       // [u51 B8-7] 소리 자막(단서 효과음을 [ ] 한 줄로) — 저장값 ''(자동)이면 무음(소리 끄기·효과음 0)일 때 켬으로 보인다. 누르면 그 반대를 'on'/'off'로 저장(get/set: 저장값이 불이 아닌 줄)
       { k: 'sndCap', label: L('set.sndCap'), type: 'bool', get: () => !!(MC.sfx && MC.sfx.capOn && MC.sfx.capOn()), set: v => { MC.save.settings.sndCap = v ? 'on' : 'off'; } }] },
     { label: L('set.tabPlay'), rows: [
@@ -104412,9 +104476,10 @@ MC.addLang('es', {
         return;
       }
       if (r.type === 'bool') {
-        const v = r.get ? !r.get() : !s[r.k];
-        if (r.k === 'mute') U.audio('setMute', v); else if (r.k === 'voice') U.audio('setVoice', v);
-        if (r.set) r.set(v); else s[r.k] = v;
+        const v = r.get ? !r.get() : r.inv ? !!s[r.k] : !s[r.k];   // v = 새로 보이는 켬/끔 · [R928] inv 줄은 저장값이 그 반대
+        const sv = r.inv ? !v : v;
+        if (r.k === 'mute') U.audio('setMute', sv); else if (r.k === 'voice') U.audio('setVoice', v);
+        if (r.set) r.set(v); else s[r.k] = sv;
         MC.save.saveSettings();
         if (r.k === 'vibrate' && v) U.vibrate(30);
         if (r.k === 'voice' && v && MC.sfx && MC.sfx.voice) { try { MC.sfx.voice('dantes', '가'); } catch (_) {} }
@@ -104498,7 +104563,7 @@ MC.addLang('es', {
         }
         let hideOn = false;
         { // [land-fit] 이름이 오른쪽 조절 칸에 가리면 작은 글씨로(가로 320 폭 두 칸, 긴 번역) — 켬/끔 줄은 그래도 넘치면 '켬/끔' 글자를 빼고 스위치만
-          const onW = r.type === 'bool' ? MC.text.width(tf((r.get ? !!r.get() : !!s[r.k]) ? 'set.on' : 'set.off'), 'body') : 0;
+          const onW = r.type === 'bool' ? MC.text.width(tf((r.get ? !!r.get() : (!!s[r.k] !== !!r.inv)) ? 'set.on' : 'set.off'), 'body') : 0;
           const room = r.type === 'vol' ? (e.dec.x - x) - 22 : r.type === 'opt' ? (e.dec.x - x) - 11 : w - 51 - onW;
           const bw0 = MC.text.width(r.label, 'body'), lf = bw0 > room ? 'small' : 'body';
           if (r.type === 'bool' && lf === 'small' && MC.text.width(r.label, 'small') > room) hideOn = true;
@@ -104520,7 +104585,7 @@ MC.addLang('es', {
           MC.text.draw(r.opts[MC.clamp(i2, 0, r.opts.length - 1)][1], (e.dec.x + e.dec.w + e.inc.x) >> 1, cy + (vf === 'small' ? 1 : 0), { color: P.gold, align: 'center', font: vf });   // ◀ ▶ 사이 가운데(예전 x+w-48과 같은 자리, 좁은 칸은 그 사이)
         } else {
           e.tog.render();
-          const on = r.get ? !!r.get() : !!s[r.k], tx = x + w - 34, ty = e.tog.y + (e.tog.h >> 1) - 5;
+          const on = r.get ? !!r.get() : (!!s[r.k] !== !!r.inv), tx = x + w - 34, ty = e.tog.y + (e.tog.h >> 1) - 5;
           g.rect(tx, ty, 26, 10, '#000000'); g.rect(tx + 1, ty + 1, 24, 8, on ? g.mix(P.gold, P.f, 0.45) : '#15141c');
           g.rect(on ? tx + 14 : tx + 2, ty + 2, 10, 6, on ? P.gold : P.dim);
           if (!hideOn) MC.text.draw(tf(on ? 'set.on' : 'set.off'), tx - 6, cy, { color: on ? P.text : P.dim, align: 'right' });
