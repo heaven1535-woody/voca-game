@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.31';
+  var VERSION = '0.9.32';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -99264,10 +99264,18 @@ MC.addLang('es', {
   const sagR = tc => (tc <= 0 ? 0 : tc < 170 ? Math.round((EMPTY_SAG + 2) * (1 - Math.pow(1 - tc / 170, 2))) : tc < 250 ? Math.round(EMPTY_SAG + 2 - 2 * (tc - 170) / 80) : EMPTY_SAG);
   // ④ 놓은 뒤 ts ms에 쇠공·자루가 내려간 거리 [yb, ys](px): 물 끌림이 있는 낙하(쇠공 무겁고 빠름 · 자루 가볍고 느림), yb−ys가 EMPTY_ROPE_MAX를 넘으면 줄이 팽팽 — 한 몸(질량 3:1)
   //   매 프레임 0부터 1/120초씩 다시 셈(④ 2.4초 = 300걸음 남짓 — 상태를 남기지 않아 되감기·실패 재시작에도 같은 모양)
+  // [R937 11-18 사용자 「칼과 공, 자루 빠르게 떨어져야겠지?」] 쇠공(16kg 남짓 쇳덩이)은 물속에서도 1초에 몇 m — 밤 물속에선 곧 안 보인다.
+  //   자루는 쇠공에 묶여 함께 끌려가니 '가벼움'은 느린 가라앉음이 아니라 잠깐 늦은 출발·끌려가며 흔들림으로. 칼(쇠, 납작)도 팔랑이며 빨리.
+  //   [11-18 물리 검산] 원작 36리브르 포탄 ≈ 17.6kg·지름 16.7cm, 물속 알짜 무게 148N → 처음 가속 최대 7.85m/s²(부력·딸린 물 — 중력보다 작다), 혼자면 끝속도 약 5.3m/s.
+  //   빈 자루(젖은 삼베, 사람 길이)는 혼자선 거의 안 가라앉지만 쇠공에 끌리면 입구가 뒤로 접혀 깃발처럼 펄럭이고 그 물 저항 때문에 둘이 약 1.2~2.2m/s.
+  //   화면 1m ≈ 120칸(사람 키 1.8m = 215칸): 쇠공 가속 940px/s²·혼자 끝속도 600px/s, 자루 혼자 3px/s, 무게 6:1 한 몸 끝속도 약 200px/s(1.7m/s) · 움직임 시작 0.3 → 0.15초
+  //   쇠공 0.6~1.1초, 자루 0.8~1.4초에 어둠으로 · 칼(쇠날 두께 3mm 남짓 — 납작한 판은 좌우로 미끄러지며 약 0.5~1.5m/s) 끝속도 120px/s(1m/s)·±5칸 0.8초 주기로 팔랑이며 0.5~1.1초에 사라짐 · ④ 2.4 → 1.6초. 되돌리기: ?uw2off=R937(R936의 느린 가라앉음)
+  const fastSink = () => !!(MC.uw2 && MC.uw2('R937'));
   function sinkFall(ts) {
-    let yb = 0, vb = 0, ys = 0, vs = 0; const dt = 1 / 120, n = Math.floor(ts / 1000 / dt), mb = 3, ms = 1;
+    let yb = 0, vb = 0, ys = 0, vs = 0; const dt = 1 / 120, n = Math.floor(ts / 1000 / dt), F = fastSink(), mb = F ? 6 : 3, ms = 1;   // [R937] 쇠공:자루 무게 6:1(쇠공이 자루를 끌고 감)
+    const aB = F ? 940 : 300, kB = F ? 1.57 : 1.6, aS = F ? 60 : 40, kS = F ? 19 : 4;
     for (let i = 0; i < n; i++) {
-      vb += (300 - 1.6 * vb) * dt; vs += (40 - 4 * vs) * dt; yb += vb * dt; ys += vs * dt;
+      vb += (aB - kB * vb) * dt; vs += (aS - kS * vs) * dt; yb += vb * dt; ys += vs * dt;
       const over = yb - ys - EMPTY_ROPE_MAX;
       if (over > 0) { const v = (mb * vb + ms * vs) / (mb + ms); vb = vs = v; yb -= over * ms / (mb + ms); ys += over * mb / (mb + ms); }
     }
@@ -99287,9 +99295,9 @@ MC.addLang('es', {
   function drawEmpty(t, t4, ax, base, slackEnd) {
     const art = pick2(['cu_sink_empty']); if (!art) return;
     const K = knotParts(art, EMPTY_SPLIT), up = KNOT2_SPLIT - EMPTY_SPLIT, g0 = slackEnd - up;
-    const ts = Math.max(0, t4 - 300), F = sinkFall(ts), yb = Math.round(F[0]), ys = Math.round(F[1]);
-    const lvIn = Math.min(16, Math.round(t4 / 300 * 16));
-    const lvS = Math.min(lvIn, 16 - Math.round(MC.clamp((t4 - 1500) / 900, 0, 1) * 16)), lvB = Math.min(lvIn, 16 - Math.round(MC.clamp((t4 - 1200) / 600, 0, 1) * 16));
+    const FS = fastSink(), ts = Math.max(0, t4 - (FS ? 150 : 300)), F = sinkFall(ts), yb = Math.round(F[0]), ys = Math.round(F[1]);
+    const lvIn = Math.min(16, Math.round(t4 / 300 * 16)), fade = (a, b) => 16 - Math.round(MC.clamp((t4 - a) / (b - a), 0, 1) * 16);
+    const lvS = Math.min(lvIn, FS ? fade(800, 1400) : fade(1500, 2400)), lvB = Math.min(lvIn, FS ? fade(600, 1100) : fade(1200, 1800));
     const sx = Math.round(Math.sin(t4 * 0.0045) * 2.5 * Math.min(1, ts / 400));                 // 자루(천)는 좌우로 조금 더
     const bx = Math.round(Math.sin(t * 0.002) * 4 * Math.max(0.35, 1 - ts / 1500));            // 쇠공은 ③에서 흔들리던 그대로 — 가라앉으며 잦아듦
     const yS = base + up + ys, gap = Math.max(0, g0 + yb - ys), M = 8;
@@ -99347,7 +99355,10 @@ MC.addLang('es', {
     if (S.seg >= 4) {                                      // ④ 빈 자루(사람 하나 길이로 곧게 선 채)·칼이 가라앉음([R936]이면 빈 자루는 위 drawEmpty — 왼쪽 실루엣 없음)
       const sk = R6 ? null : pick2(['cu_sink_sack']), sy = Math.round(H * 0.08) + Math.round(t4 * 0.05);
       if (sk) U.drawDither(sk, 6, sy, Math.max(0, 16 - Math.round(Math.max(0, t4 - 900) / 50)), 2);
-      drawKnife(W - 22, Math.round(H * 0.42) + Math.round(t4 * 0.06) + Math.round(Math.sin(t4 * 0.005) * 2), Math.max(0, 16 - Math.round(Math.max(0, t4 - 700) / 50)), 0.25, 2);
+      if (R6 && fastSink()) {                               // [R937] 칼: 끝속도 120px/s(1m/s)까지 붙는 낙하 + 납작한 날이라 좌우로 팔랑임, 0.5~1.1초에 어둠으로
+        const s = t4 / 1000, fy = 120 * (s - (1 - Math.exp(-5 * s)) / 5);
+        drawKnife(W - 22 + Math.round(Math.sin(t4 * 0.0079) * 5), Math.round(H * 0.42 + fy), 16 - Math.round(MC.clamp((t4 - 500) / 600, 0, 1) * 16), 0.25, 2);
+      } else drawKnife(W - 22, Math.round(H * 0.42) + Math.round(t4 * 0.06) + Math.round(Math.sin(t4 * 0.005) * 2), Math.max(0, 16 - Math.round(Math.max(0, t4 - 700) / 50)), 0.25, 2);
     }
     night(W, H, 0.28);
     if (S.seg === 3 && !cut) {                             // 매듭 자리: 퍼지는 고리(누를 곳) — 매듭 그림을 덮지 않게 테만
@@ -99705,7 +99716,7 @@ MC.addLang('es', {
             if (S.q > 0 && sc.t - S.tugT >= KNOT_GAP) { S.q--; knotStep(sc); }
             if (assistOn(3) && idle >= 2500) success3(sc);
             break;
-          case 4: if (segT >= (sinkEmpty() ? EMPTY_MS : 1600)) enter(sc, 5); break;   // [fixer-s4p2] 공기 멈춘 1.6초 — 빈 자루가 읽히게(QA 7) · [R936] 2.4초(쇠공 먼저·자루 나중에 가라앉음)
+          case 4: if (segT >= (sinkEmpty() && !fastSink() ? EMPTY_MS : 1600)) enter(sc, 5); break;   // [fixer-s4p2] 공기 멈춘 1.6초 — 빈 자루가 읽히게(QA 7) · [R936] 2.4초(쇠공 먼저·자루 나중에 가라앉음)
           case 5:
             if (S.surfT >= 0) { if (sc.t - S.surfT >= SURF_MS) enter(sc, 6); break; }
             if (sc.t - S.lastKick > 600) S.depth = Math.min(S.floor5 == null ? D0 : S.floor5, S.depth + 60 * dt / 1000);   // 발차기가 끊기면 도로 가라앉는다([a43-play P5] 실패 뒤 남긴 절반 아래로는 아님)
