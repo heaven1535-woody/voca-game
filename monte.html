@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.32';
+  var VERSION = '0.9.33';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -18045,7 +18045,23 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
   function layout() {
     const g = G(), sb = g.safe.bottom, X0 = g.X0;
     V.X0 = X0;
-    V.gridY = g.H - sb - 8 - 76;
+    /* [res2 R938] 짧은 화면 + 큰 위 안전 여백(듀오 겉화면 등): 가장 큰 적 머리가 노치·상태 줄 밑(safe.top + 2 위)으로 들어가면
+       명령 단추 두 줄을 낮춰(36 → 30, 줄 간격 40 → 33, 아래 여백 8 → 4) 무대를 13칸까지 내린다. 손가락 최소 크기(minTouch + 8) 아래로는 안 줄임.
+       한 전투 안에서는 적이 쓰러져도 그대로(화면 크기·안전 여백·상태 칸 수가 바뀔 때만 다시 잼). 넉넉한 화면은 옛 그대로. 되돌리기: ?uw2off=R938 */
+    let gBh = 36, gStep = 40, gBm = 8;
+    if (!g.land && MC.uw2 && MC.uw2('R938') && V.en.length) {
+      const key = g.W + 'x' + g.H + ':' + g.safe.top + ':' + sb + ':' + (cells2() ? 2 : 1);
+      if (V.cptKey !== key) {
+        V.cptKey = key;
+        let m = 0;
+        for (const ev of V.en) { if (ev.u.phantom) continue; const sz = sizeOf(ev), bb = bboxFor(ev.spr, sz); m = Math.max(m, sz.h - bb.y); }
+        const feet0 = g.H - sb - 8 - 76 - (cells2() ? 46 : 34) - 2 - 60 - 24;   // 옛 배치의 발 자리(stageH − 24)
+        V.cpt = feet0 - m < g.safe.top + 2;
+      }
+      if (V.cpt) { gBh = Math.max(30, MC.ui.minTouch() + 8); gStep = gBh + 3; gBm = 4; }
+    }
+    V.gBh = gBh; V.gStep = gStep;
+    V.gridY = g.H - sb - gBm - (gBh + gStep);
     V.statH = cells2() ? 46 : 34;
     V.statY = V.gridY - V.statH - 2;
     V.logY = V.statY - 60;
@@ -18095,13 +18111,13 @@ MC.uw2 = id => { const q = (MC.cfg && MC.cfg.q && MC.cfg.q.uw2off) || ''; return
     const LPOS = [[1, 2], [1, 1], [1, 0], [0, 2], [0, 1], [0, 0]];
     const place = g.land
       ? (B, keys) => keys.forEach((k, i) => { const bt = B[k], p = LPOS[i]; bt.x = V.gx + p[0] * (V.bw + 2); bt.y = V.gridY + p[1] * (V.rh + 2); bt.w = V.bw; bt.h = V.rh; })
-      : (B, keys) => keys.forEach((k, i) => { const bt = B[k]; bt.x = bx + (i % 3) * 60; bt.y = V.gridY + ((i / 3) | 0) * 40; bt.w = 56; bt.h = 36; });   // (가로에서 돌아오면 크기도 되돌린다)
+      : (B, keys) => keys.forEach((k, i) => { const bt = B[k]; bt.x = bx + (i % 3) * 60; bt.y = V.gridY + ((i / 3) | 0) * V.gStep; bt.w = 56; bt.h = V.gBh; });   // [res2 R938] 옛 40 · 36   // (가로에서 돌아오면 크기도 되돌린다)
     place(V.btn, CMD_KEYS);
     if (V.fbtn) place(V.fbtn, fKeys());
     if (V.btn.master) { const s = V.btn.skill; V.btn.master.x = s.x; V.btn.master.y = s.y; V.btn.master.w = s.w; V.btn.master.h = s.h; }          // (S4) 금빛 [스승의 말씀]: 부서진 [배운 것] 자리
     if (V.btn.live) {                                                                                 // (S4) [살아서 나간다]: 아래 줄 전체 폭(엄지 자리)
       if (g.land) { V.btn.live.x = V.gx; V.btn.live.y = V.gridY + 2 * (V.rh + 2); V.btn.live.w = V.bw * 2 + 2; V.btn.live.h = V.rh; }
-      else { V.btn.live.x = bx; V.btn.live.y = V.gridY + 40; V.btn.live.w = 176; V.btn.live.h = 36; }
+      else { V.btn.live.x = bx; V.btn.live.y = V.gridY + V.gStep; V.btn.live.w = 176; V.btn.live.h = V.gBh; }   // [res2 R938] 옛 40 · 36
     }
   }
   // 아군 상태 칸(1인: 176 한 칸 / 2인·회색 빈 칸: 87 두 칸)
@@ -93068,7 +93084,10 @@ MC.addLang('es', {
         const gap = compact ? 3 : 4, gH = compact ? 4 : 6, gB = compact ? 8 : 12;
         const bh = Math.max(26, mt + 2), top0 = 8 + g.safe.top, bot0 = g.H - 8 - g.safe.bottom;
         const avail = bot0 - top0 - headH - gH - gB - bh;
-        const ch = MC.clamp(Math.floor((avail - (compact ? (n - 1) * gap : 3 * 4)) / n), compact ? Math.max(mt + 4, 30) : Math.max(mt + 6, 40), 54);
+        // [res2 R938] 촘촘한 판(6과목)의 카드 최소 높이 30 → 24(손가락 최소 + 2 아래로는 안 줄임): 위아래 안전 여백이 큰 짧은 화면(듀오 겉화면 등)에서 카드가 「그만둔다」 단추를 덮지 않게.
+        //   30보다 낮아지면 인용 줄을 빼고 과목 이름만 가운데(render). 자리가 있으면 옛 그대로. 되돌리기: ?uw2off=R938
+        const cMin = compact ? (MC.uw2 && MC.uw2('R938') ? Math.max(mt + 2, 24) : Math.max(mt + 4, 30)) : Math.max(mt + 6, 40);
+        const ch = MC.clamp(Math.floor((avail - (compact ? (n - 1) * gap : 3 * 4)) / n), cMin, 54);
         const used = cards.length * ch + (cards.length - 1) * gap;
         const block = headH + gH + used + gB + bh;                     // 머리·카드·버튼을 한 덩어리로 세로 가운데
         const top = Math.max(top0, Math.min(bot0 - block, ((top0 + bot0 - block) >> 1) - 8));
@@ -93153,7 +93172,8 @@ MC.addLang('es', {
           // 글자
           const tx = ix + ifr + 6, dimAll = other || (!c.open && !c.learned);
           const nmCol = dimAll ? P.dim : (c.learned ? P.gold : P.text);
-          const nmY = (compact || g.land) ? cy + 3 : cy + 5, qY = (compact || g.land) ? cy + 17 : cy + 22;
+          const noQ = compact && !g.land && chh < 30;                  // [res2 R938] 낮은 카드: 인용 줄 없이 이름만 가운데
+          const nmY = noQ ? cy + ((chh - 13) >> 1) : (compact || g.land) ? cy + 3 : cy + 5, qY = (compact || g.land) ? cy + 17 : cy + 22;
           const ex = MC.text.draw(c.name, tx, nmY, { font: 'bold', color: nmCol });
           // 기술 이름: '배웠다' 도장과 겹치면 줄여 '…'(역사의 교훈 + 배웠다가 붙어 읽히던 것)
           let skn = c.skillName || '';
@@ -93162,8 +93182,9 @@ MC.addLang('es', {
           if (sknMax > 12) MC.text.draw(skn, ex + 6, nmY + 2, { font: 'small', color: dimAll ? P.dim : g.mix(P.gold, P.text, 0.35) });
           const qw = cx + cw - 8 - tx;
           let ql = MC.text.wrap(c.quote || '', qw, 'small');
-          const maxL = Math.max(1, Math.floor((chh - ((compact || g.land) ? 19 : 24)) / 13));
-          if (ql.length > maxL) { ql = ql.slice(0, maxL); let s = ql[maxL - 1]; while (s.length > 1 && MC.text.width(s + '…', 'small') > qw) s = s.slice(0, -1); ql[maxL - 1] = s + '…'; }
+          const maxL = noQ ? 0 : Math.max(1, Math.floor((chh - ((compact || g.land) ? 19 : 24)) / 13));
+          if (!maxL) ql = [];
+          else if (ql.length > maxL) { ql = ql.slice(0, maxL); let s = ql[maxL - 1]; while (s.length > 1 && MC.text.width(s + '…', 'small') > qw) s = s.slice(0, -1); ql[maxL - 1] = s + '…'; }
           ql.forEach((l, k) => MC.text.draw(l, tx, qY + k * 13, { font: 'small', color: dimAll ? g.mix(P.dim, P.f, 0.3) : P.dim }));
           // 배웠다 도장
           if (c.learned) {
@@ -106072,10 +106093,13 @@ MC.addLang('es', {
       fit2();
     }
     function fit2() { if (sc.info2 && MC.text.width(sc.info2, 'small') > g.W - 12) sc.info2 = null; }   // [r3 B3] 화면보다 넓으면 자르지 않고 뺀다(§14-2 ③)
-    function lay() {
-      const mt = MC.ui.minTouch(), bh = Math.max(28, mt + 6), W = g.W, cx = W >> 1;
-      let y = g.H - 30 - g.safe.bottom;
-      bSet.w = 112; bSet.h = bh - 2; y -= bSet.h; bSet.x = cx - (bSet.w >> 1); bSet.y = y; y -= 8;
+    /* [res2 R938] 짧은 화면(탭 200×320 · 아이패드 216×344 · 듀오 216×333~339 · 아래 안전 여백이 큰 기기): 단추 셋이 수평선 18칸 안까지 올라오면
+       (이어하기가 성 섬 밑동·등대 빛에 붙던 것) 단추를 4칸씩 낮추고(손가락 최소 크기 아래로는 안 줄임) 아래 여백 30 → 24 · 단추 사이 8 → 6으로 한 번 더 잰다.
+       넉넉한 화면은 그대로. 되돌리기: ?uw2off=R938 */
+    function lay(cpt) {
+      const mt = MC.ui.minTouch(), bh = cpt ? Math.max(24, mt + 2) : Math.max(28, mt + 6), W = g.W, cx = W >> 1;
+      let y = g.H - (cpt ? 24 : 30) - g.safe.bottom;
+      bSet.w = 112; bSet.h = bh - 2; y -= bSet.h; bSet.x = cx - (bSet.w >> 1); bSet.y = y; y -= cpt ? 6 : 8;
       if (g.land) {                             // [land] 가로: 단추를 맨 아래 한 줄로(이어하기 · 처음부터 · 설정), 요약 한 줄은 그 위
         const row = sc.info ? [bCont, bNew, bSet] : [bNew, bSet], h2 = Math.max(26, mt + 4), gap = 8;
         row.forEach(b => { b.w = MC.clamp(MC.text.width(String(b.label), 'body') + 28, 72, 128); b.h = h2; });
@@ -106108,6 +106132,8 @@ MC.addLang('es', {
       }
       bMute.x = W - 26 - g.safe.right; bMute.y = 2 + g.safe.top;
       bLang.x = sc.stage >= 1 ? bMute.x - 26 : bMute.x; bLang.y = bMute.y;       // 2단계: 음소거 왼쪽 / 1단계: 오른쪽 위
+      sc.cpt = !!cpt;
+      if (!cpt && !g.land && MC.uw2 && MC.uw2('R938') && (sc.info ? bCont.y : bNew.y) < layout().hz + 18) lay(true);   // [res2 R938]
     }
     // opt.xfade(gotoTitle keepMusic+xfade — 엔딩 「끝」의 오르골이 남아 있을 때): 처음 한 번만 그 ms 동안 타이틀 곡·항구 소리로 천천히 넘어간다
     let xfade = +opt.xfade > 0 ? +opt.xfade : 0;
@@ -106257,7 +106283,7 @@ MC.addLang('es', {
         for (const b of buttons()) if (b !== bMute) b.render();
         if (sc.info) {
           const iL = g.land ? sc.iL : null;                           // [land6] 가로 요약 자리(lay가 정함 — 단추 줄 옆 또는 위)
-          const iy0 = g.land ? bCont.y + (iL ? iL.dy : -19) : bCont.y + bCont.h + 1;   // [land] 요약 줄은 단추 줄 위 · [land6] 또는 단추 줄 옆(옛: bCont.y − 19)
+          const iy0 = g.land ? bCont.y + (iL ? iL.dy : -19) : bCont.y + bCont.h + (MC.uw2 && MC.uw2('R938') ? 4 : 1);   // [land] 요약 줄은 단추 줄 위 · [land6] 또는 단추 줄 옆(옛: bCont.y − 19) · [res2 R938] 세로 요약 판을 이어하기·처음부터 사이 가운데로(위 4 · 아래 4 — 옛: 위 1 · 아래 7, 이어하기에 붙어 답답했다)
           const icx = w0 => (iL ? iL.x + ((iL.w - w0) >> 1) : (W - w0) >> 1);   // [land6] 폭 w0짜리를 요약 자리 가운데에 놓는 왼쪽 x(세로 = 옛 식 (W − w0) >> 1 그대로)
           // [s44-director C2③] 아직 안 열어 본 기록이면 은빛 → 금빛으로 천천히 반짝(글 없음 — 누를 수 있다는 표시만)
           const k = sc.recNew ? 0.5 - 0.5 * Math.cos((t - sc.st1) / 1400 * Math.PI * 2) : 0;
@@ -106271,7 +106297,7 @@ MC.addLang('es', {
           if (im) U.drawDither(im, icx(im.width), iy0 + 2, p * 16);         // [land6] icx(옛: (W − im.width) >> 1)
           // [r3 B3] 둘째 줄 — 흐린 보조 글(A8 기준색 #9aa4c0, 반짝이지 않음). 자리가 없는 낮은 화면이면 lay()가 sc.two를 끈다
           const im2 = sc.two && sc.info2 ? MC.text.bake(sc.info2, 'small', '#9aa4c0', { shadow: '#03050b' }) : null;
-          if (im2) U.drawDither(im2, icx(im2.width), g.land ? iy0 + 2 + INFO2_H : bCont.y + bCont.h + 3 + INFO2_H, p * 16);   // [land6] 가로는 요약 줄 바로 아래(옛: 가로에서는 그리지 않았다 — sc.two false)
+          if (im2) U.drawDither(im2, icx(im2.width), iy0 + 2 + INFO2_H, p * 16);   // (세로 옛 식 bCont.y + bCont.h + 3 + INFO2_H = 옛 iy0 + 2 + INFO2_H — 판과 함께 움직이게 한 식으로)   // [land6] 가로는 요약 줄 바로 아래(옛: 가로에서는 그리지 않았다 — sc.two false)
         }
         bMute.render();
         const muted = MC.save.settings && MC.save.settings.mute;
@@ -107061,6 +107087,8 @@ MC.addLang('es', {
         const pref = Math.max(28, mt + 4), low = Math.max(22, mt);
         const withInfo = Math.floor((y + h - 40 - cmd.y - 8) / cmd.rows), noInfo = Math.floor((y + h - cmd.y - 8) / cmd.rows);
         cmd.rowH = withInfo >= low ? Math.min(pref, withInfo) : Math.max(22, Math.min(pref, noInfo));
+        // [res2 R938] 긴 화면(폴드 겉화면 180×432 · 아이폰 16 196×426): 자리가 남으면 줄을 32까지 넓힌다(엄지에 더 큰 칸 — 남는 틈은 renderMain이 장소 칸을 목록 밑에 붙여 없앤다). 되돌리기: ?uw2off=R938
+        if (!g.land && withInfo > pref && MC.uw2 && MC.uw2('R938')) cmd.rowH = Math.min(Math.max(32, mt + 6), withInfo);
       }
       { // 기억 목록: 물음 칸 아래를 채운다([l45-guide B8-8] 첫 추리 뒤엔 맨 위에 「기억 · 네 이름」 두 칸)
         const mth = memTabH(), qn = memQs().length, top = y + mth + (qn ? 22 + qn * 26 + 4 : 0);
@@ -107249,8 +107277,10 @@ MC.addLang('es', {
       }
       drawHeader(x, y, w);
       cmd.render();
-      const P = g.uiPal, fy = y + h - 36;
-      if (fy > cmd.y + cmd.h + 4) {
+      const P = g.uiPal, r938 = !!(MC.uw2 && MC.uw2('R938')), lim = cmd.y + cmd.h + 4;
+      // [res2 R938] 장소·연도·플레이 시간 칸을 목록 바로 밑에 붙인다(옛: 화면 맨 아래 — 긴 화면에서 목록과 칸 사이 30~70칸이 벌어져 뒤 지도가 비쳤다)
+      const fy = r938 ? Math.min(y + h - 36, lim) : y + h - 36;
+      if (r938 ? fy >= lim : fy > lim) {
         g.frame(x, fy, w, 36, { small: true });
         const yr = (MC.state && MC.state.year) || 1815;
         MC.text.draw(mapName() || '　', x + 8, fy + 4, { font: 'small', color: P.text });
