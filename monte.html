@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.36';
+  var VERSION = '0.9.37';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -5527,6 +5527,15 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
   function drawLetterbox() {
     if (lb.v <= 0) return;
     const h = Math.round(20 * lb.v), g = G();
+    // [0.9.37 A16 · R947] 세로: 띠가 화면 끝(원래 검정이거나 대화창 밑이라 안 보임 — 6차 F26)이 아니라 지도 그림 윗변과 대화창 윗변(작은 방이면 방 아랫변)에서
+    //   안쪽으로 12칸 닫힌다. 그림이 화면 끝에 닿으면 옛 20칸. 확대 컷·지도를 안 그린 프레임(컷 그림 위 등)·가로는 옛 그대로. 되돌리기: ?uw2off=R947
+    const sb = !g.land && MC.uw2 && MC.uw2('R947') && MC.field && MC.field.screenBand ? MC.field.screenBand() : null;
+    if (sb) {
+      const boxTop = g.H - 66 - g.safe.bottom, bEdge = Math.min(sb.bot, boxTop);
+      const th = Math.round((sb.top > 0 ? sb.top + 12 : 20) * lb.v), bh = Math.round((bEdge < g.H ? g.H - bEdge + 12 : 20) * lb.v);
+      g.rect(0, 0, g.W, th, '#000'); g.rect(0, g.H - bh, g.W, bh, '#000');
+      return;
+    }
     g.rect(0, 0, g.W, h, '#000'); g.rect(0, g.H - h, g.W, h, '#000');
   }
   // [0.5.0b-fix] 필드가 안 그려지는 프레임(불투명 컷 위 holdSay 대사 등)에도 띠가 대화창 아래에 깔리게 — scene.js가 dialogue 씬 직전에 부른다.
@@ -7613,7 +7622,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
     I.out.connect(g.cat.amb.in);
     I.out.gain.setValueAtTime(0, t);
     I.out.gain.linearRampToValueAtTime(o.gain == null ? 1 : o.gain, t + Math.max(0.03, fade));
-    (d.beds || []).forEach(function (b) { try { bed(I, b, t); } catch (e) { A.warn('bed:' + id, '환경음 bed 오류(' + id + '): ' + e.message); } });
+    (d.beds || []).forEach(function (b) { if (b.uw2 && MC.uw2 && !MC.uw2(b.uw2)) return; try { bed(I, b, t); } catch (e) { A.warn('bed:' + id, '환경음 bed 오류(' + id + '): ' + e.message); } });
     (d.ev || []).forEach(function (e) {
       I.evs.push({ e, next: t + (e.first ? rr(e.first[0], e.first[1]) / 1000 : nextGap(e, I.rate)) });
     });
@@ -7810,7 +7819,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
     if (cache[ck]) return cache[ck];
     if (!raw0) { A.warn('bgm:' + id, '없는 곡 id: ' + id); return null; }
     const d = sfc ? mergeSfc(raw0) : raw0;
-    const spb = d.spb || 4, s = { id, d, sfc, spb, bar: d.bar || spb * 4, bpm: d.bpm || 120, pats: {}, order: d.order, loopTo: d.loopTo || 0, loop: d.loop != null ? !!d.loop : !d.jingle };
+    const spb = d.spb || 4, s = { id, d, sfc, spb, bar: d.bar || spb * 4, bpm: d.bpm || 120, pats: {}, order: (d.order2 && MC.uw2 && MC.uw2(d.order2.uw2)) ? d.order2.order : d.order, loopTo: d.loopTo || 0, loop: d.loop != null ? !!d.loop : !d.jingle };
     for (const pn in d.pat) {
       const P = d.pat[pn], idx = [], chords = {}; let len = 0;
       const lens = {};
@@ -10782,6 +10791,9 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
       if (c.gain != null) o.gain = +c.gain;
       if (c.cap !== undefined) o.cap = c.cap;              // [u51 B8-7] 소리 자막(글은 i18n.cmd가 번역 — TEXT_FIELDS sfx.cap) · false = 레시피 자막도 끔
       if (c.ring != null) o.ring = c.ring;                 // 노크 파문 자리('player'|id|[x,y])
+      // [0.9.37 A19 · R952] 심장 소리 쓰임표: 또렷한 심장은 프롤로그(a0)·체포(a2)·발작(s3f)·임종(s4c)·자루와 셋 세기(s4x)에서만. 나머지(1817 꿈·추리·문 앞 등 12곳)는
+      //   먹먹한 낮은 쿵(lp 150 · 소리 45%) — 폰 스피커에선 거의 짧은 정적. 진동(op vibrate)·화면 흔들림은 그대로(6차 F28). 되돌리기: ?uw2off=R952
+      if (c.id === 'heartbeat' && MC.uw2 && MC.uw2('R952') && !/^(a0|a2|s3f|s4c|s4x)\./.test(String(EV.lastId || EV.current || ''))) { o.lp = 150; o.gain = (o.gain != null ? o.gain : 1) * 0.45; }
       const f = A('sfx', 'play'); if (f) f(c.id, o);
     },
     amb: c => {
@@ -13965,6 +13977,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
       x.putImageData(id, 0, 0);
     }
     g.ctx.drawImage(VB.cv, Math.round(map.w * TS / 2 - rcam.x) - 90, vh - h);
+    scrBand.art = vh - h;                                  // [0.9.37 A16] 레터박스 위 띠는 이 그림 윗변에서 닫힌다
   }
   const hpShow = { v: -1, flash: 0 };
   function maxHp(m) {
@@ -14022,6 +14035,9 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
     if (y0 < 0) fade(0, 0, 0, y0, x0, y0, g.W, -y0);                 // 위·아래는 화면 폭 전체(귀퉁이는 두 번 겹쳐 더 어둡게)
     if (y1 > mh) fade(0, mh, 0, y1, x0, mh, g.W, y1 - mh);
   }
+  // [0.9.37 A16 · R947] 이번 프레임에 그린 지도의 화면 세로 범위(맵 밖 검은 칸 제외) — fx 레터박스가 「그림 위 끝」에서 닫히게. 확대 중·안 그린 프레임은 null
+  const scrBand = { top: 0, bot: 0, id: -1, zoom: false, art: null };
+  function screenBand() { const g = G(); return map && scrBand.id === g.renderId && !scrBand.zoom ? { top: scrBand.art != null ? Math.max(0, scrBand.art) : scrBand.top, bot: scrBand.bot } : null; }   // 작은 방 위 장소 그림(drawVistaBg)이 있으면 그 윗변
   function render() {
     const g = G(), ctx = g.ctx;
     if (!map) { g.clear('#000'); return; }
@@ -14030,6 +14046,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
     const cx = Math.round(cam.x), cy = Math.round(cam.y);
     rcam.x = cx - sh[0]; rcam.y = cy - sh[1];
     const mw = map.w * TS, mh = map.h * TS;
+    scrBand.top = Math.max(0, -rcam.y); scrBand.bot = Math.min(g.H, mh - rcam.y); scrBand.id = g.renderId; scrBand.zoom = zoomOn(); scrBand.art = null;   // [0.9.37 A16] 레터박스가 쓰는 그림 범위
     g.offset(-rcam.x, -rcam.y);
     // 맵 밖(작은 방): 빈 칸 타일 무늬로 채움
     if (rcam.x < 0 || rcam.y < 0 || rcam.x + g.W > mw || rcam.y + g.H > mh) {
@@ -14528,6 +14545,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
     controls: () => controlsOn(),
     interactAt, interactFacing,
     invuln(ms) { pl.invulnUntil = nowR() + (ms > 0 ? ms : 1500); },
+    screenBand,                                        // [0.9.37 A16] {top, bot} | null — fx 레터박스
     state() {                                          // 디버그 요약
       const s = F.stealth;
       return { map: map && map.id, x: pl.x, y: pl.y, dir: pl.dir, moving: pl.moving, extLock, busy, entering, encountering, free, cam: [Math.round(cam.x), Math.round(cam.y), cam.mode], zoom: [zoomOn() ? Z.k : 1, Z.k], light: { dark: light.dark, r: light.r },
@@ -15107,6 +15125,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
     const m = I.map(), p = I.player();
     const tx = Math.floor((I.apx(p) + 8) / TS), ty = Math.floor((I.apy(p) + 8) / TS);
     p.hidden = tx >= 0 && ty >= 0 && tx < m.w && ty < m.h && m.hide[ty * m.w + tx] === 1;
+    if (p.hidden && !ST.caught) ST.nook = [tx, ty, p.dir || 'down'];   // [0.9.37 A15] 마지막으로 숨은 벽감(들키면 여기서 다시)
     return [tx, ty];
   }
   function detect(dt) {
@@ -15181,12 +15200,21 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
       ST.keepL = Object.keys(L).length ? L : null;
     } catch (_) { ST.keepL = null; }
   }
-  function doReset() {
+  // [0.9.37 A15 · R951] 다시 시작할 벽감: 지난 벽감이 있고, 어느 간수의 처음 자리에서도 3칸 넘게 떨어져 있을 때만(돌아오자마자 다시 붙잡히지 않게). 되돌리기: ?uw2off=R951
+  function nookAt() {
+    const nk = ST.nook;
+    if (!nk || !(MC.uw2 && MC.uw2('R951'))) return null;
+    for (const g of ST.guards) { const h = g.gi && g.gi.home; if (h && Math.abs(h.x - nk[0]) + Math.abs(h.y - nk[1]) <= 3) return null; }
+    return nk;
+  }
+  function doReset(byCatch) {                              // byCatch: 붙잡혀서(caught) — 벽감 재시작은 이때만(이벤트의 stealth reset은 옛처럼 입구)
     ST.alert = 0; setAlertVar(0);
     ST.seeT = 0; ST.seer = null; ST.grace = 700; ST.nearT = 400;
     const p = I.player(); p.seeK = 0; p.hidden = false;
     applyMusic();
-    I.placePlayer(ST.cfg.reset);
+    const nk = byCatch ? nookAt() : null;                   // [0.9.37 A15 · R951] 마지막으로 지난 벽감에서 다시(옛: 늘 구간 입구 — 6차 F24)
+    I.placePlayer(nk || ST.cfg.reset);
+    try { if (MC.game && MC.game.setVar) MC.game.setVar('st_nook', nk ? 1 : 0); } catch (_) {}   // onReset 이벤트가 「굴 입구로 돌아왔다」를 건너뛰게
     for (const g of ST.guards) resetGuard(g);
     MC.fx.particles.clear();
   }
@@ -15213,7 +15241,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
       if (gen !== ST.gen) return;
       await MC.fx.fade(1, 400, { dither: true });
       if (gen !== ST.gen) { MC.fx.fade(0, 300); return; }
-      doReset();
+      doReset(true);
       scheduleMusic(gen, 1500);
       await MC.core.waitReal(220);
       await MC.fx.fade(0, 420);
@@ -15250,7 +15278,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
       ST.cfg.grace = Math.max(0, +ST.cfg.grace || 0);
       ST.max = Math.max(1, (+ST.cfg.max | 0) || 3);
       if (ST.active && !ST.cfg.music) ST.cfg.music = def.bgm || null;
-      ST.alert = 0; ST.seeT = 0; ST.seer = null; ST.grace = 0; ST.paused = false; ST.caught = false;
+      ST.alert = 0; ST.seeT = 0; ST.seer = null; ST.grace = 0; ST.paused = false; ST.caught = false; ST.nook = null;
       ST.nearT = 700; ST.pulseT = 0; ST.popI = -1; ST.hudY = null; ST.keepL = null;
       if (wasActive || ST.active || (MC.state && MC.state.vars && MC.state.vars.alert)) setAlertVar(0);
       ST.guards = ST.active ? map.objs.filter(o => o.type === 'guard') : [];
@@ -17262,6 +17290,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
       s.battles = (s.battles || 0) + 1;
       if (out === 'lose') s.lose = (s.lose || 0) + 1;
       if (out === 'flee') s.flee = (s.flee || 0) + 1;
+      if (out === 'win' && B.troop) { const bw = s.won || (s.won = {}); bw[B.troop] = (bw[B.troop] || 0) + 1; }   // [0.9.37 A20] 이긴 무리 수(instantWinOk)
     }
     if (out === 'win') {
       let exp = 0;
@@ -17338,8 +17367,11 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
     return { ok: true };
   }
   function instantWinOk(B) {
-    const gap = levels().instantWinGap;
+    let gap = levels().instantWinGap;
     if (!gap || B.boss || B.script) return false;
+    // [0.9.37 A20 · R950] 이미 이긴 무리(같은 troop)를 다시 만나면 문턱 5 → 2(두 바퀴째 피로 — 6차 F4). 보스·각본 전투는 그대로. 되돌리기: ?uw2off=R950
+    const won = !B.sim && MC.state && MC.state.stats && MC.state.stats.won;
+    if (won && B.troop && won[B.troop] > 0 && MC.uw2 && MC.uw2('R950')) gap = Math.min(gap, 2);
     const lead = B.allies[0];
     if (!lead) return false;
     let top = 0;
@@ -18331,8 +18363,36 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
   function setMode(m) {
     V.mode = m; V.modeT = V.t;
     for (const b of curBtns()) b.arm(m === 'cmd' ? 120 : 220);
-    if (m !== 'target') { V.tpress = null; V.tpid = null; }
+    if (m !== 'target') { V.tpress = null; V.tpid = null; V.tnameR = null; }
   }
+  /* [0.9.37 A14 · R946] 대상 고르기: 아래 기록 창에 적 이름 단추(화면 위 적 그림까지 엄지를 뻗지 않게 — 0.9.28 B6 · 6차 F22). 적 그림 누르기도 그대로 된다.
+     세로·보통 전투만(가로·S4 금빛 명령·어둠 칸은 옛 그대로). 단추 순서 = 화면 왼쪽부터. 되돌리기: ?uw2off=R946 */
+  function nameBtnsOn() { return !G().land && !V.only && !V.dark && !!(MC.uw2 && MC.uw2('R946')); }
+  function tgtList() { return V.en.filter(e => e.u.alive && e.visible !== false && !e.gone).sort((a, b) => a.cx - b.cx).slice(0, 4); }
+  function drawNameBtns(x, y) {
+    const g = G(), P = g.uiPal, L = tgtList(), n = L.length;
+    V.tnameR = [];
+    if (!n) return;
+    const gap = 4, bw = Math.floor((160 - (n - 1) * gap) / n), bh = 26, by = y + 26;
+    L.forEach((ev, i) => {
+      const bx = x + 8 + i * (bw + gap), on = V.tpress === ev;
+      g.frame(bx, by, bw, bh, { small: true, over: on ? { f: g.mix(P.f, COL.gold, 0.3) } : null });
+      const s = String(labelOf(ev)), col = on ? COL.gold : P.text, cxm = bx + (bw >> 1), room = bw - 6;   // Noun(번역 이름 + 「 A」) → 글자
+      if (MC.text.width(s, 'body') <= room) MC.text.draw(s, cxm, by + 5, { font: 'body', color: col, align: 'center' });
+      else if (MC.text.width(s, 'small') <= room) MC.text.draw(s, cxm, by + 7, { font: 'small', color: col, align: 'center' });
+      else {                                                            // 두 줄(작은 글) — 「그림자 쥐 / A」, 그래도 넘치면 줄마다 말줄임
+        const ls = MC.text.wrap(s, room, 'small').slice(0, 2);
+        ls.forEach((l, k) => { while (l.length > 1 && MC.text.width(l, 'small') > room) l = l.slice(0, -2) + '…'; MC.text.draw(l, cxm, by + (ls.length > 1 ? 1 + k * 12 : 7), { font: 'small', color: col, align: 'center' }); });
+      }
+      V.tnameR.push({ x: bx, y: by, w: bw, h: bh, ev });
+    });
+  }
+  function nameAt(x, y) {
+    if (V.mode !== 'target' || !V.tnameR) return null;
+    for (const r of V.tnameR) if (x >= r.x - 2 && x < r.x + r.w + 2 && y >= r.y - 4 && y < r.y + r.h + 4) return r.ev.u.alive ? r.ev : null;
+    return null;
+  }
+  function tgtAt(x, y) { return nameAt(x, y) || enemyAt(x, y); }
   function cmdDisabled(k, set) {
     const b = V.B, u = V.actor;
     if (V.mode !== 'cmd') return;
@@ -18600,11 +18660,11 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
   function targetInput(ev) {
     if (V.only || V.dark) return false;                                  // (S4) 금빛 명령 차례: 적 그림을 눌러도 맞서지 않는다
     switch (ev.type) {
-      case 'down': { const e = enemyAt(ev.x, ev.y); if (!e) return false; if (V.t - V.modeT < 120 || V.t - (V.backT != null ? V.backT : -9999) < 450) return true; V.tpress = e; V.tpid = ev.id; sfx('ui_cursor'); return true; }
-      case 'move': if (ev.id !== V.tpid) return false; V.tover = enemyAt(ev.x, ev.y) === V.tpress; return true;
+      case 'down': { const e = tgtAt(ev.x, ev.y); if (!e) return false; if (V.t - V.modeT < 120 || V.t - (V.backT != null ? V.backT : -9999) < 450) return true; V.tpress = e; V.tpid = ev.id; sfx('ui_cursor'); return true; }
+      case 'move': if (ev.id !== V.tpid) return false; V.tover = tgtAt(ev.x, ev.y) === V.tpress; return true;
       case 'up': {
         if (ev.id !== V.tpid) return false;
-        const e = enemyAt(ev.x, ev.y), p = V.tpress;
+        const e = tgtAt(ev.x, ev.y), p = V.tpress;
         V.tpid = null; V.tpress = null;
         if (e && e === p && V.mode === 'target' && V.pend) { sfx('ui_ok'); commit(Object.assign({}, V.pend, { target: e.u.idx })); }
         else if (e && e === p && V.mode === 'cmd' && V.actor && V.actor.fit) { /* (S3) 발작 뒤 파리아는 맞설 수 없다 */ }
@@ -18964,7 +19024,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
     V.fx.push({ k: 'claw', x: cx, y: V.stageH - 34, t0: V.t, dur: 170, counter: !!s.counter });
     av.rate = Math.max(40, s.n * 4); av.vhp = s.hp; av.ghold = V.t + 400;
     const [hx, hy] = hpAt(i);
-    MC.fx.floatText(String(s.n), hx, hy, { color: s.guard ? COL.blue : (s.counter ? COL.orange : '#ffffff') });
+    MC.fx.floatText(String(s.n), hx, hy - (MC.uw2 && MC.uw2('R946') ? 6 : 0), { color: s.guard ? COL.blue : (s.counter ? COL.orange : '#ffffff') });   // [0.9.37 A14 · R946] 6칸 위(상태 틀 테에 걸치던 것)
     await bwait(450 * kf());
   };
   H.down = async function (s) {
@@ -20202,7 +20262,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
       const ev = b.ev, fd = famOf(b.fam);
       const w = MC.text.width(b.text, 'small') + 10, h = 16;
       const rise = Math.round(EZ.outQuad(clamp(q / 200, 0, 1)) * 4) + (b.dead ? Math.round(q / 120) : 0);
-      const x = clamp(ev.cx - (w >> 1), 2, g.W - w - 2);
+      const bm = MC.uw2 && MC.uw2('R946') ? 4 : 2, x = clamp(ev.cx - (w >> 1), bm + g.safe.left * (bm > 2 ? 1 : 0), g.W - w - bm - g.safe.right * (bm > 2 ? 1 : 0));   // [0.9.37 A14 · R946] 화면 끝 여백 2 → 4(+안전 여백)
       const top = b.dead || b.despair ? ev.cy - 8 : ev.top - 20 - b.row * 18;
       const y = Math.max(g.safe.top + 14, top) - rise;
       const fade = clamp((b.dur - q) / 240, 0, 1), a = fade >= 1 ? 1 : (fade > 0.5 ? 0.66 : 0.33);
@@ -20483,6 +20543,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
     g.frame(x, y, 176, 58);
     if (V.mode === 'target' && V.pend) {
       MC.text.draw(cmdLabel(V.pend) + ' → ' + T('chooseTarget'), x + 8, y + 6, { color: COL.gold });
+      if (nameBtnsOn()) { drawNameBtns(x, y); return; }               // [0.9.37 A14 · R946] 적 이름 단추(엄지 자리)
       if (V.tpress) MC.text.draw(labelOf(V.tpress), x + 8, y + 24, { color: P.text });
       else MC.text.draw(T('chooseHint'), x + 8, y + 26, { font: 'small', color: P.dim });
       return;
@@ -20965,7 +21026,8 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
       if (Ls.page * per + s === Ls.sel && !down) {                      // [c43-ui B2-1] 고른 칸: 금빛 테(숨 쉬듯) — 한 번 더 누르면 쓴다
         const ng = V.t - Ls.ngT < 360, jx = ng ? Math.round(2 * Math.sin((V.t - Ls.ngT) * 0.06)) : 0;
         const pul = 0.5 + 0.5 * Math.sin((V.t - Ls.selT) * 0.008);
-        g.rectO(cx + 1 + jx, cy + 1, cw - 2, ch - 2, ng ? COL.red : (pul > 0.35 ? COL.gold : '#a8842a'));
+        const r946 = MC.uw2 && MC.uw2('R946');                                               // [0.9.37 A14 · R946] 테를 2칸 위로 — 기술 이름 윗변에 닿던 것(F22)
+        g.rectO(cx + 1 + jx, r946 ? cy - 1 : cy + 1, cw - 2, r946 ? ch : ch - 2, ng ? COL.red : (pul > 0.35 ? COL.gold : '#a8842a'));
       }
       const col = down ? P.f : (it.ok ? P.text : P.dim);
       let tx = cx + 5;
@@ -24315,7 +24377,9 @@ MC.data.amb = {
       {"type":"waves","g":0.2,"lp":1400,"lpv":900},
       {"type":"noise","n":"white","bp":500,"q":0.8,"g":0.03,"lfo":[0.07,220],"glfo":[0.06,0.6]}],
     "ev":[{"id":"_oar","every":[2100,2300],"first":[500,800]}]},
-  "cell": {"beds":[{"type":"waves","g":0.06,"lp":300,"lpv":150,"mono":true}],
+  /* [0.9.37 A17 · R948] 감방 둘(cell·cell4)에 폰 대역 층(noise bp450, 땅굴 B4-1과 같은 방식) — 파도 lp300은 폰 스피커에서 0이었다(6차 F27). 「벽 너머 바다」가 천천히 부풂(glfo). 되돌리기: ?uw2off=R948 또는 이 줄들 삭제 */
+  "cell": {"beds":[{"type":"waves","g":0.06,"lp":300,"lpv":150,"mono":true},
+      {"type":"noise","n":"white","bp":450,"q":0.7,"g":0.006,"glfo":[0.07,0.55],"uw2":"R948"}],
     "ev":[{"id":"drip","every":[2500,7000],"first":[800,2500]},{"id":"_chain","every":[25000,50000],"first":[12000,20000]}]},
   "dream": {"beds":[
       {"type":"noise","n":"white","bp":700,"q":1,"g":0.02,"lfo":[0.07,300],"glfo":[0.04,0.5],"send":{"dream":0.5}},
@@ -24325,7 +24389,8 @@ MC.data.amb = {
   /* ── S2 ── cell4: 4막 거점(감방 파도 + 촛불 지글, 물방울 드물게) */
   "cell4": {"beds":[
       {"type":"waves","g":0.05,"lp":300,"lpv":150,"mono":true},
-      {"type":"fire","g":0.012,"lp":350}],
+      {"type":"fire","g":0.012,"lp":350},
+      {"type":"noise","n":"white","bp":450,"q":0.7,"g":0.005,"glfo":[0.07,0.55],"uw2":"R948"}],
     "ev":[{"id":"_crackle","rate":2,"g":0.45},{"id":"_sputter","every":[14000,30000],"first":[5000,9000]},
       {"id":"drip","every":[5000,12000],"first":[2000,5000],"g":0.8},{"id":"_chain","every":[40000,80000],"first":[20000,35000]}]},
   /* tunnel: 땅굴(흙 부스러기, 낮은 물방울, 먼 발소리·열쇠, 벽 너머 바다 울림) */
@@ -24574,9 +24639,19 @@ MC.data.bgm = {
         "P1": "D4 - E4 F#4 - A4 | B4 - - A4 - F#4 | G4 - F#4 E4 - D4 | E4 - - - - A3 | D4 - E4 F#4 - A4 | D5 - - C#5 - B4 | A4 - F#4 G4 - E4 | D4 - - - - A3",
         "H":  "D - - - - - | Em7 - - D - - | G - - A7 - - | Asus4 - - A7 - - | D - - D/C - - | Bm - - F#m - - | G - - A7 - - | Bm - - - - -",
         "T":  "D3 - - - - - | E2 - - D3 - - | G2 - - A2 - - | A2 - - - - - | D3 - - C3 - - | B2 - - F#2 - - | G2 - - A2 - - | B2 - - A2 - -"
+      },
+      /* [0.9.37 A18 · R949] 숨 쉬는 둘째 바퀴: 같은 선율·베이스, 아르페지오(H)만 쉼(16비트는 현 패드 ST도 쉼 — 기타·베이스만). 새 음 없음 */
+      "A1b": {
+        "P1": "D4 - E4 F#4 - A4 | B4 - - A4 - F#4 | G4 - F#4 E4 - D4 | E4 - - - - A3 | D4 - E4 F#4 - A4 | D5 - - C#5 - B4 | A4 - F#4 G4 - E4 | D4 - - D5 - E5",
+        "T":  "D3 - - - - - | E2 - - D3 - - | G2 - - A2 - - | A2 - - - - - | D3 - - C3 - - | B2 - - F#2 - - | G2 - - A2 - - | D3 - - - - -"
+      },
+      "A2b": {
+        "P1": "D4 - E4 F#4 - A4 | B4 - - A4 - F#4 | G4 - F#4 E4 - D4 | E4 - - - - A3 | D4 - E4 F#4 - A4 | D5 - - C#5 - B4 | A4 - F#4 G4 - E4 | D4 - - - - A3",
+        "T":  "D3 - - - - - | E2 - - D3 - - | G2 - - A2 - - | A2 - - - - - | D3 - - C3 - - | B2 - - F#2 - - | G2 - - A2 - - | B2 - - A2 - -"
       }
     },
     "order": ["A1","B","A2"], "loopTo": 0,
+    "order2": {"uw2": "R949", "order": ["A1","B","A2","A1b","B","A2b"]},   /* [0.9.37 A18] 루프 약 40초 → 약 80초(6차 F29). 되돌리기: ?uw2off=R949 또는 이 줄 삭제 */
     /* (snd75b) 16비트 — 다시 짬: 해 질 녘 카탈루냐. 선율은 나일론 기타, 옛 오르골 아르페지오 줄은 여린 하프, 베이스는 콘트라베이스 피치카토, 아주 여린 현 패드. 관악기·캐스터네츠 뺌. 줄은 옛 그대로(40초) */
     "sfc": {
       "echo": 0.667, "fb": 0.2, "vol": 1.2,
@@ -25696,9 +25771,15 @@ MC.data.bgm = {
         "T":  "C2 - - - - - - - | - - - - - - - - | A1 - - - - - - - | E2 - - - - - - -",
         "DR": "Asus2 - - - - - - - | - - - - - - - - | E5 - - - - - - - | - - - - - - - -",
         "EC": ". . . . . . . . | . . *5 . . . . . | . . . . . . . . | . . . . . . *4 ."
+      },
+      /* [0.9.37 A18 · R949] 숨 쉬는 바퀴: A에서 오르골 메아리(EC)만 쉼 — 물속 드론과 베이스만 */
+      "Ab": {
+        "T":  "E2 - - - - - - - | - - - - - - - - | A1 - - - - - - - | B1 - - - - - - -",
+        "DR": "E5 - - - - - - - | - - - - - - - - | - - - - - - - - | - - - - - - - -"
       }
     },
     "order": ["A","B"], "loopTo": 0,
+    "order2": {"uw2": "R949", "order": ["A","B","Ab","B"]},   /* [0.9.37 A18] 루프 약 37초 → 약 74초(6차 F29). 되돌리기: ?uw2off=R949 또는 이 줄 삭제 */
     /* (snd75b) 16비트 — 다시 짬: 꿈 B4. 거의 음이 없는 물속 층이라 덜 얹었다 — 드론만 어두운 현(합창 뺌), 물속 베이스(삼각)·오르골 메아리(E·B, 긴 에코)는 옛 그대로 */
     "sfc": {
       "vol": 1,
@@ -50241,6 +50322,7 @@ MC.addMaps({
 MC.addMaps({
   "boat": {
     "name": "이프 성 앞바다", "tileset": "sea", "ui": "act2",
+    "onEnter": "a2.boat_enter",                                           // [0.9.36 A9] 배 위 저장에서 이어하면 a2.boat를 이어서(events_a2.js)
     "tiles": [
       "~~~  ~ ~  ~~~",
       "~~~       ~~~",
@@ -53496,15 +53578,30 @@ MC.addEvents({
     { "op": "call", "ev": "a2.boat" }
   ],
 
+  /* [0.9.36 A9] 배 맵 onEnter: a2.boat 안의 저장(a2.boat_saved)에서 이어할 때만 배 장면을 다시 — 처음 배에 오를 때는 맵 이동이 저장보다 먼저라 그냥 지나간다 */
+  "a2.boat_enter": [
+    { "op": "if", "cond": { "all": [ { "flag": "a2.boat_saved" }, { "not": { "flag": "a2.done" } } ] }, "then": [
+      { "op": "set", "flag": "a2.boat_rs" }, { "op": "call", "ev": "a2.boat" } ] }
+  ],
+
   /* ───────────── 2-4 이프 성으로 가는 배 ───────────── */
   "a2.boat": [
-    { "op": "fade", "to": 1, "ms": 900 },
-    { "op": "bgm", "id": null, "fade": 600 },
-    { "op": "amb", "id": null, "fade": 600 },
-    { "op": "wait", "ms": 600 },
-    { "op": "music", "fn": "filterTo", "args": [ null, 0 ] },
-    { "op": "light", "dark": 0, "ms": 0 },
-    { "op": "map", "id": "boat", "at": "seat", "trans": "cut" },
+    // [0.9.36 A9] 이어하기로 들어온 경우(a2.boat_enter가 a2.boat_rs를 켜고 부름): 이미 배 위이므로 맵을 옮기지 않고 검정에서 시작
+    { "op": "if", "cond": { "flag": "a2.boat_rs" },
+      "then": [ { "op": "set", "flag": "a2.boat_rs", "v": false }, { "op": "fade", "to": 1, "ms": 0 },
+        { "op": "music", "fn": "filterTo", "args": [ null, 0 ] }, { "op": "light", "dark": 0, "ms": 0 } ],
+      "else": [
+        { "op": "fade", "to": 1, "ms": 900 },
+        { "op": "bgm", "id": null, "fade": 600 },
+        { "op": "amb", "id": null, "fade": 600 },
+        { "op": "wait", "ms": 600 },
+        { "op": "music", "fn": "filterTo", "args": [ null, 0 ] },
+        { "op": "light", "dark": 0, "ms": 0 },
+        { "op": "map", "id": "boat", "at": "seat", "trans": "cut" } ] },
+    // [0.9.36 A9] 1막 밤(파티 → 체포 → 검사실)이 끝나고 배에 오른 자리에서 저장 — 그 전엔 레제르브부터 이프 성 안뜰까지(사람 속도 약 5~8.5분) 기록이 없었다.
+    //   이어하면 배 맵 onEnter(a2.boat_enter)가 여기부터 다시. 되돌리기: 이 두 줄 · 위 if의 then 갈래 · maps/boat.js onEnter · a2.boat_enter를 지운다
+    { "op": "set", "flag": "a2.boat_saved" },
+    { "op": "save", "slot": "auto" },
     { "op": "act", "v": 2, "ui": "act2" },
     { "op": "grade", "sat": 0.55, "tint": "#1a2a50", "ta": 0.25, "ms": 0 },
     { "op": "vignette", "a": 0.4, "ms": 0 },
@@ -57132,7 +57229,8 @@ MC.addEvents({
 
   /* 입구로 돌아온 뒤(stealth.onReset) */
   "a4t.reset": [
-    { "op": "say", "who": "sys", "t": "굴 입구로 돌아왔다." },
+    // [0.9.37 A15] 벽감에서 다시 시작했으면(var st_nook 1 — stealth.js) 「입구로」 줄을 건너뜀(새 글 없음)
+    { "op": "if", "cond": { "not": { "var": "st_nook", "eq": 1 } }, "then": [ { "op": "say", "who": "sys", "t": "굴 입구로 돌아왔다." } ] },
     { "op": "if", "cond": { "not": { "flag": "a4t.reset1" } }, "then": [
       { "op": "set", "flag": "a4t.reset1", "v": true },
       { "op": "say", "who": "faria", "t": "서두르지 말게.\n{p:200}간수도 사람이라\n돌아서는 때가 있네." } ] }
@@ -59837,7 +59935,7 @@ MC.addEvents({
     "s3k.t2_alert": [ call("a4t.alert") ],
     "s3k.t2_caught": [ call("a4t.caught") ],
     "s3k.t2_reset": [
-      { "op": "say", "who": "sys", "t": "굴 입구로 돌아왔다." },
+      { "op": "if", "cond": { "not": { "var": "st_nook", "eq": 1 } }, "then": [ { "op": "say", "who": "sys", "t": "굴 입구로 돌아왔다." } ] },   // [0.9.37 A15] 벽감에서 다시면 건너뜀
       when(NF("s3k.t2_reset1"), [
         { "op": "set", "flag": "s3k.t2_reset1" },
         { "op": "face", "id": "follower", "dir": "player" },
@@ -68811,7 +68909,7 @@ MC.addLang('ko', {
     "set.weak": { "w": 44, "font": "body", "lines": 1, "note": "설정 값 — 흔들림" },
     "set.on": { "w": 28, "font": "body", "lines": 1, "note": "켜기/끄기 스위치 왼쪽 글(켬)" },
     "set.off": { "w": 28, "font": "body", "lines": 1, "note": "켜기/끄기 스위치 왼쪽 글(끔)·흔들림 값(끔)" },
-    "set.silentHint": { "w": 160, "font": "small", "lines": 1, "note": "설정 '소리' 탭 아래(무음 스위치 안내)" },
+    "set.silentHint": { "w": 160, "font": "small", "lines": 2, "note": "설정 '소리' 탭 아래(무음 스위치 안내) — 세로에서 창 폭을 넘으면 두 줄(0.9.37 A11)" },
 
     "lang.title": { "w": 140, "font": "body", "lines": 1, "note": "언어 목록 창 제목(지구본 옆). 목록 각 행은 그 언어의 자기 이름(meta.native)" },
     "set.credits": { "w": 130, "font": "body", "lines": 1, "note": "설정 '진행' 탭 맨 아래 행(누르면 라이선스·크레딧 창) — 오른쪽 ▶" },
@@ -93255,6 +93353,15 @@ MC.addLang('es', {
     if (lit) { const f = ((t / 140 + i * 3) | 0) % 3; g.px(x + 1, y + 2, '#ffcf4a'); g.px(x + 1, y + 1 - (f === 0 ? 1 : 0), f ? '#ff8a30' : '#fff6d0'); }
     else g.px(x + 1, y + 2, '#3a3848');
   }
+  // [0.9.37 A10 · R942] 머리 줄 촛불(높이 약 9px, 숫자 앞) — 옛 candlePip(3×5)이 숫자 뒤에 붙어 「1 i」로 읽혔다(6차 평가 F11). 되돌리기: ?uw2off=R942
+  function candleBig(x, y, t) {
+    const g = G(), f = ((t / 140) | 0) % 3;
+    g.rect(x, y + 3, 5, 7, '#2b1d2a');
+    g.rect(x + 1, y + 4, 3, 6, '#f4efe0'); g.rect(x + 3, y + 4, 1, 6, '#cfc6b0');
+    g.px(x + 2, y + 3, '#3a2a20');
+    g.px(x + 2, y + 2, '#ffcf4a'); g.px(x + 2, y + 1, f ? '#ff8a30' : '#fff6d0');
+    if (f === 0) g.px(x + 2, y, '#fff6d0');
+  }
   function shakeX(t0) { const k = MC.time.real - t0; return k < 260 ? Math.round(Math.sin(k * 0.09) * 3 * (1 - k / 260)) : 0; }
 
   /* ================================================================ 수업 판 */
@@ -93366,7 +93473,10 @@ MC.addLang('es', {
         U.portraitBox('faria', null, x + 6, top + 6, 1, null, sc);   // [r5 A1] sc = 빠른 길 검사(pt-c 32 자리). 되돌리기: 뒤 두 인자를 뺀다
         MC.text.draw(U.tf('hub.lessonTitle'), x + 46, top + 6, { color: P.gold });
         const sx = MC.text.draw(U.tf('hub.lessonToday'), x + 46, top + 24, { font: 'small', color: P.dim }) + 4;
-        if (pts > 0) {
+        if (pts > 0 && MC.uw2 && MC.uw2('R942')) {                  // [0.9.37 A10] 촛불(크게) → 숫자
+          candleBig(sx, top + 22, t);
+          MC.text.draw(String(pts), sx + 8, top + 24, { font: 'small', color: P.gold });
+        } else if (pts > 0) {
           const ex2 = MC.text.draw(String(pts), sx, top + 24, { font: 'small', color: P.gold }) + 3;
           for (let i = 0; i < Math.min(pts, 4); i++) candlePip(ex2 + i * 5, top + 25, true, t, i);
         } else MC.text.draw(U.tf('hub.none'), sx, top + 24, { font: 'small', color: P.dim });   // [r3 A8] 옛 g.mix(P.dim, P.f, 0.3)
@@ -93395,7 +93505,9 @@ MC.addLang('es', {
           const tx = ix + ifr + 6, dimAll = other || (!c.open && !c.learned);
           const nmCol = dimAll ? P.dim : (c.learned ? P.gold : P.text);
           const noQ = compact && !g.land && chh < 30;                  // [res2 R938] 낮은 카드: 인용 줄 없이 이름만 가운데
-          const nmY = noQ ? cy + ((chh - 13) >> 1) : (compact || g.land) ? cy + 3 : cy + 5, qY = (compact || g.land) ? cy + 17 : cy + 22;
+          // [0.9.37 A10 · R942] 촘촘한 판(세로)에서 설명 줄을 12px 간격·한 칸 위로 — 카드 41px부터 두 줄(옛: 45px 미만이면 한 줄 「…」, 아이폰 16도 한 줄)
+          const tight = compact && !g.land && !noQ && MC.uw2 && MC.uw2('R942'), qLH = tight ? 12 : 13;
+          const nmY = noQ ? cy + ((chh - 13) >> 1) : (compact || g.land) ? cy + 3 : cy + 5, qY = tight ? cy + 16 : (compact || g.land) ? cy + 17 : cy + 22;
           const ex = MC.text.draw(c.name, tx, nmY, { font: 'bold', color: nmCol });
           // 기술 이름: '배웠다' 도장과 겹치면 줄여 '…'(역사의 교훈 + 배웠다가 붙어 읽히던 것)
           let skn = c.skillName || '';
@@ -93404,10 +93516,10 @@ MC.addLang('es', {
           if (sknMax > 12) MC.text.draw(skn, ex + 6, nmY + 2, { font: 'small', color: dimAll ? P.dim : g.mix(P.gold, P.text, 0.35) });
           const qw = cx + cw - 8 - tx;
           let ql = MC.text.wrap(c.quote || '', qw, 'small');
-          const maxL = noQ ? 0 : Math.max(1, Math.floor((chh - ((compact || g.land) ? 19 : 24)) / 13));
+          const maxL = noQ ? 0 : tight ? Math.max(1, Math.floor((chh - 17) / 12)) : Math.max(1, Math.floor((chh - ((compact || g.land) ? 19 : 24)) / 13));
           if (!maxL) ql = [];
           else if (ql.length > maxL) { ql = ql.slice(0, maxL); let s = ql[maxL - 1]; while (s.length > 1 && MC.text.width(s + '…', 'small') > qw) s = s.slice(0, -1); ql[maxL - 1] = s + '…'; }
-          ql.forEach((l, k) => MC.text.draw(l, tx, qY + k * 13, { font: 'small', color: dimAll ? g.mix(P.dim, P.f, 0.3) : P.dim }));
+          ql.forEach((l, k) => MC.text.draw(l, tx, qY + k * qLH, { font: 'small', color: dimAll ? g.mix(P.dim, P.f, 0.3) : P.dim }));
           // 배웠다 도장
           if (c.learned) {
             const stamp = U.tf('hub.learnedStamp'), sw = MC.text.width(stamp, 'small') + 8, sx2 = cx + cw - 8 - sw, sy2 = (compact || g.land) ? cy + 3 : cy + 5;
@@ -102782,7 +102894,9 @@ MC.addLang('es', {
           }
           if (l27.length && t >= IN + PAPER_MS) {                                                 // [c50-cine B5-8] 27번 칸(흐린 옛 잉크) + 「생존」에 줄
             const lv = Math.min(MC.uw2 && MC.uw2('R928') ? 12 : 9, U.lvl(t, IN + PAPER_MS, 400));   // [R928 11-17] B4 흐린 옛 잉크 색은 그대로 두되 디더 9 → 12(4단 기준 한 단 — 획이 덜 끊겨 읽힘). 되돌리기: ?uw2off=R928 또는 9
-            l27.forEach((l, i) => { const img = MC.text.bake(l, 'small', '#8a7a62'); U.drawDither(img, cx - 58, Y.y27 + i * LH27, lv); });
+            // [0.9.37 A12 · R944] 흐린 옛 잉크는 남기되 읽는 동안 종이(#d6c9a8)와 약 3.2:1 — 옛 #8a7a62·디더 12는 약 2.5:1보다 낮았다(F17). 되돌리기: ?uw2off=R944
+            const r944 = MC.uw2 && MC.uw2('R944'), ink27 = r944 ? '#7a6a52' : '#8a7a62', lv27 = r944 ? Math.min(16, U.lvl(t, IN + PAPER_MS, 400)) : lv;
+            l27.forEach((l, i) => { const img = MC.text.bake(l, 'small', ink27); U.drawDither(img, cx - 58, Y.y27 + i * LH27, lv27); });
             if (seg27 && t >= tS0) {
               const sx = cx - 58 + MC.text.width(seg27[0], 'small'), w = MC.text.width(seg27[1], 'small'), yy = Y.y27 + s27 * LH27 + 6;
               const ww = Math.round((w + 2) * MC.clamp((t - tS0) / (tS1 - tS0), 0, 1));
@@ -103058,7 +103172,7 @@ MC.addLang('es', {
   const CAP_LH = 13;                                           // 소리 자막 줄(fx.js CAP_LH와 같음)
   const DEF_OPEN = 600, DEF_CLOSE = 600;                       // 첫 컷 open·마지막 컷 close를 안 적었을 때
   const STATS_KEY = 'mc34.stats';                              // 기기 기록(세이브와 따로): {comics:{id:true}}
-  const COL = { text: '#fbf6ea', dim: '#6e675c', hintOn: '#e0d9bf', now: '#fbf6ea', past: '#8a8478', next: '#3a352e' };
+  const COL = { text: '#fbf6ea', dim: '#6e675c', dim2: '#8e887c', hintOn: '#e0d9bf', now: '#fbf6ea', past: '#8a8478', next: '#3a352e' };   // [0.9.37 A12 · R944] dim2 = 건너뛰기 안내(옛 dim 약 3.8:1 → 약 5.8:1, F17)
   // [vista] 열기·닫기 · 탭으로 닫기까지 · 이름표 판(큰 창 테 164×34 — §3) · 그림과 판 사이 · 보이는 칸 = 480 − DRIFT(위아래로 끊어 움직이는 폭) · 낮은 화면에서 보이는 칸 하한 · 판만(plateOnly) 길이
   const VS = { OPEN: 500, CLOSE: 400, TAP: 600, PW: 164, PH: 34, GAP: 8, DRIFT: 16, MIN_ROWS: 300, ONLY_MS: 2600 };
   const BAYER = MC.gfx.BAYER || [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
@@ -103942,7 +104056,7 @@ MC.addLang('es', {
       const x = x0 + TW - 7, y = ry + 3;
       g.rect(x, y, 7, 1, COL.text); g.rect(x + 1, y + 1, 5, 1, COL.text); g.rect(x + 2, y + 2, 3, 1, COL.text); g.rect(x + 3, y + 3, 1, 1, COL.text);
     }
-    if (P.canSkip) MC.text.draw(tf('comic.skip'), LD ? x0 + TW : x0 + TW - 13, LD ? ry - 14 : ry, { font: 'small', color: p > 0 ? COL.hintOn : COL.dim, align: 'right' });   // 건너뛰기 안내(작게, 본 편만)
+    if (P.canSkip) MC.text.draw(tf('comic.skip'), LD ? x0 + TW : x0 + TW - 13, LD ? ry - 14 : ry, { font: 'small', color: p > 0 ? COL.hintOn : (MC.uw2 && MC.uw2('R944') ? COL.dim2 : COL.dim), align: 'right' });   // 건너뛰기 안내(작게, 본 편만)
     if (lv < 16) g.ditherRect(bx, by, bw, g.H - by, '#000', 16 - lv);
   }
 
@@ -106789,7 +106903,9 @@ MC.addLang('es', {
       const two = !!G().land && w >= 280, per = two ? Math.ceil(n / 2) : n, cw = two ? ((w - 8) >> 1) : w;
       // [land2] 가로 두 칸: 창 높이를 줄에 다 쓴다 — 탭 높이 22 → 18 · 탭과 첫 줄 사이 6 → 2 · 아래 남김 18 → 소리 탭만 18(무음 안내 줄 자리), 진행 탭은 2.
       //   옛: 탭 22 + 14 + 아래 18을 늘 빼서 진행 탭 여섯 줄이 줄 높이 약 15·◀▶ 약 12(폰에서 누르기 작음). 이제 폰 19 · 320×180 18. 세로·한 칸은 옛 값 그대로(rowTop = tabH + 10, foot 18)
-      const tabH = two ? 18 : Math.max(22, mt), rowTop = two ? tabH + 6 : tabH + 10, foot = two ? (this.tab === 0 ? 18 : 2) : 18;
+      // [0.9.37 A11 · R943] 세로: 무음 안내가 창 폭을 넘으면(ko 「무음 모드에서는…」이 틀에 닿음 — 6차 평가 F14) 두 줄 — 소리 탭만 아래 남김 18 → 31. 되돌리기: ?uw2off=R943
+      this.hint2 = !two && this.tab === 0 && !!(MC.uw2 && MC.uw2('R943')) && MC.text.width(tf('set.silentHint'), 'small') > w - 12;
+      const tabH = two ? 18 : Math.max(22, mt), rowTop = two ? tabH + 6 : tabH + 10, foot = two ? (this.tab === 0 ? 18 : 2) : (this.hint2 ? 31 : 18);
       this.tabs.forEach((b, i) => { b.x = x + 4 + i * (tw + 4); b.y = y + 4; b.w = tw; b.h = tabH; b.style = i === this.tab ? 'primary' : 'normal'; });
       this.tabH = tabH; this.rowTop = rowTop; this.two = two;
       this.per = per;
@@ -106853,7 +106969,8 @@ MC.addLang('es', {
           const room = r.type === 'vol' ? (e.dec.x - x) - 22 : r.type === 'opt' ? (e.dec.x - x) - 11 : w - 51 - onW;
           const bw0 = MC.text.width(r.label, 'body'), lf = bw0 > room ? 'small' : 'body';
           if (r.type === 'bool' && lf === 'small' && MC.text.width(r.label, 'small') > room) hideOn = true;
-          MC.text.draw(r.label, x + 8, cy + (lf === 'small' ? 1 : 0), { color: P.text, font: lf });
+          const mutedVol = r.type === 'vol' && s.mute && MC.uw2 && MC.uw2('R943');   // [0.9.37 A11] 「모든 소리: 끔」이면 음악·효과음 줄 이름도 흐리게(막대는 원래 흐림 — F15)
+          MC.text.draw(r.label, x + 8, cy + (lf === 'small' ? 1 : 0), { color: mutedVol ? P.dim : P.text, font: lf });
         }
         if (r.type === 'vol') {
           const v = s[r.k] | 0;
@@ -106879,7 +106996,15 @@ MC.addLang('es', {
         if (e.dec) { const o1 = e.dec.w < 22 ? 6 : 8, o2 = e.inc.w < 22 ? 6 : 9; tri(e.dec.x + o1, e.dec.y + (e.dec.h >> 1) - 3 + (e.dec.pressed ? 1 : 0), -1, e.dec.enabled ? P.text : P.dim); tri(e.inc.x + o2, e.inc.y + (e.inc.h >> 1) - 3 + (e.inc.pressed ? 1 : 0), 1, e.inc.enabled ? P.text : P.dim); }
       });
       const rowsEnd = this.y + (this.rowTop != null ? this.rowTop : this.tabH + 10) + (this.per || this.rb.length) * this.rowH, hintY = rowsEnd + (this.two ? 3 : 6), verY = this.y + this.h - 11;   // [land2] rowTop · 가로 두 칸은 안내 줄을 3 아래(옛 6)
-      if (this.tab === 0) MC.text.draw(tf('set.silentHint'), x + (w >> 1), hintY, { font: 'small', color: P.dim, align: 'center' });
+      let hintN = 1;
+      if (this.tab === 0 && this.hint2) {                          // [0.9.37 A11] 두 줄(폭 w−12 안에서 나눔)
+        const hs = tf('set.silentHint'), half = Math.ceil(MC.text.width(hs, 'small') / 2);   // 두 줄 길이를 비슷하게(끝 낱말만 넘어가지 않게): 절반 폭부터 넓혀 가며 두 줄에 드는 첫 폭
+        let hl = null;
+        for (let ww = half; ww <= w - 12; ww += 4) { const t2 = MC.text.wrap(hs, ww, 'small'); if (t2.length <= 2) { hl = t2; break; } }
+        if (!hl) hl = MC.text.wrap(hs, w - 12, 'small').slice(0, 2);
+        hintN = hl.length;
+        hl.forEach((l, k) => MC.text.draw(l, x + (w >> 1), hintY + k * 13, { font: 'small', color: P.dim, align: 'center' }));
+      } else if (this.tab === 0) MC.text.draw(tf('set.silentHint'), x + (w >> 1), hintY, { font: 'small', color: P.dim, align: 'center' });
       // [land2] 가로 두 칸: 버전 글씨는 소리 탭의 무음 안내 줄 오른쪽 끝에(안내 글과 6칸 넘게 떨어질 때만). 옛: 창 맨 아래 오른쪽(verY) — 줄 높이를 늘리면서 그 자리가 없어졌다
       if (this.two) {
         if (MC.VERSION && this.tab === 0) { const vs = 'v' + MC.VERSION, hw = MC.text.width(tf('set.silentHint'), 'small'); if (x + (w >> 1) + (hw >> 1) + 6 <= x + w - 6 - MC.text.width(vs, 'small')) MC.text.draw(vs, x + w - 6, hintY, { font: 'small', color: P.dim, align: 'right' }); }
@@ -106889,7 +107014,7 @@ MC.addLang('es', {
       }
       // [a42-ui 0.4.2 A7] 버전 글씨: 타이틀 왼쪽 위에서 설정 창 맨 아래 오른쪽으로(스토어 첫 화면에 개발 흔적이 남지 않게). 숫자라 번역 키 없음
       //   줄·무음 안내와 겹칠 만큼 창이 낮으면(180×320 소리 탭, 디버그의 언어 줄) 그 탭에서는 그리지 않는다(다른 탭에서 보인다)
-      if (MC.VERSION && verY >= rowsEnd + 1 && !(this.tab === 0 && verY < hintY + 13)) MC.text.draw('v' + MC.VERSION, x + w - 6, verY, { font: 'small', color: P.dim, align: 'right' });   // [r3 A8] 옛 g.mix(P.dim, P.f, 0.35)
+      if (MC.VERSION && verY >= rowsEnd + 1 && !(this.tab === 0 && verY < hintY + 13 * hintN)) MC.text.draw('v' + MC.VERSION, x + w - 6, verY, { font: 'small', color: P.dim, align: 'right' });   // [r3 A8] 옛 g.mix(P.dim, P.f, 0.35)
     }
   }
   ch1.SettingsPanel = SettingsPanel;
@@ -107309,6 +107434,10 @@ MC.addLang('es', {
         const pref = Math.max(28, mt + 4), low = Math.max(22, mt);
         const withInfo = Math.floor((y + h - 40 - cmd.y - 8) / cmd.rows), noInfo = Math.floor((y + h - cmd.y - 8) / cmd.rows);
         cmd.rowH = withInfo >= low ? Math.min(pref, withInfo) : Math.max(22, Math.min(pref, noInfo));
+        // [0.9.37 A13 · R945] 장소·연도 칸(36)이 안 들어가는 짧은 화면(듀오 겉화면 등): 줄을 조금 줄여 아래에 「장소 · 플레이 시간」 한 줄(16)을 남긴다(옛: 정보가 통째로 빠짐 — F12). 되돌리기: ?uw2off=R945
+        const lineInfo = Math.floor((y + h - 20 - cmd.y - 8) / cmd.rows);   // 한 줄 16 + 틈 4 + 목록 틀 8(ui List h)
+        sc.infoLine = !g.land && withInfo < low && lineInfo >= 22 && !!(MC.uw2 && MC.uw2('R945'));
+        if (sc.infoLine) cmd.rowH = Math.min(pref, lineInfo);
         // [res2 R938] 긴 화면(폴드 겉화면 180×432 · 아이폰 16 196×426): 자리가 남으면 줄을 32까지 넓힌다(엄지에 더 큰 칸 — 남는 틈은 renderMain이 장소 칸을 목록 밑에 붙여 없앤다). 되돌리기: ?uw2off=R938
         if (!g.land && withInfo > pref && MC.uw2 && MC.uw2('R938')) cmd.rowH = Math.min(Math.max(32, mt + 6), withInfo);
       }
@@ -107510,6 +107639,15 @@ MC.addLang('es', {
         if (!MC.game.flag('a3.year_gone') && !MC.game.flag('s4.on')) MC.text.draw(tf('fmt.year', { y: yr }), x + w - 8, fy + 4, { font: 'small', color: P.gold, align: 'right' });   // 3막 2년 차: 연도 표시 소멸, 1820 카드에서 다시(content-a4hub)
         const pm = Math.floor(((MC.state && MC.state.playMs) || 0) / 60000);
         MC.text.draw(tf('fmt.play', { h: Math.floor(pm / 60), m: String(pm % 60).padStart(2, '0') }), x + 8, fy + 19, { font: 'small', color: P.dim });
+      } else if (sc.infoLine && lim + 16 <= y + h) {               // [0.9.37 A13] 칸 대신 한 줄
+        const pm = Math.floor(((MC.state && MC.state.playMs) || 0) / 60000);
+        const pl = tf('fmt.play', { h: Math.floor(pm / 60), m: String(pm % 60).padStart(2, '0') });
+        g.frame(x, lim, w, 16, { small: true });
+        let nm = mapName() || '';
+        const room = w - 16 - MC.text.width(pl, 'small') - 10;
+        while (nm.length > 1 && MC.text.width(nm, 'small') > room) nm = nm.slice(0, -2) + '…';
+        if (nm) MC.text.draw(nm, x + 8, lim + 2, { font: 'small', color: P.text });
+        MC.text.draw(pl, x + w - 8, lim + 2, { font: 'small', color: P.dim, align: 'right' });
       }
     }
     function renderItemsLand(x, y, w, h) {           // [land] 왼쪽 목록 · 오른쪽 설명(높이 전체)
