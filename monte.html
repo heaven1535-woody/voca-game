@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.37';
+  var VERSION = '0.9.38';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -8545,12 +8545,31 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
   // [a43-play S6] 시퀀서 박동: 본 스레드 setInterval(25ms)은 숨은·소리 없는 탭(녹화 탭 — 소리를 녹음 경로로만 보냄)에서 크롬이 1초에 한 번으로 묶는다.
   //   그러면 0.12초 선예약만 울리고 0.88초가 비어 '1초마다 0.9초 무음'이 된다(녹음 s2_1822_001·002·s4_3_001 — F50). 그림은 이미 워커 박동(core.js)이라 멀쩡했다.
   //   워커 타이머는 묶이지 않으므로 워커가 25ms마다 깨운다(못 쓰면 예전처럼 setInterval). 그래도 박동 사이가 0.2초를 넘으면 5초 동안 선예약을 0.3초로 늘린다(앱 포장·절전 모드 대비).
-  let la = LA, lastBeat = 0, wideUntil = 0;
+  let la = LA, lastBeat = 0, wideUntil = 0, wideLa = 0.3;
+  // [0.9.38 · R953] 앱 전환 뒤 BGM이 중간중간 비는 것(사용자 11-19 폰 — 마르세유 아버지 대화 중 다른 앱 갔다 옴): 박동이 띄엄띄엄 오면 선예약이 비어
+  //   음악이 잠깐 멈췄다 같은 자리부터 다시 났다. ① 박동 사이가 길었으면 그 길이의 1.5배(0.3~1.0초)만큼 미리 예약(10초) ② 화면이 다시 보이면 10초 동안 0.5초 ③ 그림 프레임
+  //   (core onUpdate 60Hz)에서도 박동을 챙김 — 워커 타이머만 늦어져도 끊기지 않게. 되돌리기: ?uw2off=R953(옛: 0.2초 넘으면 5초 동안 0.3초)
+  const r953 = () => !!(MC.uw2 && MC.uw2('R953'));
   function beat() {
-    const t = performance.now();
-    if (lastBeat && t - lastBeat > 200) wideUntil = t + 5000;
-    lastBeat = t; la = t < wideUntil ? Math.max(LA, 0.3) : LA;
+    const t = performance.now(), gap = lastBeat ? t - lastBeat : 0;
+    if (gap > 200) {
+      if (r953()) { const want = Math.min(1.0, Math.max(0.3, gap / 1000 * 1.5)); wideLa = t < wideUntil ? Math.max(wideLa, want) : want; wideUntil = t + 10000; }
+      else { wideUntil = t + 5000; wideLa = 0.3; }
+    }
+    lastBeat = t; la = t < wideUntil ? Math.max(LA, wideLa) : LA;
+    if (t >= wideUntil) wideLa = 0.3;
     loop();
+  }
+  let frameHooked = false;
+  function hookFrame() {
+    if (frameHooked || !MC.core || !MC.core.onUpdate) return;
+    frameHooked = true;
+    MC.core.onUpdate(function () { if (timer && r953() && performance.now() - lastBeat > 40) beat(); }, { real: true });
+    try {
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && r953()) { const t = performance.now(); wideUntil = t + 10000; wideLa = Math.max(wideLa, 0.5); }
+      });
+    } catch (e) { /* */ }
   }
   M._beatInfo = () => ({ worker: !!(timer && timer.postMessage), la, wide: performance.now() < wideUntil });
   let pbLast = null;
@@ -8637,6 +8656,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
     } catch (e) { A.warn('mloop', '시퀀서 오류: ' + e.message); }
   }
   function ensureTimer() {
+    hookFrame();                                           // [0.9.38 R953] 그림 프레임 박동(한 번만)
     if (timer) return;
     const fallback = () => { timer = setInterval(beat, 25); };
     try {
@@ -52605,7 +52625,17 @@ MC.addEvents({
       { "op": "sfx", "id": "gull", "pan": -0.3 },
       { "op": "wait", "ms": 500 },
       // [0.9.29 C1] 플레이어만 아는 긴장 — 전날 밤 카드루스의 「카탈루냐는 저쪽인데」를 에드몽이 영문도 모르고 되풀이한다(페르낭은 투서를 들고 시내로). a1.hands 끝 상자를 뺀 C7과 짝(탭 연속 10 그대로)
+      // [0.9.38 사용자 「붉은 허리띠나 페르낭이 보이진 않아」] 대사가 말하는 것을 화면에도 — 페르낭이 거리 오른쪽에서 걸어와 북쪽 골목(시내 쪽, x10)으로 꺾여 사라진다.
+      //   밤새 품은 고발장을 아침에 내러 가는 길(원작은 4장 끝 「시내로 가잖아」까지만 — 언제 냈는지는 말하지 않음). 대사 글자는 그대로. 되돌리기: fer_e 세 줄 삭제
+      //   [사용자 「전날 페르낭이 시내 쪽으로 간 것이 설명은 안 되는데」] 전날 밤 시내 쪽(항구)으로 간 페르낭이 밤새 부두 끝에 서 있다가(관청은 밤에 닫혀 있다),
+      //   아침이 되자 골목(시내 한가운데 — 재판소 쪽)으로 올라간다. 밤 → 부두 → 아침 골목이 한 줄로 이어진다
+      { "op": "spawn", "id": "fer_e", "sprite": "ch_fernand", "x": 12, "y": 14, "dir": "down" },   // 부두 끝, 바다 쪽을 보고 서 있다(밤새)
+      { "op": "emote", "id": "fer_e", "kind": "dots", "ms": 1000 },
+      { "op": "face", "id": "fer_e", "dir": "up" },
+      { "op": "move", "id": "fer_e", "path": "U1 R1 U2 L2 U5 L1 U5", "speed": 220, "async": true },   // 거리를 올라가 골목 입구(10,3)를 지나 지붕 사이 길(10,1)로 — 화면 위로 사라짐
+      { "op": "wait", "ms": 1400 },
       { "op": "say", "who": "think", "t": "붉은 허리띠가 골목으로\n꺾인다.{p:300} ……페르낭?\n카탈루냐는 저쪽인데." },
+      { "op": "despawn", "id": "fer_e" },
       { "op": "move", "id": "player", "path": "U1", "speed": 220 },
       { "op": "face", "id": "morrel_e", "dir": "down" },
       { "op": "say", "who": "morrel", "t": "잘 잤나.{p:300} 짐은 다 내렸네.{p:200}\n오늘은 쉬게." },
@@ -52663,6 +52693,11 @@ MC.addEvents({
         "else": [ { "op": "say", "who": "morrel", "t": "앞돛 밧줄일세.{p:200}\n뱃머리 쪽 부두에 있네." } ] }
     ],
     "a1e.sailor": [
+      // [0.9.38 사용자 「늙은 선원의 한마디를 자동이 아니라 대화하면 나오게」] 아침에 부두 끝에서 골목으로 간 페르낭 — 전날 밤 시내 쪽으로 간 뒤 밤새 부두에 있었다는 것.
+      //   말을 걸어야만 듣는다(처음 한 번). 추리 때 「붉은 허리띠」를 에드몽이 직접 보고 들은 기억이 된다
+      { "op": "if", "cond": { "not": { "flag": "a1e.sailor_fer" } }, "then": [
+        { "op": "set", "flag": "a1e.sailor_fer" },
+        { "op": "say", "who": "sailor", "t": "붉은 허리띠 그 청년 말일세.{p:200}\n밤새 부두 끝에 서 있더군." } ] },
       { "op": "say", "who": "sailor", "t": "모렐 씨가 오늘은 다들 쉬라더군.{p:300}\n난 그물이나 깁겠네." }
     ],
     // 앞돛 밧줄: 매듭 전이면 매듭으로, 뒤면 한 줄
@@ -53256,7 +53291,7 @@ MC.addEvents({
     { "op": "wait", "ms": 500 },
     // [r3 B1] 잔칫상 앞 빈자리로 한 걸음(탭) — 해 질 녘 부두(a1e.dusk)부터 이어지던 탭 11상자를 끊는다(9 | 탭 | 2). 앉는 그림이 없어 상 앞에 서는 것으로 한다.
     //   신부 옆(9,8)이 아니라 상 앞(8,9)이라 모렐의 「신부 옆으로 가게」와 어긋나지 않는다. 되돌리기: 이 꼬리표 주석 두 줄과 아래 op 3줄을 지운다
-    { "op": "custom", "id": "deduce", "args": { "stage": "tap", "at": [ 8, 9 ], "hint": "잔칫상 자리로 간다." } },
+    { "op": "custom", "id": "deduce", "args": { "stage": "tap", "at": [ 8, 9 ], "hint": "내 자리로 간다." } },
     { "op": "move", "id": "player", "path": "U1", "speed": 200 },
     { "op": "face", "id": "player", "dir": "up" },
     { "op": "sfx", "id": "glass_clink" },
@@ -70562,6 +70597,7 @@ MC.addLang('en', {
     "밧줄 고맙네.{p:300} 내일은 자네 날이야.\n오늘은 푹 쉬게.": "Thanks for the line.{p:300} Tomorrow’s your day.\nGet some rest today.",
     "앞돛 밧줄일세.{p:200}\n뱃머리 쪽 부두에 있네.": "The foresail line.{p:200} On the quay, up by the bow.",
     "모렐 씨가 오늘은 다들 쉬라더군.{p:300}\n난 그물이나 깁겠네.": "Monsieur Morrel says we’re all to rest today.{p:300}\nI’ll mend my nets, then.",
+    "붉은 허리띠 그 청년 말일세.{p:200}\n밤새 부두 끝에 서 있더군.": "That red-sash lad…{p:200}\nstood on the quay all night.",
     "단단히 묶였다.{p:200} 이제 바람이 불어도 된다.": "Tied fast.{p:200} Let the wind blow now.",
     "이거 제가 묶었어요!": "I tied that one!",
     "……이러면 첫 바람에{p:200}\n돛이 날아가.": "...Like this, the first gust{p:200}\nwill carry the sail away.",
@@ -70608,7 +70644,7 @@ MC.addLang('en', {
     "약혼 파티 날": "The betrothal feast",
     "─── 이틀 후 ───": "─ Two days later ─",
     "레제르브 · 약혼 파티": "La Réserve · Feast",
-    "잔칫상 자리로 간다.": "Go to your seat.",
+    "내 자리로 간다.": "Go to your seat.",
     "왔나, 신랑!{p:200} 오늘 건배는 자네 몫일세.": "There’s our bridegroom!{p:200} The toast is yours today, my boy.",
     "인사 다 돌거든 신부 옆으로 가게.{p:200} 다들 목이 마르다네.": ["Once you’ve made your rounds, go and sit by your bride.", "{p:200}We’re all dying of thirst."],
     "오늘은 여기가 내 자리다.": "Today, my place is here.",
@@ -74142,6 +74178,7 @@ MC.addLang('ja', {
     "밧줄 고맙네.{p:300} 내일은 자네 날이야.\n오늘은 푹 쉬게.": "帆綱、助かったよ。{p:300}\n明日は君の日だ。今日はゆっくり休みたまえ。",
     "앞돛 밧줄일세.{p:200}\n뱃머리 쪽 부두에 있네.": "前の帆綱だ。{p:200}\n舳先側の波止場にある。",
     "모렐 씨가 오늘은 다들 쉬라더군.{p:300}\n난 그물이나 깁겠네.": "モレルさんが、今日はみんな休めとさ。{p:300}わしは、網でも繕うとするか。",
+    "붉은 허리띠 그 청년 말일세.{p:200}\n밤새 부두 끝에 서 있더군.": "あの赤い腰帯の若いの、{p:200}\n夜通し波止場の端に突っ立っとったぞ。",
     "단단히 묶였다.{p:200} 이제 바람이 불어도 된다.": "しっかり結べた。{p:200}これで、いつ風が吹いてもいい。",
     "이거 제가 묶었어요!": "これ、ぼくが結んだんだ！",
     "……이러면 첫 바람에{p:200}\n돛이 날아가.": "……これじゃ、最初の風で{p:200}\n帆が飛んでいくぞ。",
@@ -74187,7 +74224,7 @@ MC.addLang('ja', {
     "약혼 파티 날": "婚約の宴の日",
     "─── 이틀 후 ───": "─── 二日後 ───",
     "레제르브 · 약혼 파티": "レゼルヴ · 婚約の宴",
-    "잔칫상 자리로 간다.": "宴の席へ行く。",
+    "내 자리로 간다.": "宴の席へ行く。",
     "왔나, 신랑!{p:200} 오늘 건배는 자네 몫일세.": "来たか、花婿！{p:200} 今日の乾杯は、君の役目だ。",
     "인사 다 돌거든 신부 옆으로 가게.{p:200} 다들 목이 마르다네.": "あいさつがすんだら、花嫁のそばへ行きたまえ。{p:200}みんな、喉がからからだぞ。",
     "오늘은 여기가 내 자리다.": "今日は、ここが僕の席だ。",
@@ -77714,6 +77751,7 @@ MC.addLang('fr', {
     "밧줄 고맙네.{p:300} 내일은 자네 날이야.\n오늘은 푹 쉬게.": "Merci pour le cordage.{p:300}\nDemain est à vous.\nReposez-vous, d’ici là.",
     "앞돛 밧줄일세.{p:200}\n뱃머리 쪽 부두에 있네.": "Le cordage de misaine.{p:200}\nSur le quai, côté proue.",
     "모렐 씨가 오늘은 다들 쉬라더군.{p:300}\n난 그물이나 깁겠네.": "Monsieur Morrel nous donne congé.{p:300} Moi, je ravaude mes filets.",
+    "붉은 허리띠 그 청년 말일세.{p:200}\n밤새 부두 끝에 서 있더군.": "La ceinture rouge, là ?{p:200}\nToute la nuit sur le quai.",
     "단단히 묶였다.{p:200} 이제 바람이 불어도 된다.": "Solidement noué.{p:200} À présent, le vent peut souffler.",
     "이거 제가 묶었어요!": "C’est moi qui l’ai noué !",
     "……이러면 첫 바람에{p:200}\n돛이 날아가.": "…Comme ça, au premier coup de vent,{p:200}\nla voile s’envole.",
@@ -77759,7 +77797,7 @@ MC.addLang('fr', {
     "약혼 파티 날": "Le jour des fiançailles",
     "─── 이틀 후 ───": "─ Deux jours après ─",
     "레제르브 · 약혼 파티": "Réserve · Fiançailles",
-    "잔칫상 자리로 간다.": "Prendre place à table.",
+    "내 자리로 간다.": "Prendre place à table.",
     "왔나, 신랑!{p:200} 오늘 건배는 자네 몫일세.": "Voilà notre fiancé !{p:200} Le toast d’aujourd’hui vous revient.",
     "인사 다 돌거든 신부 옆으로 가게.{p:200} 다들 목이 마르다네.": ["Après votre tournée, allez rejoindre votre fiancée.","{p:200}Tout le monde meurt de soif."],
     "오늘은 여기가 내 자리다.": "Aujourd’hui, ma place est ici.",
@@ -81291,6 +81329,7 @@ MC.addLang('zh-Hans', {
     "밧줄 고맙네.{p:300} 내일은 자네 날이야.\n오늘은 푹 쉬게.": "缆绳的事，多谢了。{p:300}\n明天是你的大日子。\n今天好好歇着。",
     "앞돛 밧줄일세.{p:200}\n뱃머리 쪽 부두에 있네.": "是前帆的缆绳。{p:200}\n在船头那边的码头上。",
     "모렐 씨가 오늘은 다들 쉬라더군.{p:300}\n난 그물이나 깁겠네.": "莫雷尔先生说，\n今天大家都歇着。{p:300}\n我就补补渔网吧。",
+    "붉은 허리띠 그 청년 말일세.{p:200}\n밤새 부두 끝에 서 있더군.": "那个系红腰带的小伙子啊，{p:200}\n在码头尽头站了一整夜。",
     "단단히 묶였다.{p:200} 이제 바람이 불어도 된다.": "绑结实了。{p:200}这下，风尽管吹吧。",
     "이거 제가 묶었어요!": "这是我绑的！",
     "……이러면 첫 바람에{p:200}\n돛이 날아가.": "……这样绑，第一阵风{p:200}\n就把帆刮跑了。",
@@ -81336,7 +81375,7 @@ MC.addLang('zh-Hans', {
     "약혼 파티 날": "订婚宴当天",
     "─── 이틀 후 ───": "─── 两天后 ───",
     "레제르브 · 약혼 파티": "雷瑟夫 · 订婚宴",
-    "잔칫상 자리로 간다.": "走到宴席前。",
+    "내 자리로 간다.": "走到宴席前。",
     "왔나, 신랑!{p:200} 오늘 건배는 자네 몫일세.": "我们的新郎来了！{p:200}今天的祝酒，就归你了。",
     "인사 다 돌거든 신부 옆으로 가게.{p:200} 다들 목이 마르다네.": "各桌招呼过了，就到新娘身边去。{p:200}大家都渴坏了。",
     "오늘은 여기가 내 자리다.": "今天，我的位子在这里。",
@@ -84869,6 +84908,7 @@ MC.addLang('zh-Hant', {
     "밧줄 고맙네.{p:300} 내일은 자네 날이야.\n오늘은 푹 쉬게.": "纜繩的事，多謝了。{p:300}\n明天是你的大日子。\n今天好好歇著。",
     "앞돛 밧줄일세.{p:200}\n뱃머리 쪽 부두에 있네.": "是前帆的纜繩。{p:200}\n在船頭那邊的碼頭上。",
     "모렐 씨가 오늘은 다들 쉬라더군.{p:300}\n난 그물이나 깁겠네.": "莫雷爾先生說，\n今天大家都歇著。{p:300}\n我就補補漁網吧。",
+    "붉은 허리띠 그 청년 말일세.{p:200}\n밤새 부두 끝에 서 있더군.": "那個繫紅腰帶的小伙子啊，{p:200}\n在碼頭盡頭站了一整夜。",
     "단단히 묶였다.{p:200} 이제 바람이 불어도 된다.": "綁結實了。{p:200}這下，風儘管吹吧。",
     "이거 제가 묶었어요!": "這是我綁的！",
     "……이러면 첫 바람에{p:200}\n돛이 날아가.": "……這樣綁，第一陣風{p:200}\n就把帆颳跑了。",
@@ -84914,7 +84954,7 @@ MC.addLang('zh-Hant', {
     "약혼 파티 날": "訂婚宴當天",
     "─── 이틀 후 ───": "─── 兩天後 ───",
     "레제르브 · 약혼 파티": "雷瑟夫 · 訂婚宴",
-    "잔칫상 자리로 간다.": "走到宴席前。",
+    "내 자리로 간다.": "走到宴席前。",
     "왔나, 신랑!{p:200} 오늘 건배는 자네 몫일세.": "我們的新郎來了！{p:200}今天的祝酒，就歸你了。",
     "인사 다 돌거든 신부 옆으로 가게.{p:200} 다들 목이 마르다네.": "各桌招呼過了，就到新娘身邊去。{p:200}大家都渴壞了。",
     "오늘은 여기가 내 자리다.": "今天，我的位子在這裡。",
@@ -88445,6 +88485,7 @@ MC.addLang('es', {
     "밧줄 고맙네.{p:300} 내일은 자네 날이야.\n오늘은 푹 쉬게.": "Gracias por el cabo.{p:300} Mañana es su día.\nHoy descanse bien.",
     "앞돛 밧줄일세.{p:200}\n뱃머리 쪽 부두에 있네.": "El cabo del trinquete.{p:200}\nEn el muelle, a proa.",
     "모렐 씨가 오늘은 다들 쉬라더군.{p:300}\n난 그물이나 깁겠네.": "El señor Morrel dice que hoy descansemos todos.{p:300}\nYo remendaré las redes.",
+    "붉은 허리띠 그 청년 말일세.{p:200}\n밤새 부두 끝에 서 있더군.": "El de la faja roja…{p:200}\npasó la noche en el muelle.",
     "단단히 묶였다.{p:200} 이제 바람이 불어도 된다.": "Bien atado.{p:200} Ya puede soplar el viento.",
     "이거 제가 묶었어요!": "¡Ese lo até yo!",
     "……이러면 첫 바람에{p:200}\n돛이 날아가.": "…Así, a la primera racha{p:200}\nse va la vela volando.",
@@ -88490,7 +88531,7 @@ MC.addLang('es', {
     "약혼 파티 날": "El día del compromiso",
     "─── 이틀 후 ───": "─ Dos días después ─",
     "레제르브 · 약혼 파티": "La Reserva · Fiesta",
-    "잔칫상 자리로 간다.": "Sentarse a la mesa.",
+    "내 자리로 간다.": "Sentarse a la mesa.",
     "왔나, 신랑!{p:200} 오늘 건배는 자네 몫일세.": "¡Aquí está nuestro novio!{p:200} Hoy el brindis le toca a usted.",
     "인사 다 돌거든 신부 옆으로 가게.{p:200} 다들 목이 마르다네.": ["Cuando acabe de saludar, vaya junto a su novia.","{p:200}Aquí todos nos morimos de sed."],
     "오늘은 여기가 내 자리다.": "Hoy mi sitio está aquí.",
