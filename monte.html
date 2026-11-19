@@ -714,7 +714,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 /* boot.js — MC 네임스페이스·등록 함수, 스크립트 순차 로드(?v=VERSION), 폰트 대기(최대 3초) → MC.core.start() → MC.main() */
 (function () { 'use strict';
   var RELEASE = false;   // 출시(앱·스토어) 빌드 = true — tools/bundle.ps1 -Release 가 바꾼다. 켜지면 localhost·capacitor://에서도 dev·debug가 켜지지 않고 URL 장면 뛰어넘기를 무시
-  var VERSION = '0.9.35';
+  var VERSION = '0.9.36';
   // S2 파일 목록은 docs/ARCHITECTURE_S2.md §B + docs/S2_NARRATIVE_V2.md §8-3과 같다(순서 포함). 새 파일은 설계 단계에서 빈 스텁으로 만들어 두었다
   // S3 파일은 docs/ARCHITECTURE_S3.md §B-2 순서(scenes-s3a가 넣음)
   // S4 파일은 docs/ARCHITECTURE_S4.md §B-2 순서(1차 docs/S4_BUILD1.md §B · 2차 docs/S4_BUILD2.md §B — scenes-s4a가 넣음)
@@ -991,6 +991,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
 
   /* ---------- 오류 ---------- */
   const errSeen = new Map();
+  const RS = { on: false, hid: false, busy: false, box: null, xBox: null };   // [0.9.36 A8] 출시판 오류 안내 띠 상태(render 아래 rescueArm·drawRescue)
   function error(e, where) {
     const msg = (e && (e.message || e.reason)) ? String(e.message || e.reason) : String(e);
     const key = (where || '') + '|' + msg;
@@ -1005,6 +1006,7 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     } else {
       for (let i = MC.errors.length - 1; i >= 0; i--) if (MC.errors[i].where === (where || '') && MC.errors[i].msg === msg) { MC.errors[i].n = n; break; }
     }
+    rescueArm(n === 1);                                   // [0.9.36 A8] 출시판 안내 띠(아래 RS)
   }
 
   /* ---------- 대기 ---------- */
@@ -1110,9 +1112,65 @@ body{position:fixed;left:0;top:0;right:0;bottom:0}
     try { if (MC.fx && MC.fx.renderOverlays) MC.fx.renderOverlays(); } catch (e) { error(e, 'overlay'); g._beginFrame(); }
     try { if (MC.dbg && MC.dbg.render) MC.dbg.render(); } catch (e) { error(e, 'dbg'); g._beginFrame(); }
     if (MC.cfg.debug && MC.errors.length) drawErrors();
+    if (RS.on) { try { drawRescue(); } catch (_) { g._beginFrame(); } }
     g.present();
     g.renderId++;
   }
+
+  /* ---------- [0.9.36 A8] 출시판 오류 탈출구(6차 평가 F69) ----------
+     출시판(MC.cfg.release)에서 오류가 기록되면 화면 아래에 안내 띠(sys.rescue)를 띄운다. 띠를 누르면 마지막 기록에서 이어 가고(타이틀 「이어하기」와 같은 길 —
+     기록이 없거나 실패하면 타이틀로), 띠 오른쪽 위 ✕는 띠만 닫는다. 띠 밖의 탭은 게임에 그대로 간다(가벼운 오류로 진행이 끊기지 않게).
+     닫은 뒤에는 「다른」 오류가 나야 다시 뜬다. 입력 잠금·멈춘 이벤트와 상관없이 눌리도록 창(window)의 pointerdown 캡처로 받는다.
+     개발판에서 보려면: MC.core.rescueTest = true; MC.core.error(new Error('시험'), 'test') */
+  function rescueArm(fresh) {
+    if (!(MC.cfg && (MC.cfg.release || (MC.core && MC.core.rescueTest))) || RS.busy) return;
+    if (fresh) RS.hid = false;
+    if (!RS.hid) RS.on = true;
+  }
+  function drawRescue() {
+    const g = MC.gfx, T = MC.text;
+    const msg = MC.i18n && MC.i18n.tf ? MC.i18n.tf('sys.rescue') : 'Error — tap to resume';
+    const xw = 18, pad = 4, lh = T.LINE.small;
+    const lines = T.wrap(msg, g.W - pad * 2 - xw, 'small');
+    const h = lines.length * lh + 8, y0 = g.H - g.safe.bottom - h - 2;
+    g.rect(0, y0, g.W, h, '#24100c');
+    g.rect(0, y0, g.W, 1, '#a0583c');
+    for (let i = 0; i < lines.length; i++) T.draw(lines[i], pad, y0 + 4 + i * lh, { font: 'small', color: '#f2dcb4' });
+    const cx = g.W - xw + 5, cy = y0 + 5;               // ✕(글이 없는 그림 — 번역 없음)
+    for (let k = 0; k < 7; k++) { g.rect(cx + k, cy + k, 1, 1, '#c8a888'); g.rect(cx + 6 - k, cy + k, 1, 1, '#c8a888'); }
+    RS.box = { x: 0, y: y0, w: g.W - xw, h };
+    RS.xBox = { x: g.W - xw, y: y0, w: xw, h };
+  }
+  function rescueDown(e) {
+    if (!RS.on || !RS.box || !MC.gfx || !MC.gfx.toLogical) return;
+    const p = MC.gfx.toLogical(e.clientX, e.clientY), x = p[0], y = p[1];
+    const inB = b => x >= b.x && x < b.x + b.w && y >= b.y - 4 && y < b.y + b.h + 4;
+    const hitX = inB(RS.xBox), hitB = !hitX && inB(RS.box);
+    if (!hitX && !hitB) return;
+    if (e.cancelable) e.preventDefault();
+    e.stopPropagation();
+    RS.on = false;
+    if (hitX) { RS.hid = true; return; }
+    rescueGo();
+  }
+  async function rescueGo() {
+    if (RS.busy) return;
+    RS.busy = true;
+    const C = MC.ch1;
+    try {
+      try { if (MC.music && MC.music.stop) MC.music.stop(400); } catch (_) {}
+      try { if (MC.fx && MC.fx.fade) await MC.fx.fade(1, 400); } catch (_) {}
+      let pre = null, ok = false;
+      try { pre = MC.save && MC.save.load ? MC.save.load() : null; } catch (_) { pre = null; }
+      if (pre && C && C.continueGame) ok = await C.continueGame();
+      if (ok) { try { if (C.recap && C.recap.show) C.recap.show(pre); } catch (_) {} }
+      else if (C && C.gotoTitle) await C.gotoTitle({ instant: true });
+    } catch (e) {
+      try { console.error('[MC:rescue]', e); } catch (_) {}
+      try { location.reload(); } catch (_) {}
+    } finally { RS.busy = false; }
+  }
+  try { window.addEventListener('pointerdown', rescueDown, true); } catch (_) {}
 
   function drawErrors() {
     const g = MC.gfx, n = Math.min(2, MC.errors.length);
@@ -6192,9 +6250,11 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
       const ok = set(KEY[slot] || slot, json);
       // [c43-ui B8-4] 마지막 기록 시각(닻 0.8초 표시용). 이벤트 밖(필드에서 맵을 옮길 때)의 자동 기록만 — 연출 중 기록·숨겨질 때 기록은 표시하지 않는다
       if (ok && !(typeof document !== 'undefined' && document.hidden) && !(MC.events && MC.events.running)) SV.lastWrite = { t: MC.time ? MC.time.real : 0, slot };
+      if (ok) SV.lastAt = MC.time ? MC.time.real : 0;          // [0.9.36 A9] 마지막으로 쓴 시각(모든 기록) — field evSaveTick이 30초 안이면 건너뜀
       return ok;
     },
     lastWrite: null,
+    lastAt: null,
     // slot 생략 = savedAt 최신. 검증 실패 → .bak → manual. 성공하면 MC.state에도 넣는다
     load(slot) {
       let p = null;
@@ -14074,6 +14134,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
     s3Fresh();
     if (!ctl && stick && stick.touching && !free && !keepStickN && !feedOn) stick.reset();   // 이벤트 중 잠금: 스틱 숨김·해제(keepStick 이벤트 중엔 살려 둠)
     watchdog();
+    evSaveTick();                                         // [0.9.36 A9] 이벤트가 끝나 조작이 돌아오면 조용히 기록
     holdTick();                                           // S3 길게 누름(뗌 → tapEvent, 이 누름의 짧은 탭은 삼킴)
     if (stick) {                                          // 짧은 탭=조사. 걷는 중이면 칸에 닿을 때까지(최대 300ms) 미뤄 둔다
       const tp = stick.consumeTap();
@@ -14273,9 +14334,26 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
     } finally { entering--; }
     return prev;
   }
+  /* [0.9.36 A9 · R941] 이벤트가 끝나 조작이 돌아오면 기록(6차 평가 F68 — 이벤트 도중 앱이 정리돼도 잃는 시간을 「지금 이벤트 하나」로 줄임).
+     앱을 내릴 때의 autoSaveIdle과 같은 자리(필드가 맨 위·잠금 없음·이벤트 없음)라 이어하기 길은 새로 생기지 않는다. 직전 기록에서 30초 안이면 건너뜀.
+     깃펜 「기록했다」 표시는 띄우지 않는다(lastWrite를 되돌림 — 표시는 지금처럼 출구·전투 기록에만). 되돌리기: ?uw2off=R941(개발판) 또는 unlocked()의 evSavePend 줄 삭제 */
+  let evSavePend = false;
+  const EV_SAVE_GAP = 30000;
+  function evSaveTick() {
+    if (!evSavePend) return;
+    if (!map || extLock > 0 || busy > 0 || entering > 0 || encountering || (MC.events && MC.events.running) || (MC.dialogue && MC.dialogue.active) || !isTop()) return;
+    evSavePend = false;
+    const S = MC.save;
+    if (!S || (MC.uw2 && !MC.uw2('R941'))) return;
+    if (S.lastAt != null && MC.time.real - S.lastAt < EV_SAVE_GAP) return;
+    const lw = S.lastWrite;
+    autoSave();
+    S.lastWrite = lw;
+  }
   function unlocked() {                                   // 이벤트가 모두 끝남: 조건 재평가, 카메라 복귀
     zoomReset();                                           // [c50-cine B5-1] 줌은 컷신 안에서만
     free = false;
+    evSavePend = true;                                     // [0.9.36 A9] 다음 프레임부터 조작이 돌아온 게 확인되면 기록(evSaveTick)
     refresh();
     pl.holdDir = null; pl.hold = 0;
     tapGuard = nowR() + TAP_GUARD;
@@ -55236,6 +55314,10 @@ MC.addEvents({
     "a4.cell_enter": [
       { "op": "if", "cond": { "not": { "flag": "a4m.mig" } }, "then": [ { "op": "call", "ev": "a4m.migrate" } ] },   // 옛 거점 세이브(만남의 여러 밤 이전 흐름) → 새 flag·기억(§9-3)
       { "op": "if", "cond": { "any": [ { "flag": "s3.on" }, { "flag": "a4.s2_tbc" } ] }, "then": [ { "op": "call", "ev": "s3h.cell_enter" }, { "op": "end" } ] },   // S3 훅(content-s3a, ARCHITECTURE_S3 §A-3)
+      // [0.9.36 A9] 검사의 밤 뒤 저장(a4c.dark 첫머리)에서 이어하면 어둠 속의 하루부터. 그 저장엔 a4d.deduced(벽에 이름)가 아직 없다 —
+      //   dark_open 끝의 a4.cell_enter 부름 때는 a4d.deduced가 켜져 있어 여기로 오지 않는다(dd.n4는 그 부름 뒤에 켜지므로 조건으로 쓰면 되풀이됨)
+      { "op": "if", "cond": { "all": [ { "flag": "dd.n4_told" }, { "not": { "flag": "a4d.deduced" } } ] }, "then": [
+        { "op": "act", "v": 4, "ui": "act4" }, { "op": "set", "flag": "a4c.dark_rs" }, { "op": "call", "ev": "a4c.dark" }, { "op": "end" } ] },
       { "op": "act", "v": 4, "ui": "act4" },
       { "op": "grade", "sat": 0.4, "tint": "#3a2410", "ta": 0.1, "ms": 0 },
       { "op": "vignette", "a": 0.35, "ms": 0 },
@@ -58341,8 +58423,14 @@ MC.addEvents({
 
     /* ============================================================ 어둠 속의 하루 — 말 없는 분노와 맹세. 조작은 벽을 긋는 탭과 구멍 탭뿐 */
     "a4c.dark": [
-      { "op": "fade", "to": 1, "ms": 700 },
-      { "op": "map", "id": "cell", "at": [ 3, 2, "up" ], "trans": "cut" },
+      // [0.9.36 A9] 이어하기로 들어온 경우(a4.cell_enter가 a4c.dark_rs를 켜고 부름): 이미 감방이므로 맵을 옮기지 않고 검정에서 시작
+      { "op": "if", "cond": { "flag": "a4c.dark_rs" },
+        "then": [ { "op": "set", "flag": "a4c.dark_rs", "v": false }, { "op": "fade", "to": 1, "ms": 0 } ],
+        "else": [ { "op": "fade", "to": 1, "ms": 700 }, { "op": "map", "id": "cell", "at": [ 3, 2, "up" ], "trans": "cut" } ] },
+      // [0.9.36 A9] 검사의 밤(2년 후 카드 → 신부의 방 → 판)이 끝난 자리에서 저장 — 앱이 정리되면 a4.cell_enter가 어둠 속의 하루부터 다시(dd.n4_told 켜짐 · a4d.deduced 꺼짐).
+      //   그 전엔 2년 후 카드부터 어둠 속의 하루 끝까지(사람 속도 약 8~17분) 기록이 없었다. 되돌리기: 이 두 줄과 a4.cell_enter의 dd.n4_told 줄을 지운다
+      { "op": "set", "flag": "dd.n4_told" },
+      { "op": "save", "slot": "auto" },
       { "op": "bgm", "id": null, "fade": 0 },
       { "op": "music", "fn": "filterTo", "args": [ null, 0 ] },
       { "op": "amb", "id": "cell", "fade": 800 },
@@ -68081,6 +68169,7 @@ MC.addLang('ko', {
     "fmt.year": "{y}년",
     "sys.noStorage": "기록을 저장할 수 없는 환경입니다",
     "sys.saveMoved": "기록한 자리를 찾지 못해 근처에서 이어 갑니다",
+    "sys.rescue": "문제가 생겼습니다. 여기를 누르면 마지막 기록에서 이어 갑니다",
 
     "ui.cancel": "그만둔다",
     "ui.yes": "예",
@@ -68647,6 +68736,7 @@ MC.addLang('ko', {
     "fmt.year": { "w": 80, "font": "big", "note": "연도 롤 카드의 연도(한 자씩 굴러감)·메뉴 첫 쪽 오른쪽 아래 연도(small). {y}=숫자" },
     "sys.noStorage": { "w": 156, "font": "body", "lines": 2, "note": "저장 불가 환경 토스트" },
     "sys.saveMoved": { "w": 156, "font": "body", "lines": 2, "note": "이어하기 — 업데이트로 맵이 없어져 거점으로 옮긴 기록 토스트(r3 A2)" },
+    "sys.rescue": { "w": 154, "font": "small", "lines": 3, "note": "(출시판 오류) 화면 아래 안내 띠 — 띠를 누르면 마지막 기록에서 이어 감, 오른쪽 위 ✕는 닫기(0.9.36 A8)" },
 
     "ui.cancel": { "w": 64, "font": "body", "lines": 1, "note": "확인창·수업 판의 취소 단추(72×30). 이벤트 선택지 '그만둔다'(원문)와는 따로다" },
     "ui.yes": { "w": 64, "font": "body", "lines": 1, "note": "확인창 기본 '예' 단추" },
@@ -69541,6 +69631,7 @@ MC.addLang('en', {
     "deduce.listHint": ["Tap a memory to read it.", "wg2vat"],
     // [0.95 묶음 7] 메뉴·안내·데이터 글 — 설정 · 인물 · 전투 설명 · 기억 · 이어하기 줄거리(recap) · 미니게임 안내 · 엔딩 기록 · 매듭. 폭은 ko uiInfo 칸으로 validate 실측
     "sys.saveMoved": ["Save point not found. Resuming nearby.", "1fv5ddg"],
+    "sys.rescue": ["Something went wrong. Tap here to resume from your last save.", "10rtbh6"],
     "set.phoneBass": ["Phone Bass", "4clpmo"],
     "set.tone": ["Tone", "fxupfq"],
     "set.toneSfc": ["16-bit", "1q4ngrm"],
@@ -73144,6 +73235,7 @@ MC.addLang('ja', {
     "field.placeLine": ["{place} · {year}", "5n4bhk"],
     "deduce.listHint": ["記憶をタップすると読める。", "wg2vat"],
     "sys.saveMoved": ["記録した場所が見つからないため、近くから再開します", "1fv5ddg"],
+    "sys.rescue": ["問題が起きました。ここをタップすると最後の記録から再開します", "10rtbh6"],
     "set.phoneBass": ["スマホ低音補強", "4clpmo"],
     "set.tone": ["音色", "fxupfq"],
     "set.toneSfc": ["16bit", "1q4ngrm"],
@@ -76715,6 +76807,7 @@ MC.addLang('fr', {
     "field.placeLine": ["{place} · {year}", "5n4bhk"],
     "deduce.listHint": ["Touchez pour lire un souvenir.", "wg2vat"],
     "sys.saveMoved": ["Lieu introuvable. Reprise à proximité.", "1fv5ddg"],
+    "sys.rescue": ["Un problème est survenu. Touchez ici pour reprendre à la dernière sauvegarde.", "10rtbh6"],
     "set.phoneBass": ["Basses mobile", "4clpmo"],
     "set.tone": ["Timbre", "fxupfq"],
     "set.toneSfc": ["16 bits", "1q4ngrm"],
@@ -80291,6 +80384,7 @@ MC.addLang('zh-Hans', {
     "field.placeLine": ["{place} · {year}", "5n4bhk"],
     "deduce.listHint": ["点击记忆即可阅读。", "wg2vat"],
     "sys.saveMoved": ["找不到记录的位置，将从附近继续", "1fv5ddg"],
+    "sys.rescue": ["出现了问题。点击此处，从最后的记录继续", "10rtbh6"],
     "set.phoneBass": ["手机低音增强", "4clpmo"],
     "set.tone": ["音色", "fxupfq"],
     "set.toneSfc": ["16位", "1q4ngrm"],
@@ -83868,6 +83962,7 @@ MC.addLang('zh-Hant', {
     "field.placeLine": ["{place} · {year}", "5n4bhk"],
     "deduce.listHint": ["點擊記憶即可閱讀。", "wg2vat"],
     "sys.saveMoved": ["找不到記錄的位置，將從附近繼續", "1fv5ddg"],
+    "sys.rescue": ["出現了問題。點擊此處，從最後的記錄繼續", "10rtbh6"],
     "set.phoneBass": ["手機低音增強", "4clpmo"],
     "set.tone": ["音色", "fxupfq"],
     "set.toneSfc": ["16位元", "1q4ngrm"],
@@ -87443,6 +87538,7 @@ MC.addLang('es', {
     "field.placeLine": ["{place} · {year}", "5n4bhk"],
     "deduce.listHint": ["Toca un recuerdo para leerlo.", "wg2vat"],
     "sys.saveMoved": ["Lugar no encontrado. Se reanuda cerca.", "1fv5ddg"],
+    "sys.rescue": ["Algo salió mal. Toca aquí para continuar desde el último guardado.", "10rtbh6"],
     "set.phoneBass": ["Más graves", "4clpmo"],
     "set.tone": ["Timbre", "fxupfq"],
     "set.toneSfc": ["16 bits", "1q4ngrm"],
