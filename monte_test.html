@@ -63553,9 +63553,14 @@ MC.addEvents({
       when({ "var": "s3_vial", "eq": 1 }, [ { "op": "set", "flag": "s3f.vial_slow" } ]),   // fixer-s3: 「손이 떨려, 한참 걸렸다.」 삭제 — 손으로 한 일을 속마음이 되풀이하지 않는다
       { "op": "say", "who": "narr", "t": "숟가락 자루로 이를 벌렸다." },
       // ▶ 열 방울(숫자 없음 — 세는 것은 플레이어)
-      { "op": "custom", "id": "s3", "args": { "stage": "drops", "n": 10, "said": DROPS, "idle": 4, "var": "s3_drops" } },
+      { "op": "custom", "id": "s3", "args": { "stage": "drops", "n": 10, "max": 12, "said": DROPS, "idle": 4, "var": "s3_drops" } },   // [V435] 열을 넘겨 누르면 열둘까지는 정말 들어간다(s3_drops = 더 넣은 수 0~2 → S4 s4c.twelve에서 그만큼 모자란다)
       { "op": "wait", "ms": 700 },                                          // fixer-s3: 이어 두드리던 탭이 「……열.」을 넘기지 않게
-      { "op": "say", "who": "think", "t": "……열." },
+      when({ "var": "s3_drops", "gte": 1 }, [                               // [V435] 더 넣었다(사용자 11-22: 「아니, 더 들어갔다」 + 간절한 바람 한 줄)
+        { "op": "say", "who": "think", "t": "……열.{p:300} 아니, 더 들어갔다." },
+        { "op": "say", "who": "think", "t": "제발, 신부님.{p:300} 제발." }
+      ], [
+        { "op": "say", "who": "think", "t": "……열." }
+      ]),
       // ▶ 한 시간(무음, 할 수 있는 건 손을 잡는 것뿐)
       { "op": "custom", "id": "s3", "args": { "stage": "hour", "sec": 12, "lines": [ "손을 잡았다. 차다.", "……", "너무 늦었나." ] } },
       { "op": "say", "who": "narr", "t": "한 시간이 지났다." },
@@ -66743,7 +66748,22 @@ MC.addEvents({
       W(2000),
       { "op": "say", "who": "narr", "t": "칼등으로 이를 벌렸다." },          // [s44-writer B3-17] 날이 아니라 등(G뒤3)
       // 열두 방울 — 숫자 없음(세는 것은 플레이어). 칼날 판 입
-      { "op": "custom", "id": "s3", "args": { "stage": "drops", "n": 12, "cut": true, "mouth": "cu_mouth_knife" } },
+      // [V435 0.9.42 11-22] S3에서 열을 넘겨 넣었으면(s3_drops 1·2) 그만큼 모자란다 — 병이 먼저 비고, 「남은 걸, 전부」는 없다(사용자 결정 「나」)
+      when({ "var": "s3_drops", "gte": 2 }, [
+        { "op": "custom", "id": "s3", "args": { "stage": "drops", "n": 12, "short": 2, "cut": true, "mouth": "cu_mouth_knife" } },
+        W(900),
+        { "op": "say", "who": "think", "t": "모자라다.{p:300} 그때 두 방울." },
+        { "op": "say", "who": "think", "t": "젠장." },
+        { "op": "say", "who": "dantes", "face": "shock", "t": "신부님, 제발!" }                 // 속마음이 여기서 소리로 터진다(사용자 11-22)
+      ], [ when({ "var": "s3_drops", "eq": 1 }, [
+        { "op": "custom", "id": "s3", "args": { "stage": "drops", "n": 12, "short": 1, "cut": true, "mouth": "cu_mouth_knife" } },
+        W(900),
+        { "op": "say", "who": "think", "t": "모자라다.{p:300} 그때 한 방울." },
+        { "op": "say", "who": "think", "t": "젠장." },
+        { "op": "say", "who": "dantes", "face": "shock", "t": "신부님, 제발!" }                 // 속마음이 여기서 소리로 터진다(사용자 11-22)
+      ], [
+        { "op": "custom", "id": "s3", "args": { "stage": "drops", "n": 12, "cut": true, "mouth": "cu_mouth_knife" } }
+      ]) ]),
       W(5000),
       // 기다림 — 오르골만 아주 작게 늦어진다(♩76→64). 컷신(cut): 입력 없이 띠가 ¼·½·¾에 저절로 뜨고, 그때마다 잡은 손에 온기가 돈다
       // (fixer-s4p1: 52 → 48초. 줄인 4초와 아래 새벽 쉼 조정으로 장면 2·3 합계 6분을 지킨다)
@@ -66751,10 +66771,12 @@ MC.addEvents({
       // [a43-play V2] 48초를 12초씩 네 컷으로(와이드 → 맞잡은 손 「십 분.」 → 등잔 심지 인서트 「……」 → 와이드 「반 시간.」). 길이·맥(41.5초)은 그대로
       { "op": "custom", "id": "s3", "args": { "stage": "hour", "sec": 48, "cut": true, "lines": [ "십 분.", "……", "반 시간." ], "cuts": [ "wide", "grip", "wick", "wide" ] } },
       W(1600),
+      when({ "var": "s3_drops", "gte": 1 }, [ W(2400) ], [                  // [V435] 빈 병 — 부을 것이 없다
       { "op": "sfx", "id": "phial", "gain": 0.35, "pitch": 0.9 },
       W(2800),
       { "op": "say", "who": "think", "t": "남은 걸, 전부." },
-      { "op": "custom", "id": "s3", "args": { "stage": "drops", "n": 12, "rest": true, "cut": true, "mouth": "cu_mouth_knife" } },
+      { "op": "custom", "id": "s3", "args": { "stage": "drops", "n": 12, "rest": true, "cut": true, "mouth": "cu_mouth_knife" } }
+      ]),
       W(2000),
       // 경련 — 움직였다(한순간 S3 '한 시간 뒤의 숨'을 기대한다) → 고요
       ZOOM(2, TWO, 0),                                                     // [c50-cine] 경련은 2배(바로 컷 — 흔들림과 같은 박). 맥 화면·「신부님?」·걷힐 때까지 그대로
@@ -72091,6 +72113,7 @@ MC.addLang('ko', {
     "mg.islandPrompt": "점선을 따라 긋는다",
     "mg.hourPrompt": "눌러서 스승의 손을 잡는다",
     "mg.vialPrompt": "침대 다리를 두드려 본다",
+    "mg.vialFeel": "누른 채 침대 다리를 더듬는다",
     "mg.swimPrompt": "천천히 눌러 하나씩 센다",
     "mg.pulsePrompt": "길게 눌러 맥을 짚는다",
     "mg.breadPrompt": "양옆으로 끌어 빵을 찢는다",
@@ -72659,6 +72682,7 @@ MC.addLang('ko', {
     "mg.islandPrompt": { "w": 152, "font": "body", "lines": 2, "note": "S3 섬 그리기 B1 안내 — 벽에 옅은 점선으로 보이는 길을 따라 그을음으로 긋는다(탭해도 다음 점까지 그어짐)" },
     "mg.hourPrompt": { "w": 152, "font": "body", "lines": 2, "note": "S3 한 시간 B1 안내 — 쓰러진 스승의 손을 잡는다(누를 때마다 속마음 한 줄). 무음 장면이라 아주 짧게" },
     "mg.vialPrompt": { "w": 152, "font": "body", "lines": 2, "note": "S3 약병 찾기 B1 안내 — 침대 다리 넷을 눌러 두드려 속이 빈 다리를 찾는다" },
+    "mg.vialFeel": { "w": 152, "font": "body", "lines": 2, "note": "S3 약병 찾기 안내(V436) — 침대 다리를 누른 채 손으로 더듬어 밑동 마개가 헐거운 다리를 찾는다(두드리지 않는다 — 소리를 내면 안 되는 밤)" },
     "mg.swimPrompt": { "w": 152, "font": "body", "lines": 2, "note": "S3 헤엄 가르치기 B1 안내 — 에드몽이 박자를 세 준다: 천천히 한 번씩 누를 때마다 「하나.」…" },
     "mg.pulsePrompt": { "w": 152, "font": "body", "lines": 2, "note": "S3 맥 짚기 B1 안내 — 손목의 빛나는 자리를 길게 눌러 맥을 느낀다" },
     "mg.breadPrompt": { "w": 152, "font": "body", "lines": 2, "note": "S3·S4 빵 찢기 B1 안내 — 빵을 쥔 두 손을 양옆으로 끌어(두 손가락 또는 한 손가락으로 옆으로) 빵을 찢는다" },
@@ -73298,6 +73322,7 @@ MC.addLang('en', {
     "mg.islandPrompt": ["Trace the dotted line", "1hcx0mk"],
     "mg.hourPrompt": ["Tap to hold his hand", "1w32rr5"],
     "mg.vialPrompt": ["Tap each leg of the bed", "otme4v"],
+    "mg.vialFeel": ["Hold and feel along each leg of the bed", "1ybdx2x"],
     "mg.swimPrompt": ["Tap slowly, counting", "4x7e1i"],
     "mg.pulsePrompt": ["Hold to feel his pulse", "1ybl8pa"],
     "mg.breadPrompt": ["Pull the bread apart", "1gu85qt"],
@@ -75225,6 +75250,8 @@ MC.addLang('en', {
     "……여덟.": "...Eight.",
     "……아홉.": "...Nine.",
     "……열.": "...Ten.",
+    "……열.{p:300} 아니, 더 들어갔다.": "...Ten.{p:300} No. More went in.",
+    "제발, 신부님.{p:300} 제발.": "Please, Abbé.{p:300} Please.",
     "신부님?": "Abbé?",
     "신부님!{p:200} 왜 그러십니까?": "Abbé!{p:200} What is it?",
     "……하필 오늘 밤이군.": "...Tonight, of all nights.",
@@ -75735,6 +75762,10 @@ MC.addLang('en', {
     "십 분.": "Ten minutes.",
     "반 시간.": "Half an hour.",
     "남은 걸, 전부.": "The rest. All of it.",
+    "모자라다.{p:300} 그때 두 방울.": "Not enough.{p:300} Those two drops, that night.",
+    "모자라다.{p:300} 그때 한 방울.": "Not enough.{p:300} That one drop, that night.",
+    "젠장.": "Damn it.",
+    "신부님, 제발!": "Abbé, please!",
     "……신부님?": "...Abbé?",
     "날이 밝고 있었다.": "Day was breaking.",
     "신부님의 등잔.": "The Abbé’s lamp.",
@@ -76905,6 +76936,7 @@ MC.addLang('ja', {
     "mg.islandPrompt": ["点線にそって、線を引く", "1hcx0mk"],
     "mg.hourPrompt": ["タップして、師の手を握る", "1w32rr5"],
     "mg.vialPrompt": ["寝台の脚を、叩いてみる", "otme4v"],
+    "mg.vialFeel": ["押したまま、寝台の脚を探る", "1ybdx2x"],
     "mg.swimPrompt": ["ゆっくりタップして、ひとつずつ数える", "4x7e1i"],
     "mg.pulsePrompt": ["長押しで、脈をとる", "1ybl8pa"],
     "mg.breadPrompt": ["左右にドラッグして、パンをちぎる", "1gu85qt"],
@@ -78802,6 +78834,8 @@ MC.addLang('ja', {
     "……여덟.": "……やっつ。",
     "……아홉.": "……ここのつ。",
     "……열.": "……とお。",
+    "……열.{p:300} 아니, 더 들어갔다.": "……とお。{p:300}いや、もっと入った。",
+    "제발, 신부님.{p:300} 제발.": "お願いです、神父さま。{p:300}お願いです。",
     "신부님?": "神父さま？",
     "신부님!{p:200} 왜 그러십니까?": "神父さま！{p:200}\nどうなさいました？",
     "……하필 오늘 밤이군.": "……よりによって、今夜か。",
@@ -79310,6 +79344,10 @@ MC.addLang('ja', {
     "십 분.": "十分が過ぎた。",
     "반 시간.": "半時間が過ぎた。",
     "남은 걸, 전부.": "残りを、全部。",
+    "모자라다.{p:300} 그때 두 방울.": "足りない。{p:300}あのときの二滴。",
+    "모자라다.{p:300} 그때 한 방울.": "足りない。{p:300}あのときの一滴。",
+    "젠장.": "くそっ。",
+    "신부님, 제발!": "神父さま、お願いです！",
     "……신부님?": "……神父さま？",
     "날이 밝고 있었다.": "夜が明けようとしていた。",
     "신부님의 등잔.": "神父さまのランプ。",
@@ -80480,6 +80518,7 @@ MC.addLang('fr', {
     "mg.islandPrompt": ["Tracez le long des pointillés", "1hcx0mk"],
     "mg.hourPrompt": ["Touchez pour tenir sa main", "1w32rr5"],
     "mg.vialPrompt": ["Frappez les pieds du lit", "otme4v"],
+    "mg.vialFeel": ["Maintenez et tâtez les pieds du lit", "1ybdx2x"],
     "mg.swimPrompt": ["Touchez lentement, en comptant", "4x7e1i"],
     "mg.pulsePrompt": ["Maintenez pour prendre son pouls", "1ybl8pa"],
     "mg.breadPrompt": ["Écartez pour rompre le pain", "1gu85qt"],
@@ -82377,6 +82416,8 @@ MC.addLang('fr', {
     "……여덟.": "…Huit.",
     "……아홉.": "…Neuf.",
     "……열.": "…Dix.",
+    "……열.{p:300} 아니, 더 들어갔다.": "…Dix.{p:300} Non. Il en est tombé davantage.",
+    "제발, 신부님.{p:300} 제발.": "Je vous en prie, l’abbé.{p:300} Je vous en prie.",
     "신부님?": "L’abbé ?",
     "신부님!{p:200} 왜 그러십니까?": "L’abbé !{p:200} Qu’avez-vous ?",
     "……하필 오늘 밤이군.": "…Il fallait que ce soit cette nuit.",
@@ -82885,6 +82926,10 @@ MC.addLang('fr', {
     "십 분.": "Dix minutes.",
     "반 시간.": "Une demi-heure.",
     "남은 걸, 전부.": "Le reste. Tout.",
+    "모자라다.{p:300} 그때 두 방울.": "Il n’y en a pas assez.{p:300} Ces deux gouttes, l’autre fois.",
+    "모자라다.{p:300} 그때 한 방울.": "Il n’y en a pas assez.{p:300} Cette goutte, l’autre fois.",
+    "젠장.": "Bon sang.",
+    "신부님, 제발!": "L’abbé, je vous en prie !",
     "……신부님?": "…L’abbé ?",
     "날이 밝고 있었다.": "Le jour se levait.",
     "신부님의 등잔.": "La lampe de l’abbé.",
@@ -84060,6 +84105,7 @@ MC.addLang('zh-Hans', {
     "mg.islandPrompt": ["沿着虚线画", "1hcx0mk"],
     "mg.hourPrompt": ["点击，握住老师的手", "1w32rr5"],
     "mg.vialPrompt": ["敲一敲床腿", "otme4v"],
+    "mg.vialFeel": ["按住，摸一摸床腿", "1ybdx2x"],
     "mg.swimPrompt": ["慢慢点击，一下一下地数", "4x7e1i"],
     "mg.pulsePrompt": ["长按，摸他的脉搏", "1ybl8pa"],
     "mg.breadPrompt": ["向两边拖动，掰开面包", "1gu85qt"],
@@ -85957,6 +86003,8 @@ MC.addLang('zh-Hans', {
     "……여덟.": "……八。",
     "……아홉.": "……九。",
     "……열.": "……十。",
+    "……열.{p:300} 아니, 더 들어갔다.": "……十。{p:300}不，滴多了。",
+    "제발, 신부님.{p:300} 제발.": "求您了，神父。{p:300}求您了。",
     "신부님?": "神父？",
     "신부님!{p:200} 왜 그러십니까?": "神父！{p:200}您怎么了？",
     "……하필 오늘 밤이군.": "……偏偏是今晚。",
@@ -86465,6 +86513,10 @@ MC.addLang('zh-Hans', {
     "십 분.": "十分钟。",
     "반 시간.": "半个钟头。",
     "남은 걸, 전부.": "剩下的，全部。",
+    "모자라다.{p:300} 그때 두 방울.": "不够。{p:300}那时的两滴。",
+    "모자라다.{p:300} 그때 한 방울.": "不够。{p:300}那时的一滴。",
+    "젠장.": "该死。",
+    "신부님, 제발!": "神父，求您了！",
     "……신부님?": "……神父？",
     "날이 밝고 있었다.": "天渐渐亮了。",
     "신부님의 등잔.": "神父的油灯。",
@@ -87641,6 +87693,7 @@ MC.addLang('zh-Hant', {
     "mg.islandPrompt": ["沿著虛線畫", "1hcx0mk"],
     "mg.hourPrompt": ["點擊，握住老師的手", "1w32rr5"],
     "mg.vialPrompt": ["敲一敲床腿", "otme4v"],
+    "mg.vialFeel": ["按住，摸一摸床腿", "1ybdx2x"],
     "mg.swimPrompt": ["慢慢點擊，一下一下地數", "4x7e1i"],
     "mg.pulsePrompt": ["長按，摸他的脈搏", "1ybl8pa"],
     "mg.breadPrompt": ["向兩邊拖曳，掰開麵包", "1gu85qt"],
@@ -89538,6 +89591,8 @@ MC.addLang('zh-Hant', {
     "……여덟.": "……八。",
     "……아홉.": "……九。",
     "……열.": "……十。",
+    "……열.{p:300} 아니, 더 들어갔다.": "……十。{p:300}不，滴多了。",
+    "제발, 신부님.{p:300} 제발.": "求您了，神父。{p:300}求您了。",
     "신부님?": "神父？",
     "신부님!{p:200} 왜 그러십니까?": "神父！{p:200}您怎麼了？",
     "……하필 오늘 밤이군.": "……偏偏是今晚。",
@@ -90046,6 +90101,10 @@ MC.addLang('zh-Hant', {
     "십 분.": "十分鐘。",
     "반 시간.": "半個鐘頭。",
     "남은 걸, 전부.": "剩下的，全部。",
+    "모자라다.{p:300} 그때 두 방울.": "不夠。{p:300}那時的兩滴。",
+    "모자라다.{p:300} 그때 한 방울.": "不夠。{p:300}那時的一滴。",
+    "젠장.": "該死。",
+    "신부님, 제발!": "神父，求您了！",
     "……신부님?": "……神父？",
     "날이 밝고 있었다.": "天漸漸亮了。",
     "신부님의 등잔.": "神父的油燈。",
@@ -91220,6 +91279,7 @@ MC.addLang('es', {
     "mg.islandPrompt": ["Traza siguiendo la línea de puntos", "1hcx0mk"],
     "mg.hourPrompt": ["Toca para tomarle la mano", "1w32rr5"],
     "mg.vialPrompt": ["Golpea las patas de la cama", "otme4v"],
+    "mg.vialFeel": ["Mantén pulsado y palpa las patas de la cama", "1ybdx2x"],
     "mg.swimPrompt": ["Toca despacio, contando", "4x7e1i"],
     "mg.pulsePrompt": ["Mantén el dedo para tomarle el pulso", "1ybl8pa"],
     "mg.breadPrompt": ["Separa para partir el pan", "1gu85qt"],
@@ -93117,6 +93177,8 @@ MC.addLang('es', {
     "……여덟.": "…Ocho.",
     "……아홉.": "…Nueve.",
     "……열.": "…Diez.",
+    "……열.{p:300} 아니, 더 들어갔다.": "…Diez.{p:300} No. Ha caído más.",
+    "제발, 신부님.{p:300} 제발.": "Por favor, abate.{p:300} Por favor.",
     "신부님?": "¿Abate?",
     "신부님!{p:200} 왜 그러십니까?": "Abate.{p:200} ¿Qué le pasa?",
     "……하필 오늘 밤이군.": "…Tenía que ser esta noche.",
@@ -93625,6 +93687,10 @@ MC.addLang('es', {
     "십 분.": "Diez minutos.",
     "반 시간.": "Media hora.",
     "남은 걸, 전부.": "Lo que queda. Todo.",
+    "모자라다.{p:300} 그때 두 방울.": "No alcanza.{p:300} Aquellas dos gotas.",
+    "모자라다.{p:300} 그때 한 방울.": "No alcanza.{p:300} Aquella gota.",
+    "젠장.": "Maldita sea.",
+    "신부님, 제발!": "¡Abate, por favor!",
     "……신부님?": "…¿Abate?",
     "날이 밝고 있었다.": "Amanecía.",
     "신부님의 등잔.": "El candil del abate.",
@@ -98946,11 +99012,15 @@ MC.addLang('es', {
   ST.vial = function (a) {
     const sec = Math.max(0.5, num(a.sec, 3)), hollow = MC.clamp(a.hollow != null ? a.hollow | 0 : 2, 0, 3), cut = a.cut === true;
     if (isAuto()) return later(300, () => { const ms = Math.round(sec * 500); setVar(a.var, 0); if (cut) setVar(a.varMs, ms); return { ms, slow: false }; });
-    const cutOrder = [0, 1, 2, 3].filter(i => i !== hollow).slice(0, 2).concat([hollow]);   // 두 번은 단단한 다리, 셋째가 빈 다리
+    // [V436 0.9.42 11-22] 두드리지 않고 더듬는다(사용자: 추천 「나」 — 「소리가 새면 우린 떨어지네」 바로 뒤라 나무를 두드리지 않는다): 누른 채 다리에 손을 대고 FEEL_MS 훑으면
+    //   단단한 다리는 그대로, 빈 다리는 밑동 마개가 헐겁게 논다 → 찾음(닿음 멈춤·짚 부스러기·'통' 소리 없음). 컷신(S4)은 아는 다리로 곧장. 되돌리기: ?uw2off=V436(옛 두드리기)
+    const feelOn = !!(MC.uw2 && MC.uw2('V436')), FEEL_MS = 420;
+    const cutOrder = feelOn ? [hollow] : [0, 1, 2, 3].filter(i => i !== hollow).slice(0, 2).concat([hollow]);   // 두 번은 단단한 다리, 셋째가 빈 다리
     const S = { t: 0, found: -1, ms: 0, knock: null, hand: null, cur: 1, kd: null, beatAt: 350, pulse: 0, dust: [], jig: [0, 0, 0, 0], tapped: [false, false, false, false], shakeT: 0, jx: 0, jy: 0, jT: 0, capOff: 0, cutK: 0, readMs: 0,
       stop: -1, straw: [] };   // [r3 B5-4a] 닿은 때(sc.t) · 짚 부스러기
+    S.feelI = -1; S.feelT = 0; S.down = false;            // [V436] 지금 더듬는 다리 · 그 다리를 훑은 시간 · 누르고 있는지
     // [c43-guide B1] 안내 한 줄(공통 자리) — 컷신(cut)에는 없다. 안내가 떠 있는 첫 1.5초는 시간(3초 셈·심장 빨라짐)을 멈춘다(readMs)
-    const gd = cut ? null : U.guide({ key: 'mg.vialPrompt', icon: 'tap', delay: FADE + 200 });
+    const gd = cut ? null : U.guide({ key: feelOn ? 'mg.vialFeel' : 'mg.vialPrompt', icon: feelOn ? 'hold' : 'tap', delay: FADE + 200 });
     let lay = null;                                       // 화면 배치(크기가 바뀌면 다시)
     function layout() {
       const g = G();
@@ -99015,6 +99085,14 @@ MC.addLang('es', {
         U.vibrate(10);
       }
     }
+    function feelHit(i, sc) {                              // [V436] 훑은 끝: 빈 다리는 마개가 헐겁게 논다(소리는 아주 작게)
+      S.tapped[i] = true; if (gd) gd.ok();
+      if (i === hollow) {
+        S.jig[i] = 1; U.sfx('knock', { gain: 0.2, pitch: 1.5 }); U.vibrate([8, 30, 8]);
+        S.found = sc.t; S.ms = Math.max(0, Math.round(sc.t - FADE - S.readMs)); if (gd) gd.end();
+      } else { U.sfx('cloth_slip', { gain: 0.22, pitch: 0.8 }); U.vibrate(6); }
+      if (S.keyFeel) { S.keyFeel = false; S.feelI = -1; }
+    }
     return mount({
       name: 'mg_s3_vial', opaque: true,
       safe: () => ({ ms: Math.round(sec * 1000), slow: false }),
@@ -99045,11 +99123,17 @@ MC.addLang('es', {
           const amp = S.found >= 0 ? 0.6 : 0.8 + 2.2 * Math.min(1, el / (sec * 1000)) + (over ? 1 : 0);
           S.jx = Math.round((U.vr() - 0.5) * 2 * amp); S.jy = Math.round((U.vr() - 0.5) * 2 * amp * 0.7);
         }
+        // [V436] 더듬기: 누르고 있는 다리 옆구리에 손을 대고 위아래로 훑는다 → FEEL_MS 뒤 판정
+        if (feelOn && S.found < 0 && S.feelI >= 0) {
+          const i = S.feelI, kp = knockAt(L, i), e = Math.min(1, dt / 90), ty = kp[1] - 6 + Math.sin(sc.t / 120) * 5;
+          S.cur = i; S.hand = [S.hand[0] + (kp[0] - S.hand[0]) * e, S.hand[1] + (ty - S.hand[1]) * e];
+          if (Math.abs(S.hand[0] - kp[0]) < 4) { const was = S.feelT; S.feelT += dt; if (was < FEEL_MS && S.feelT >= FEEL_MS) feelHit(i, sc); }
+        }
         // [scenes-s4] 컷신: 손이 저절로 — 정해 둔 순서로 두드리고 셋째에 빈 다리
         if (cut && S.found < 0 && !S.knock && S.cutK < cutOrder.length) {
           const i = cutOrder[S.cutK], kp = knockAt(L, i), dir = L.legs[i].x < (G().W >> 1) ? 1 : -1, hv = [kp[0] + dir * 6, kp[1] + 16];   // 다음 다리 앞으로 천천히(두드림은 짧게)
           const e = Math.min(1, dt / 260); S.hand = [S.hand[0] + (hv[0] - S.hand[0]) * e, S.hand[1] + (hv[1] - S.hand[1]) * e]; S.cur = i;
-          if (sc.t >= FADE + VIAL_CUT_T0 + S.cutK * VIAL_CUT_GAP) { S.cutK++; knock(i); }
+          if (sc.t >= FADE + VIAL_CUT_T0 + S.cutK * VIAL_CUT_GAP) { S.cutK++; if (feelOn) { S.feelI = i; S.feelT = 0; } else knock(i); }
         }
         // 키보드: ←→로 다리 고르기
         const kd = cut ? null : (MC.input.keyDir ? MC.input.keyDir() : null);
@@ -99075,6 +99159,17 @@ MC.addLang('es', {
       },
       input(sc, ev) {
         if (cut || S.found >= 0 || sc.t < 200) return;
+        if (feelOn) {                                     // [V436] 누른 채 문지르기(키보드: 고른 다리를 한 번 훑음)
+          if (ev.type === 'tap' && ev.key) { S.feelI = S.cur; S.feelT = 0; S.keyFeel = true; return; }
+          if (ev.type === 'up' || ev.type === 'cancel') { S.down = false; S.feelI = -1; S.feelT = 0; return; }
+          if (ev.type === 'down') S.down = true;
+          if (!S.down || (ev.type !== 'down' && ev.type !== 'move')) return;
+          const LL = layout(); let bi = -1, bD = 1e9;
+          for (let i = 0; i < 4; i++) { const d = Math.abs(ev.x - LL.legs[i].x); if (d < bD) { bD = d; bi = i; } }
+          const ni = bi >= 0 && bD <= 34 && ev.y >= LL.y - 24 && ev.y <= LL.floorY + 60 ? bi : -1;
+          if (ni !== S.feelI) { S.feelI = ni; S.feelT = 0; }
+          return;
+        }
         const L = layout();
         if (ev.type === 'tap' && ev.key) { knock(S.cur); return; }
         if (ev.type !== 'down') return;
@@ -99200,7 +99295,7 @@ MC.addLang('es', {
         // [fix beats-clarity] 아직 한 번도 두드리지 않았으면 손가락이 다리를 차례로 짚는다(무엇을 누를지 — 글자 없음)
         if (!cut && S.found < 0 && !S.knock && (!S.tapped.some(Boolean) || (gd && gd.again())) && t > 1500) {
           const i = (((t - 1500) / 850) | 0) % 4, kp = knockAt(L, i);
-          tapHint(kp[0], kp[1] - 4, Math.min(11, U.lvl(t, 1500, 400) * 0.7));
+          if (feelOn) U.hintHand(kp[0], kp[1] - 4, Math.min(11, U.lvl(t, 1500, 400) * 0.7), 'hold'); else tapHint(kp[0], kp[1] - 4, Math.min(11, U.lvl(t, 1500, 400) * 0.7));
         }
         if (shk) ctx.restore();                          // [r3 B5-4a]
         // 심장 맥동 비네트(3초를 넘기면 붉게)
@@ -99285,6 +99380,8 @@ MC.addLang('es', {
   ST.drops = function (a) {
     if (a.rest === true) return dropsRest(a);
     const n = Math.max(1, (a.n | 0) || 10), said = strs(a.said), idle = num(a.idle, 4) * 1000, cut = a.cut === true;
+    // [V435 0.9.42 11-22] max = 실제로 떨어지는 방울의 끝(S3: 12 — 열을 넘겨 누르면 열둘까지는 정말 들어간다, var = 더 넣은 수 0~2) · short = 컷신에서 모자라는 수(S4: 지난번에 더 쓴 만큼 병이 먼저 빈다 → n − short 방울 뒤 빈 병을 두 번 턴다)
+    const max = Math.max(n, (a.max | 0) || n), short = cut ? MC.clamp(a.short | 0, 0, n - 1) : 0, need = n - short;
     if (isAuto()) return later(300, () => { setVar(a.var, 0); return { n, extra: 0 }; });
     const S = { count: 0, extra: 0, last: -1, lp: -1e9, drops: [], ret: null, doneAt: -1, saidShown: false, splash: [], jx: 0, jy: 0, jT: 0, stain: 0, cutAt: FADE + DROP_CUT_T0 };
     // [c43-guide B1] 안내 한 줄(공통 자리) + 방울마다 위에 셈 토스트 「한 방울.」…「열 방울.」(영s3a모·영s3b모) — 컷신(S4 cut)에는 둘 다 없다
@@ -99304,10 +99401,16 @@ MC.addLang('es', {
       const L = layout();
       S.lp = sc.t;                                        // fixer-s3: 마지막 누름(열 뒤에도) — 두드림이 멎고 1.2초 뒤에 닫는다
       if (S.doneAt >= 0) {                                // 열 뒤: 방울이 맺혔다 도로 들어간다(글자 없음)
-        if (!S.ret) { S.ret = { t: 0 }; S.extra++; }
+        if (!cut && n + S.extra < max) {                 // [V435] 열을 넘겨도 max까지는 정말 떨어진다
+          if (sc.t - S.last < 110) return;
+          S.extra++; S.last = sc.t; S.drops.push({ t: 0, x: L.lip[0], y: L.lip[1], hit: false });
+          if (dropCount[n + S.extra - 1]) toast(dropCount[n + S.extra - 1], 900);
+          return;
+        }
+        if (!S.ret) S.ret = { t: 0 };
         return;
       }
-      if (S.count >= n || sc.t - S.last < 110) return;
+      if (S.count >= need || sc.t - S.last < 110) return;
       S.count++; S.last = sc.t;
       S.drops.push({ t: 0, x: L.lip[0], y: L.lip[1], hit: false });
       if (gd) { gd.ok(); if (S.count >= n) gd.end(); }
@@ -99325,16 +99428,19 @@ MC.addLang('es', {
           if (!d.hit && d.t >= 120 + 230) {
             d.hit = true;
             snd('drop', { gain: 0.7 }, 'drip', { gain: 0.6, pitch: 1.15 });
-            S.stain = Math.min(n, S.stain + 1);
+            S.stain = Math.min(max, S.stain + 1);
             puff(S.splash, L.gx + (U.vr() - 0.5) * 6, L.gy - 1, 2, ['#c01830', '#8a1020'], 16);
-            if (S.stain >= n && S.doneAt < 0) S.doneAt = sc.t;
+            if (S.stain >= need && S.doneAt < 0) S.doneAt = sc.t;
           }
         }
         for (let i = S.drops.length - 1; i >= 0; i--) if (S.drops[i].t > 700) S.drops.splice(i, 1);
         stepPuff(S.splash, dt);
         if (S.ret) { S.ret.t += dt; if (S.ret.t >= 620) S.ret = null; }
         // [scenes-s4] 컷신: 손이 저절로 한 방울씩(간격이 고르지 않다 — 떨리는 손)
-        if (cut && S.count < n && sc.t >= S.cutAt) { press(sc); S.cutAt = sc.t + DROP_CUT_GAP[0] + U.vr() * (DROP_CUT_GAP[1] - DROP_CUT_GAP[0]); }
+        if (cut && S.count < need && sc.t >= S.cutAt) { press(sc); S.cutAt = sc.t + DROP_CUT_GAP[0] + U.vr() * (DROP_CUT_GAP[1] - DROP_CUT_GAP[0]); }
+        // [V435] 모자란 병: 마지막 방울 뒤 빈 병을 두 번 턴다(아무것도 안 나온다) — 그동안은 닫지 않는다
+        if (short && S.doneAt >= 0 && (S.dry | 0) < 2 && sc.t >= S.cutAt) { S.dry = (S.dry | 0) + 1; S.dryT = 170; S.lp = sc.t; S.cutAt = sc.t + 620; snd('phial', { gain: 0.3, pitch: 1.25 }); }
+        if (S.dryT > 0) { S.dryT -= dt; S.jy = S.dryT > 85 ? 3 : 1; }
         // 머뭇거리면 속셈 한 번(지금까지의 수) — 숫자 표시는 없다
         if (!cut && !S.saidShown && S.count >= 1 && S.count < n && S.drops.length === 0 && sc.t - S.last >= idle) { S.saidShown = true; toast(said[S.count - 1], 1600); }
         if (S.doneAt >= 0 && sc.t - Math.max(S.doneAt, S.lp) >= 1200 && !S.ret) { setVar(a.var, S.extra); sc.end({ n, extra: S.extra }); }
