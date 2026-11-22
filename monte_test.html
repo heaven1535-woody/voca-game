@@ -5968,6 +5968,7 @@ MC.uw2 = id => { const q = (MC.cfg && !MC.cfg.release && MC.cfg.q && MC.cfg.q.uw
 
   /* ---------- 토스트 ---------- */
   const toasts = [];
+  F.toastClear = function () { toasts.length = 0; };      // [V437 0.9.42 11-22] 떠 있는 토스트를 걷는다(방울 셈처럼 한 줄만 보여야 하는 곳 — 빠르게 누르면 세 줄이 쌓여 그림을 가렸다)
   F.toast = function (text, ms) {
     text = String(text);
     for (const t of toasts) if (t.text === text && t.t < t.ms - 300) { t.t = Math.min(t.t, 200); return; }   // 같은 글은 연장
@@ -98648,6 +98649,7 @@ MC.addLang('es', {
   function setVar(name, v) { if (name && MC.game && MC.game.setVar) { try { MC.game.setVar(String(name), v); } catch (_) {} } }
   function later(ms, fn) { return new Promise(r => setTimeout(() => { let v; try { v = fn ? fn() : undefined; } catch (e) { MC.core.error(e, 's3.auto'); } r(v); }, ms)); }
   function toast(t, ms) { if (t) { try { MC.ui.toast(String(t), ms); } catch (_) {} } }
+  function toastOne(t, ms) { try { if (MC.fx && MC.fx.toastClear) MC.fx.toastClear(); } catch (_) {} toast(t, ms); }   // [V437] 앞 토스트를 걷고 한 줄만
   // 누르기: 포인터는 down에서 바로(박자·셈이 늦지 않게), 키보드는 확인 키 tap
   const isPress = ev => ev.type === 'down' || (ev.type === 'tap' && ev.key);
   // 필드 액터의 화면 좌표(타일 왼쪽 위). 필드가 없으면 null
@@ -99404,7 +99406,7 @@ MC.addLang('es', {
         if (!cut && n + S.extra < max) {                 // [V435] 열을 넘겨도 max까지는 정말 떨어진다
           if (sc.t - S.last < 110) return;
           S.extra++; S.last = sc.t; S.drops.push({ t: 0, x: L.lip[0], y: L.lip[1], hit: false });
-          if (dropCount[n + S.extra - 1]) toast(dropCount[n + S.extra - 1], 900);
+          if (dropCount[n + S.extra - 1]) toastOne(dropCount[n + S.extra - 1], 900);
           return;
         }
         if (!S.ret) S.ret = { t: 0 };
@@ -99414,7 +99416,7 @@ MC.addLang('es', {
       S.count++; S.last = sc.t;
       S.drops.push({ t: 0, x: L.lip[0], y: L.lip[1], hit: false });
       if (gd) { gd.ok(); if (S.count >= n) gd.end(); }
-      if (!cut && dropCount[S.count - 1]) toast(dropCount[S.count - 1], 900);
+      if (!cut && dropCount[S.count - 1]) toastOne(dropCount[S.count - 1], 900);
     }
     return mount({
       name: 'mg_s3_drops', opaque: true,
