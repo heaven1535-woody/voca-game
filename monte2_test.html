@@ -90876,7 +90876,7 @@ MC.addLang('ko', {
     haggle: { name: '값 깎기', cls: 'clerk', t: '사고팔 때 값 차이가 줄어든다' },
     rumor: { name: '소문 밝음', cls: 'clerk', t: '소문의 값이 더 정확해진다' }
   };
-  P2.BUILD = '연습판 1차 · 11-25';
+  P2.BUILD = '연습판 1차 · 11-25 나';
   // 소문 사슬(docs/gdd2/05 SCN-RU-01): 술집 소문이 고리를 거쳐 명품으로 이어진다. 고리마다 within턴 안에 닿지 못하면 식어서 끊긴다
   // [연습판 11-25] 지도에 맞는 둘만. 문구는 임시(사용자가 고른다). gain = 끝 보상의 효과도 연습판용 임시 — 본편에서 명품은 장비·선물로 쓴다
   // steps[0] = 첫 소문(from부터 to까지의 턴에 사람이 탄 무리가 그곳에 닿으면 듣는다). who: 'yacht' = 백작 일행이 가야 한다. later = 앞 고리보다 뒤 턴이어야 한다
@@ -91249,8 +91249,43 @@ MC.addLang('ko', {
     const tx = x + 40, used = P2.cargoUsed(gr), cap = P2.cap(gr);
     U.text(U.fit(gr.name, w - 44, 'bold'), tx, y + 1, { font: 'bold' });
     const stuck = P2.stuck(S, gr), stT = pname(gr.at) + ' · 지휘할 사람 없음'; U.text(U.fit(stuck ? (U.w(stT) <= w - 44 ? stT : '지휘할 사람 없음') : gr.dest ? pname(gr.at) + ' → ' + pname(gr.dest) : pname(gr.at) + (S.phase === 'arrive' ? ' · 도착' : ' · 머무름'), w - 44), tx, y + 14, { color: stuck ? C.UP : gr.dest ? C.GOLD : C.DIM });
-    U.text('짐', tx, y + 25, { color: C.DIM }); U.bar(tx + 12, y + 28, 30, 6, used / cap, C.GOLD); U.text(used + '/' + cap, tx + 46, y + 25); if (w >= 160) U.text('사람 ' + P2.members(S, gr).length, x + w - 4, y + 25, { align: 'right', color: C.DIM });
-    U.hit(x, y, w, h, () => { if (S.phase === 'arrive' || V.sel === gr.id) openPort(gr.at, gr.id); else { V.sel = gr.id; say(''); } });
+    U.text('짐', tx, y + 25, { color: C.DIM }); U.bar(tx + 12, y + 28, 30, 6, used / cap, C.GOLD); U.text(used + '/' + cap, tx + 46, y + 25); if (w >= 160) U.text('동료 ' + P2.members(S, gr).length, x + w - 4, y + 25, { align: 'right', color: C.DIM });
+    U.hit(x, y, w, h, () => { if (S.phase === 'arrive') openPort(gr.at, gr.id); else if (V.sheet && V.sheet.kind === 'group' && V.sheet.id === gr.id) { V.sheet = null; V.sel = null; } else { V.sheet = { kind: 'group', id: gr.id }; V.sel = gr.id; say(''); } });
+  }
+  // [묶음 8 11-25] 지시 상자: 무리 카드를 누르면 「어디로 보낼까」, 지도의 곳을 누르면 「누구를 보낼까」. 못 가는 곳은 까닭을 적는다
+  function sheetDraw(L, x, w, chAt) {
+    const S = V.S, sh = V.sheet, H = L.H; if (!sh || S.phase !== 'play') { V.sheet = null; return; }
+    const close = () => { V.sheet = null; V.sel = null; }, btns = [], notes = []; let title, sub, foot;
+    const tag = pt => (chAt[pt] ? ' · 소문' : pt === 'mc' ? ' · 보물' : pt === 'mar' ? ' · 모렐' : '');
+    const send = (g, pt) => () => { g.dest = pt; say(g.name + ' → ' + pname(pt)); close(); };
+    if (sh.kind === 'group') {
+      const g = grp(sh.id); if (!g) { V.sheet = null; return; } title = w < 170 ? g.name : g.name + ' · ' + pname(g.at);
+      if (P2.stuck(S, g)) sub = '지휘할 사람이 없다 — 「동료」에서 맡긴다';
+      else {
+        sub = w < 170 ? '어디로 보낼까요?' : '어디로 보낼까요? 한 턴에 한 곳씩';
+        for (const pt of P2.reach(S, g)) btns.push({ t: pname(pt), tag: tag(pt), on: g.dest === pt, fn: send(g, pt) });
+        const kind = P2.VEHICLES[g.veh].kind; for (const r of P2.ROUTES) { if (r[2] === kind) continue; const o = r[0] === g.at ? r[1] : r[1] === g.at ? r[0] : null; if (o && kind === 'sea') notes.push(pname(o) + ' — 뭍길이라 짐마차만 간다'); }
+        if (kind === 'land') notes.push('짐마차는 뭍길로만 간다');
+      }
+      foot = [['여기 머문다', () => { g.dest = null; say(g.name + ' — 머문다'); close(); }, !g.dest], ['시세 보기', () => { const id = g.id, at = g.at; close(); openPort(at, id); }]];
+    } else {
+      const pt = sh.pt, A = P2.PORTS[pt], can = S.groups.filter(g => !P2.stuck(S, g) && P2.reach(S, g).indexOf(pt) >= 0), here = P2.groupAt(S, pt); title = A.name;
+      const one = can.length === 1 ? can[0] : null, bat = t => { const k = t.charCodeAt(t.length - 1); return k >= 0xAC00 && k <= 0xD7A3 && (k - 0xAC00) % 28 !== 0; };
+      if (one && one.dest === pt) { sub = one.name + (bat(one.name) ? '이' : '가') + ' 이곳으로 가는 중. 그만둘까요?'; btns.push({ t: '그만둔다', tag: '', on: false, fn: () => { one.dest = null; say(one.name + ' — 머문다'); close(); } }, { t: '그대로 둔다', tag: '', on: true, fn: close }); }
+      else if (one) { sub = one.name + (bat(one.name) ? '을' : '를') + ' 이곳으로 보낼까요?'; btns.push({ t: '예, 보낸다', tag: '', on: true, fn: send(one, pt) }, { t: '아니요', tag: '', on: false, fn: close }); }
+      else if (can.length) { sub = '누구를 이곳으로 보낼까요?'; for (const g of can) btns.push({ t: g.name, tag: '', on: g.dest === pt, fn: send(g, pt) }); btns.push({ t: '아니요', tag: '', on: false, fn: close }); }
+      else sub = '지금 한 턴에 닿는 무리가 없다';
+      if (here.length) notes.push('여기 있는 무리: ' + here.map(g => SN[g.id] || g.name).join(', '));
+      if (!can.length) { if (A.kind !== 'land') notes.push('한 턴에는 이웃한 곳까지만 간다'); else if (S.groups.some(g => g.veh === 'wagon')) notes.push('뭍길이라 짐마차만 간다', '짐마차가 이웃한 곳에 있어야 한다'); else notes.push('뭍길이라 짐마차가 있어야 간다', '짐마차는 7월 초 마르세유에 온다'); }
+      foot = [['시세 보기', () => { close(); openPort(pt, null); }]];
+    }
+    const bh = 22, cols = 2, bw = Math.floor((w - 10) / cols), nr = Math.ceil(btns.length / cols), h = 33 + nr * (bh + 2) + notes.length * 13 + 30, y = Math.max(L.top + 26, H - h);
+    V.anc.sheetY = x === 0 ? y : null; U.rect(x, y, w, H - y, C.DARK); U.rect(x, y, w, 1, C.GOLD); U.hit(x, y, w, H - y, () => {});
+    U.text(U.fit(title, w - 42, 'bold'), x + 5, y + 3, { font: 'bold' }); U.btn(x + w - 32, y + 3, 28, 14, '닫기', close);
+    U.text(U.fit(sub, w - 10), x + 5, y + 18, { color: C.DIM });
+    let yy = y + 33; btns.forEach((b, i) => { const t = U.w(b.t + b.tag) <= bw - 6 ? b.t + b.tag : b.t; U.btn(x + 4 + (i % cols) * (bw + 2), yy + Math.floor(i / cols) * (bh + 2), bw, bh, U.fit(t, bw - 6), b.fn, { primary: b.on }); }); yy += nr * (bh + 2);
+    notes.forEach(t => { U.text(U.fit(t, w - 10), x + 5, yy, { color: C.UP }); yy += 13; });
+    const fw = Math.floor((w - 8 - (foot.length - 1) * 2) / foot.length); foot.forEach((f, i) => U.btn(x + 4 + i * (fw + 2), H - 24, fw, 22, f[0], f[1], { disabled: !!f[2] }));
   }
   function openPort(pt, gid) { const here = P2.groupAt(V.S, pt); V.view = 'port'; V.port = pt; V.gid = gid && here.find(x => x.id === gid) ? gid : (here[0] ? here[0].id : null); V.tab = P2.PORTS[pt].kind === 'base' ? 'vault' : 'price'; V.msg = ''; }
   function mapView(L) {
@@ -91258,35 +91293,35 @@ MC.addLang('ko', {
     let mx = 0, my, mw, mh, px, py, pw, ch;
     if (L.land) { pw = 150; px = W - pw; mw = px - 1; my = L.top; mh = H - my; goalStrip(px, L.top, pw); track(px, L.top + 12, pw, tl); py = L.top + 14 + th; ch = Math.min(40, Math.floor((H - py - 24) / n) - 2); }
     else { goalStrip(0, L.top, W); track(0, L.top + 12, W, tl); ch = 38; pw = W; px = 0; py = H - 26 - n * (ch + 2); mw = W; my = L.top + 12 + th; mh = py - my - 2; }
-    const P = U.map(mx, my, mw, mh), arr = S.phase === 'arrive', sel = V.sel && !arr ? grp(V.sel) : null, reach = sel ? P2.reach(S, sel) : [];
+    const P = U.map(mx, my, mw, mh), arr = S.phase === 'arrive', sel = V.sel && !arr ? grp(V.sel) : null, reach = sel ? P2.reach(S, sel) : [], anyR = {};
+    if (!arr && !sel) for (const g of S.groups) if (!P2.stuck(S, g)) for (const pt of P2.reach(S, g)) anyR[pt] = 1;
     for (const r of P2.ROUTES) U.dots(U.routePts(P, r[0], r[1]), r[2] === 'land' ? C.BROWN : '#5f6f6c', 3);
     for (const gr of S.groups) if (gr.dest) U.dots(U.routePts(P, gr.at, gr.dest), C.RED, 2);
     const pulse = (Math.floor(performance.now() / 350) % 2);
     for (const pt in P2.PORTS) {
       const A = P2.PORTS[pt], q = P(A.lon, A.lat), x = Math.round(q[0]), y = Math.round(q[1]), can = reach.indexOf(pt) >= 0;
-      V.anc['port:' + pt] = [x - 8, y - 8, 16, 16]; if (can) G().ring(x, y, 5 + pulse, '#ffffff');
+      V.anc['port:' + pt] = [x - 8, y - 8, 16, 16]; if (can) G().ring(x, y, 5 + pulse, '#ffffff'); else if (anyR[pt]) G().ring(x, y, 5, '#ffffff');
       if (pt === 'mc') { G().rect(x - 2, y - 1, 5, 3, C.INK); G().rect(x - 1, y - 2, 3, 5, C.INK); G().rect(x - 1, y - 1, 3, 3, C.GOLD); } else { G().rect(x - 2, y - 2, 4, 4, C.INK); G().rect(x - 1, y - 1, 2, 2, A.kind === 'land' ? '#c79a55' : '#d9523c'); }
       const lb = LABEL[pt]; U.text(SHORT[pt] || A.name, x + lb[0], y + lb[1], { color: pt === 'mc' ? C.RED : C.INK, outline: '#e9dcb8', align: lb[2] });
       U.hit(x - 11, y - 11, 22, 22, () => {
-        if (sel && can) { sel.dest = sel.dest === pt ? null : pt; say(sel.dest ? sel.name + ' → ' + A.name : ''); }
-        else if (sel && sel.at !== pt && P2.stuck(S, sel)) say('지휘 없음 — 「사람」에서 맡긴다');
-        else if (sel && sel.at === pt) openPort(pt, sel.id);
-        else if (P2.groupAt(S, pt).length) openPort(pt, null);
-        else { openPort(pt, null); }
+        if (arr) openPort(pt, null);
+        else if (sel && can) { sel.dest = sel.dest === pt ? null : pt; say(sel.dest ? sel.name + ' → ' + A.name : ''); V.sheet = null; V.sel = null; }
+        else { V.sheet = { kind: 'port', pt: pt }; V.sel = null; say(''); }
       });
     }
     for (const pt in chAt) { const A = P2.PORTS[pt], q = P(A.lon, A.lat), x = Math.round(q[0]), y = Math.round(q[1]); G().ring(x, y, 9, C.INK); G().ring(x, y, 8, C.GOLD); G().ring(x, y, 7, C.GOLD); }   // 쫓는 소문이 가리키는 곳(이름표 위에 그린다)
     S.groups.forEach((gr, i) => { const A = P2.PORTS[gr.at], q = P(A.lon, A.lat), same =S.groups.filter(o => o.at === gr.at), k = same.indexOf(gr); U.icon(gr.veh === 'yacht' ? 'count' : gr.veh, q[0] - 5 * same.length + k * 12, q[1] - 17, V.sel === gr.id); });
     if (V.msg) { const w = Math.min(mw - 8, U.w(V.msg) + 8); U.rect(mx + 4, my + mh - 16, w, 13, 'rgba(14,15,20,0.85)'); U.text(V.msg, mx + 8, my + mh - 16, { color: C.GOLD }); }
-    else if (!sel && !tutNow()) { U.rect(mx + 4, my + mh - 16, Math.min(mw - 8, 150), 13, 'rgba(14,15,20,0.7)'); U.text(arr ? '도착 — 무리를 눌러 사고판다' : '무리를 고르고 갈 곳을 누른다', mx + 8, my + mh - 16, { color: arr ? C.GOLD : C.DIM }); }
+    else if (!sel && !tutNow()) { U.rect(mx + 4, my + mh - 16, Math.min(mw - 8, 150), 13, 'rgba(14,15,20,0.7)'); U.text(arr ? '도착 — 무리를 눌러 사고판다' : '도시를 눌러 무리를 보낸다', mx + 8, my + mh - 16, { color: arr ? C.GOLD : C.DIM }); }
     S.groups.forEach((gr, i) => card(gr, px + 2, py + i * (ch + 2), pw - 4, ch));
     const by = H - 24, idle = S.groups.filter(x => !x.dest).length, bw = pw - 4; V.anc.map = [mx, my, mw, mh]; V.anc.people = [px + 2, by, 40, 22]; V.anc.pass = [px + 80, by, bw - 78, 22];
-    U.btn(px + 2, by, 40, 22, '사람', () => { V.view = 'people'; V.off = 0; });
+    U.btn(px + 2, by, 40, 22, '동료', () => { V.view = 'people'; V.off = 0; });
     U.btn(px + 44, by, 34, 22, '기록', () => { V.view = 'rec'; V.msg = ''; });
-    U.btn(px + 80, by, bw - 78, 22, arr ? '정산 ▶' : idle && bw - 78 >= 96 ? '넘기기 ▶ 머무름' + idle : '넘기기 ▶', endTurn, { primary: true });
+    U.btn(px + 80, by, bw - 78, 22, arr ? '턴 마침 ▶' : idle < S.groups.length ? '출발 ▶' : '머문 채 넘김 ▶', endTurn, { primary: true });
+    if (V.sheet) sheetDraw(L, px, pw, chAt);
     if (L.land) U.rect(px - 1, L.top, 1, H - L.top, C.LINE);
   }
-  function endTurn() { const S = V.S; if (S.phase === 'play') { P2.moveAll(S); V.showLog = S.log.length > 0; } else if (S.phase === 'arrive') { P2.settle(S); V.showLog = true; if (S.phase === 'end') V.view = 'end'; } V.sel = null; V.msg = ''; P2.save(S); }   // [도착 단계 11-25] 넘기기 = 이동, 정산 = 턴 끝
+  function endTurn() { const S = V.S; if (S.phase === 'play') { P2.moveAll(S); V.showLog = S.log.length > 0; } else if (S.phase === 'arrive') { P2.settle(S); V.showLog = true; if (S.phase === 'end') V.view = 'end'; } V.sel = null; V.sheet = null; V.msg = ''; P2.save(S); }   // [도착 단계 11-25] 출발 = 이동, 턴 마침 = 정산
   function logBox(L) {
     const S = V.S, w = Math.min(L.W - 12, L.land ? 300 : 200), max = Math.max(3, Math.floor((L.H - L.top - 42) / 13)); let lines = [];
     for (const l of S.log.slice(-9)) wrapT(l.t, w - 20).forEach((t, i) => lines.push({ t: (i ? '  ' : '') + t, k: l.k }));   // 긴 줄은 접어서 보인다(뒤 줄은 들여 씀)
@@ -91385,10 +91420,10 @@ MC.addLang('ko', {
     if (rest <= 0) U.text('다 모았다. 9월 5일을 기다린다.', 4, y + 112, { color: C.GREEN }); else if (!can) U.text(S.phase !== 'arrive' ? '도착한 뒤에 산다 (지금은 지시)' : '백작 일행이 마르세유에 있어야 한다', 4, y + 112, { color: C.RED }); else if (V.msg) U.text(V.msg, 4, y + 112, { color: C.RED });
   }
 
-  /* ---------- 사람 장부 ---------- */
+  /* ---------- 동료들(옛 이름 「사람 장부」 — 사고파는 것처럼 들려서 11-25 사용자가 바꿈) ---------- */
   function peopleView(L) {
     const S = V.S, W = L.W, H = L.H; let y = L.top; U.rect(0, y, W, H - y, C.PAPER);
-    U.rect(0, y, W, 16, C.DARK); U.text('사람 장부', 4, y + 1, { font: 'bold' }); U.text(Object.keys(S.people).length + '명 · 급료 ' + U.num(P2.wages(S)), W - 46, y + 3, { color: C.DIM, align: 'right' }); U.btn(W - 40, y + 1, 38, 14, '← 지도', () => { V.view = 'map'; V.msg = ''; V.ask = null; }); y += 18;
+    U.rect(0, y, W, 16, C.DARK); const tw = U.text('동료들', 4, y + 1, { font: 'bold' }), np = Object.keys(S.people).length, wg = U.num(P2.wages(S)), ct = [np + '명 · 급료 ' + wg, np + '명·급료 ' + wg, '급료 ' + wg].find(t => U.w(t) <= W - 46 - tw - 6) || wg; U.text(ct, W - 46, y + 3, { color: C.DIM, align: 'right' }); U.btn(W - 40, y + 1, 38, 14, '← 지도', () => { V.view = 'map'; V.msg = ''; V.ask = null; }); y += 18;
     const list = []; for (const gr of S.groups) for (const p of P2.members(S, gr)) list.push([p, gr]);
     const rowH = 54, per = Math.max(1, Math.floor((H - y - (L.land ? 20 : 66)) / rowH)), cols = L.land ? 2 : 1, cw = Math.floor(W / cols), page = list.slice(V.off, V.off + per * cols), paged = list.length > per * cols, hy = y - 18;
     page.forEach((it, i) => { const p = it[0], gr = it[1], x = (i % cols) * cw, yy = y + Math.floor(i / cols) * rowH, cl = P2.CLASSES[p.cls], nx = P2.expNext(p);
@@ -91450,7 +91485,7 @@ MC.addLang('ko', {
     const chains = Object.keys(S.chains || {}).map(id => { const c = S.chains[id], d = P2.CHAINS[id]; if (!d || c.done) return null; if (c.dead) return [d.name, '식었다 — 더 들리지 않는다', C.INK2]; const st = d.steps[c.step], left = c.due - S.turn + (S.phase === 'play' ? 1 : 0); return [d.name, (st.hint || pname(st.at)) + ' · ' + (left > 0 ? left + '턴 안에' : '곧 식는다'), C.RED]; }).filter(Boolean);
     const gone = (S.gone || []).map(g => [g.name + ' — ' + ((P2.CLASSES[g.cls] || {}).name || '') + ' Lv' + g.lv, tl(g.turn) + ' · ' + (g.why === '떠남' ? '말없이 떠났다' : '내보냈다')]);
     let y1 = sec(0, y, '얻은 명품 ' + items.length, items, '아직 없다'); y1 = sec(0, y1, '소문', chains, '쫓는 소문이 없다');
-    sec(L.land ? cw : 0, L.land ? y : y1, '떠난 사람 ' + gone.length, gone, '아직 없다');
+    sec(L.land ? cw : 0, L.land ? y : y1, '떠난 동료 ' + gone.length, gone, '아직 없다');
     const by = H - 22, bw = Math.floor((W - 12) / 2);
     U.btn(4, by, bw, 20, '지난 소식', () => { V.view = 'map'; V.showLog = true; }, { disabled: !S.log.length });
     U.btn(8 + bw, by, bw, 20, S.tutOff ? '안내 켜기' : '안내 끄기', () => { S.tutOff = !S.tutOff; P2.save(S); });
@@ -91460,14 +91495,14 @@ MC.addLang('ko', {
   // 한 번에 하나, 두 줄, 누를 곳에 깜빡이는 금빛 테두리. 연습판은 기능을 잠그지 않고 안내만 차례로 띄운다. 글은 임시(사용자가 고른다)
   // a = 테두리를 칠 자리, w = 이 화면·단계에서 보인다, d = 지나갔다(한 번 지나가면 S.tut에 남아 다시 뜨지 않는다). 「끔」은 S.tutOff
   const TUT = [
-    { id: 'pick', a: 'card:boat', t: ['「자코포의 배」 카드를 누른다', '무리를 골라야 갈 곳을 정한다'], w: (S, q) => q.map && q.play, d: (S, q) => S.turn > 0 || !q.play || !!V.sel || q.dest },
-    { id: 'dest', a: null, t: ['흰 고리가 뜬 곳을 누른다', '한 턴에 한 곳씩 간다'], w: (S, q) => q.map && q.play, d: (S, q) => S.turn > 0 || !q.play || q.dest },
-    { id: 'pass', a: 'pass', t: ['「넘기기」로 무리를 보낸다', '안 보낸 무리는 그 자리에 머문다'], w: (S, q) => q.map && q.play, d: (S, q) => S.turn > 0 || !q.play },
+    { id: 'pick', a: null, t: ['가고 싶은 도시를 누른다', '흰 고리가 한 턴에 닿는 곳이다'], w: (S, q) => q.map && q.play, d: (S, q) => S.turn > 0 || !q.play || !!V.sel || !!V.sheet || q.dest },
+    { id: 'dest', a: null, t: ['「예, 보낸다」를 누른다', '무리 카드를 눌러 고를 수도 있다'], w: (S, q) => q.map && q.play, d: (S, q) => S.turn > 0 || !q.play || q.dest },
+    { id: 'pass', a: 'pass', t: ['「출발」로 무리를 보낸다', '안 보낸 무리는 그 자리에 머문다'], w: (S, q) => q.map && q.play, d: (S, q) => S.turn > 0 || !q.play },
     { id: 'arrive', a: 'card:boat', t: ['도착했다. 카드를 눌러 연다', '사고팔기는 도착한 뒤에만 된다'], w: (S, q) => q.map && q.arr, d: (S, q) => S.turn > 0 || (q.arr && V.view === 'port') },
     { id: 'buy', a: null, t: ['물건을 고르고 「사기」로 산다', '화살표는 더 비싸게 팔 곳이다'], w: (S, q) => q.port && q.arr && V.tab === 'price', d: (S, q) => S.turn > 0 || q.cargo },
-    { id: 'settle', a: 'pass', t: ['「정산」으로 턴을 마친다', '급료와 유지비가 나간다'], w: (S, q) => q.map && q.arr, d: (S, q) => S.turn > 0 },
+    { id: 'settle', a: 'pass', t: ['「턴 마침」으로 턴을 끝낸다', '급료와 유지비가 나간다'], w: (S, q) => q.map && q.arr, d: (S, q) => S.turn > 0 },
     { id: 'sell', a: null, t: ['실어 온 물건을 여기서 판다', '이익이 나면 신용이 오른다'], w: (S, q) => q.port && q.arr && V.tab === 'price' && S.turn >= 1 && !!q.gr && Object.keys(q.gr.cargo).length > 0, d: (S, q) => S.turn > 2 || S.turnProfit !== 0 || S.totalProfit !== 0 },
-    { id: 'people', a: 'people', t: ['「사람」에서 사람을 본다', '지휘를 맡기고, 자리에 올린다'], w: (S, q) => q.map && q.play && S.turn >= 1, d: (S, q) => S.turn > 2 || (S.turn >= 1 && V.view === 'people') },
+    { id: 'people', a: 'people', t: ['「동료」에서 동료들을 본다', '지휘를 맡기고, 자리에 올린다'], w: (S, q) => q.map && q.play && S.turn >= 1, d: (S, q) => S.turn > 2 || (S.turn >= 1 && V.view === 'people') },
     { id: 'wagon', a: 'card:wagon', t: ['짐마차가 왔다. 보케르로 간다', '7월 말 장에 비단·산호가 뛴다'], w: (S, q) => q.map && q.play && !!q.wagon, d: (S, q) => S.turn > 3 || (!!q.wagon && (!!q.wagon.dest || q.wagon.at !== 'mar' || Object.keys(q.wagon.cargo).length > 0)) },
     { id: 'vault', a: 'port:mc', t: ['백작을 몬테크리스토 섬으로', '신용만큼 보물을 꺼낼 수 있다'], w: (S, q) => q.map && q.play && S.turn >= 1, d: (S, q) => S.turn > 3 || (!!q.yacht && (q.yacht.at === 'mc' || q.yacht.dest === 'mc')) },
     { id: 'goal', a: 'port:mar', t: ['빚 문서는 마르세유에서 산다', '백작이 가야 한다. 9월 5일까지'], w: (S, q) => q.map && q.play && S.turn >= 2, d: (S, q) => S.turn > 4 || S.goalPaid > 0 }
@@ -91485,10 +91520,10 @@ MC.addLang('ko', {
     if (V.view === 'port' && L.land && A.note) {   // 가로의 항구 화면: 머리 띠의 한 줄 자리에
       const r = A.note; U.rect(r[0] - 2, r[1], r[2], 14, C.DARK); U.text(U.fit(U.w(s.t[0] + ' · ' + s.t[1]) <= r[2] - 34 ? s.t[0] + ' · ' + s.t[1] : s.t[0], r[2] - 34), r[0], r[1] + 2, { color: C.GOLD }); U.btn(r[0] + r[2] - 30, r[1] + 1, 26, 12, '끔', off);
     } else {
-      let bx, by, bw; if (V.view === 'map' && A.map) { bw = Math.min(A.map[2] - 8, 190); bx = A.map[0] + 4; by = A.map[1] + A.map[3] - (V.msg ? 47 : 31); } else if (V.view === 'port') { bw = L.W - 8; bx = 4; by = L.H - 126; } else return;
+      let bx, by, bw; if (V.view === 'map' && A.map) { bw = Math.min(A.map[2] - 8, 190); bx = A.map[0] + 4; by = A.map[1] + A.map[3] - (V.msg ? 47 : 31); if (A.sheetY) by = Math.min(by, A.sheetY - 31); } else if (V.view === 'port') { bw = L.W - 8; bx = 4; by = L.H - 126; } else return;
       U.box(bx, by, bw, 29, 'rgba(14,15,20,0.92)', C.GOLD); U.hit(bx, by, bw, 29, () => {}); U.text(U.fit(s.t[0], bw - 38), bx + 5, by + 2, { color: C.GOLD }); U.text(U.fit(s.t[1], bw - 10), bx + 5, by + 14, { color: C.CREAM }); U.btn(bx + bw - 29, by + 2, 26, 12, '끔', off);
     }
-    const r = s.a && A[s.a]; if (r && (V.blinkOn || Math.floor(performance.now() / 350) % 2)) { const c = C.GOLD; U.rect(r[0] - 1, r[1] - 1, r[2] + 2, 2, c); U.rect(r[0] - 1, r[1] + r[3] - 1, r[2] + 2, 2, c); U.rect(r[0] - 1, r[1], 2, r[3], c); U.rect(r[0] + r[2] - 1, r[1], 2, r[3], c); }
+    const r = s.a && A[s.a] && !(V.sheet && V.view === 'map' && s.a.indexOf('port:') !== 0) ? A[s.a] : null; if (r && (V.blinkOn || Math.floor(performance.now() / 350) % 2)) { const c = C.GOLD; U.rect(r[0] - 1, r[1] - 1, r[2] + 2, 2, c); U.rect(r[0] - 1, r[1] + r[3] - 1, r[2] + 2, 2, c); U.rect(r[0] - 1, r[1], 2, r[3], c); U.rect(r[0] + r[2] - 1, r[1], 2, r[3], c); }
   }
 
   /* ---------- 결과 ---------- */
@@ -91498,7 +91533,7 @@ MC.addLang('ko', {
     U.text('1829년 9월 5일', x + (w >> 1), y + 5, { font: 'bold', color: C.INK, align: 'center' });
     U.text(r.ok ? '붉은 비단 지갑이 전해졌다.' : '빚 문서를 다 모으지 못했다.', x + (w >> 1), y + 24, { color: r.ok ? C.GREEN : C.RED, align: 'center' });
     U.text(r.ok ? '새 파라옹호가 항구로 들어온다.' : '모자란 돈은 은행이 메웠다.', x + (w >> 1), y + 37, { color: C.INK2, align: 'center' });
-    const rows = [['빚 문서', U.num(r.paid || 0) + ' / ' + U.num(P2.GOAL)], ['남은 자금', U.num(r.cash || 0)], ['장사 이익', U.num(r.profit || 0)], ['신용', r.credit], ['의심', r.suspicion], ['거느린 사람', (r.people || 0) + '명']];
+    const rows = [['빚 문서', U.num(r.paid || 0) + ' / ' + U.num(P2.GOAL)], ['남은 자금', U.num(r.cash || 0)], ['장사 이익', U.num(r.profit || 0)], ['신용', r.credit], ['의심', r.suspicion], ['함께한 동료', (r.people || 0) + '명']];
     rows.forEach((kv, i) => { U.text(kv[0], x + 10, y + 58 + i * 14, { color: C.INK2 }); U.text(kv[1], x + w - 10, y + 58 + i * 14, { color: C.INK, align: 'right' }); });
     U.btn(x + 8, y + 150, w - 16, 22, '처음부터 다시', () => { P2.clearSave(); V.S = P2.newGame(Date.now() >>> 0); V.S.tutOff = true; V.view = 'map'; V.sel = null; V.showLog = true; P2.save(V.S); }, { primary: true });
     U.text('연습판 1차 — 여기까지', x + (w >> 1), y + 173, { color: C.INK2, align: 'center' });
