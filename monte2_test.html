@@ -90856,7 +90856,8 @@ MC.addLang('ko', {
   // [11-25 라 가짜 플레이어 맞춤] landRisk 설계 0.10 → 0.07(6절 표의 둘째 손잡이). 꽉 찬 마차 13번에 1번쯤, 호위 하나면 「드물다」
   P2.TUNE = { swing: 0.35, spread: 0.06, creditPer: 1500, creditCap: 6, drawMul: 1500, loyalTurn: 0.02, loyalK: 2, lvFree: 6, lvPost: 10, postWage: 1.3, skillLv: 2, skHaggle: 0.02,
     seats: 6, cartRent: 80, landRisk: 0.07, landLoss: 0.10, keepWages: 2, tagMin: 0.08, tagGain: 300,
-    cards: true, cardCashMin: 200, susBrake: true, susWatch: 7, susBribe: 500, susIsle: 3 };
+    cards: true, cardCashMin: 200, cardSeenW: 0.3, susBrake: true, susWatch: 7, susBribe: 500, susIsle: 3 };
+  // [넷째 11-26] cardSeenW = 앞 판들에서 본 카드(S.seenCards)를 고를 때 무게 · 뜰 몫(odds)에 곱하는 수(판마다 다른 카드를 만나게)
   // [제미나이 상의2 11-26] cards = 사건 카드(끄면 카드 없음 — 견줌용) · cardCashMin = 돈이 이보다 적으면 돈 깎는 카드(cost)는 빼고 고른다
   // susBrake = 의심 제동(끄면 없음) · susWatch = 이 의심부터 마르세유 세관이 지켜본다(그 보름 빚 문서 막힘) · susBribe = 마지막 보름의 뒷돈 · susIsle = 몬테크리스토에 닿으면 내리는 의심
   // 설계: docs/part2_practice/제미나이_상의2_11-26.md 「정한 것」, 글: docs/part2_practice/시안_사건카드_빚한줄.md
@@ -90892,7 +90893,7 @@ MC.addLang('ko', {
     haggle: { name: '값 깎기', cls: 'clerk', t: '사고팔 때 값 차이가 줄어든다' },
     rumor: { name: '소문 밝음', cls: 'clerk', t: '소문의 값이 더 정확해진다' }
   };
-  P2.BUILD = '연습판 1차 · 11-26 사 (사건 카드 · 빚 한 줄 · 의심)';
+  P2.BUILD = '연습판 1차 · 11-26 아 (빚 한 줄 차례 · 카드 고르게)';
   // 소문 사슬(docs/gdd2/05 SCN-RU-01): 술집 소문이 고리를 거쳐 명품으로 이어진다. 고리마다 within턴 안에 닿지 못하면 식어서 끊긴다
   // [연습판 11-25] 지도에 맞는 둘만. 문구는 임시(사용자가 고른다). gain = 끝 보상의 효과도 연습판용 임시 — 본편에서 명품은 장비·선물로 쓴다
   // steps[0] = 첫 소문(from부터 to까지의 턴에 사람이 탄 무리가 그곳에 닿으면 듣는다). who: 'count' = 백작이 탄 무리(상단)가 가야 한다. later = 앞 고리보다 뒤 턴이어야 한다
@@ -90961,8 +90962,9 @@ MC.addLang('ko', {
         { b: '뚫고 간다', good: { base: 0.35, guard: 0.25, smuggler: 0.1, max: 0.9 }, pt: '이긴다', lw: '이기면', ll: '지면', win: { cash: 200, credit: 1 }, lose: { cash: -300 }, rw: '먼저 쏘자 사내들이 짐 자루를 버리고 흩어졌다.', rl: '돈주머니를 빼앗겼다. 마차는 빠져나왔다.' }
       ] },
     // [셋째 주고받기 11-26] 4 · 8을 더해 여덟 장(퍼센트 없음). 운이 끼는 단추의 eff = 늘 되는 일(운의 win · lose에 더한다)
-    //   flotsam: 긴 바닷길 셋. 「건져 싣는다」 = 포도주를 빈칸만큼(많아야 6통, salvage) · 네 번에 한 번 의심 +2, 빈칸이 0이면 흐린 단추. 「관청에 알림」 = +200 · 신용 +1(서기가 있으면 +300)
-    flotsam: { name: '떠도는 궤짝', sil: 'wreck', w: 3,
+    //   flotsam: 아무 바닷길(넷째 11-26 — 전에는 긴 바닷길 셋). 「건져 싣는다」 = 포도주를 빈칸만큼(많아야 6통, salvage) · 네 번에 한 번 의심 +2, 빈칸이 0이면 흐린 단추. 「관청에 알림」 = +200 · 신용 +1(서기가 있으면 +300)
+    // [넷째 11-26] 떠도는 궤짝은 아무 바닷길로 넓혀 무게 3 → 1(아무 바닷길 카드는 1 — 추천 길 제노바 → 마르세유에서 등 뒤의 바람과 반반)
+    flotsam: { name: '떠도는 궤짝', sil: 'wreck', w: 1,
       t: ['부서진 돛대와 궤짝들이 물에 떠 있다.', '배 이름은 지워졌다. 사람은 보이지 않는다.'],
       who: ['sailor', 'clerk', 'jac'], say: { sailor: '「포도주 통입니다. 건져 올릴까요?」', clerk: '「관청에 알리면 사례가 나옵니다.」', jac: '「임자 없는 통이에요, 나리.」' },
       opts: [
@@ -90983,7 +90985,7 @@ MC.addLang('ko', {
   // 카드가 뜨는 때(떠나는 보름의 번호 — 0 = 6월 초). 첫째 장: 6월 말 · 7월 초에 떠나는 바닷길. 둘째 장: 7월 말 · 8월 초에 떠나는 남쪽 바닷길이나 보케르 뭍길
   //   sea = 아무 바닷길, south = 남쪽 바닷길(리보르노 아래 — p2_core의 CARD_SOUTH), land = 보케르 뭍길. 첫 보름(6월 초)과 마지막 보름에는 뜨지 않는다
   P2.CARD_SLOTS = [{ turns: [1, 2], sea: true }, { turns: [3, 4], south: true, land: true }];
-  // 빚 문서 한 줄(마르세유 모렐 창에서 살 때): ① 처음 살 때 ② 절반(at)을 넘길 때 ③ 다 채울 때. 한 번에 둘 이상을 넘기면 뒤의 것만(사용자가 고른 섞기 — A① · B② · B③)
+  // 빚 문서 한 줄(마르세유 모렐 창에서 살 때): ① 처음 살 때 ② 절반(at)을 넘길 때 ③ 다 채울 때(사용자가 고른 섞기 — A① · B② · B③). [넷째 11-26] 한 번에 둘 이상을 넘기면 종이 판에 차례로, 모렐 창에는 마지막 것
   P2.DEBT_LINES = [
     { at: 0, t: '붉은 비단 지갑을 두고 간 분의 빚이다.' },
     { at: 17000, t: '「고맙소」에 목이 멘다. 나는 남이어야 한다.' },
@@ -91047,9 +91049,11 @@ MC.addLang('ko', {
   P2.seats = g => (g && g.count ? T().seats : P2.VEHICLES[g.veh].crewMax);
 
   /* ---------- 새 판 ---------- */
-  P2.newGame = function (seed) {
+  // [넷째 11-26] seen = 앞 판들에서 본 카드 이름들(화면의 새 판만 P2.seenLoad()를 넘긴다 — 그 판은 seenLS = 1로 기록도 한다). 없으면 빈 기록(가짜 플레이어)
+  P2.newGame = function (seed, seen) {
     const S = { v: 2, seed: seed >>> 0, rng: (seed >>> 0) || 1, seq: 0, turn: 0, phase: 'play', cash: P2.START.cash, credit: P2.START.credit, suspicion: P2.START.suspicion, treasure: P2.START.treasure,
-      drawn: 0, goalPaid: 0, stock: {}, known: {}, people: {}, groups: [], dock: {}, via: null, tavern: {}, log: [], turnProfit: 0, totalProfit: 0, history: [], result: null };
+      drawn: 0, goalPaid: 0, stock: {}, known: {}, people: {}, groups: [], dock: {}, via: null, tavern: {}, log: [], turnProfit: 0, totalProfit: 0, history: [], result: null,
+      seenCards: Array.isArray(seen) ? seen.slice() : [], seenLS: Array.isArray(seen) ? 1 : 0 };
     for (const pt in P2.PORTS) { S.stock[pt] = {}; for (const gd in P2.GOODS) S.stock[pt][gd] = (rnd(S) - 0.5) * 0.3; }
     const jac = mkPerson(S, 'sailor', { name: '자코포', post: 'captain', str: 0.5, eye: 0.5, grit: 0.7, wage: 180, lv: 2, exp: 2, loyal: 0.9, past: '물에 빠진 나를 건져 준 사람', trait: { t: '바다에서 자랐다' }, named: true, pt: 'pt_jacopo' });
     const a = mkPerson(S, 'sailor'), b = mkPerson(S, 'sailor');
@@ -91378,15 +91382,18 @@ MC.addLang('ko', {
       else { S.credit = clamp(S.credit - 2, 0, 100); S.log.push({ k: 'warn', t: '뒷돈을 못 내 말이 돈다 — 신용 −2' }); } }
     return true;
   };
-  // [빚 한 줄 11-26] 이번에 산 몫이 넘긴 자리의 한 줄(P2.DEBT_LINES: ① 처음 ② 절반 ③ 다 채움). 둘 이상을 한 번에 넘기면 뒤의 것만. S.debtNote = 지금 보일 줄, S.debtHist = 기록
+  // [빚 한 줄 11-26] 이번에 산 몫이 넘긴 자리의 한 줄(P2.DEBT_LINES: ① 처음 ② 절반 ③ 다 채움). S.debtNote = 모렐 창에 보일 줄(넘긴 것 가운데 마지막), S.debtHist = 기록
+  //   [넷째 11-26] 한 번에 여러 문턱을 넘기면 넘긴 줄을 모두 차례로 기록 · 소식에 남긴다(화면의 종이 판은 ① → ② → ③ 차례로 — p2_scenes debtPlate)
   function debtLine(S, b0) {
-    const a = S.goalPaid, DL = P2.DEBT_LINES || []; let i = -1;
-    if (b0 <= 0 && a > 0) i = 0;
-    if (DL[1] && b0 < DL[1].at && a >= DL[1].at) i = 1;
-    if (b0 < P2.GOAL && a >= P2.GOAL) i = 2;
-    if (i < 0 || !DL[i]) return;
-    S.debtNote = { i, turn: S.turn }; (S.debtHist || (S.debtHist = [])).push({ i, turn: S.turn, paid: a });
-    S.log.push({ k: 'debt', t: DL[i].t });
+    const a = S.goalPaid, DL = P2.DEBT_LINES || [], hit = [];
+    if (b0 <= 0 && a > 0) hit.push(0);
+    if (DL[1] && b0 < DL[1].at && a >= DL[1].at) hit.push(1);
+    if (b0 < P2.GOAL && a >= P2.GOAL) hit.push(2);
+    const ok = hit.filter(i => DL[i]); if (!ok.length) return;
+    S.debtNote = { i: ok[ok.length - 1], turn: S.turn };
+    // [넷째 고침 11-26] 기록의 금액: 마지막 줄 = 산 뒤 금액, 앞 줄 ② = 그 문턱(17,000), 앞 줄 ① = 금액 없음(①②도 「34,000/34,000」으로 적히던 것 · 검토)
+    const last = ok[ok.length - 1];
+    for (const i of ok) { (S.debtHist || (S.debtHist = [])).push({ i, turn: S.turn, paid: i === last ? a : i === 1 ? DL[1].at : null }); S.log.push({ k: 'debt', t: DL[i].t }); }
   }
   // 빚 문서에 지금 낼 몫(화면의 큰 단추와 가짜 플레이어가 함께 쓴다). 남은 목표 · 깨끗한 돈 남은 것 가운데 작은 것까지
   // 마지막 보름이 아니면 앞으로 급료 keepWages번(오를 급료까지)을 남긴다. 마지막 보름에는 끝 정산 급료 한 번을 남기되, 다 내면 목표를 채울 수 있으면 채운다
@@ -91408,17 +91415,19 @@ MC.addLang('ko', {
   const strN = s => { let n = 7; for (let i = 0; i < s.length; i++) n = (Math.imul(n, 31) + s.charCodeAt(i)) >>> 0; return n; };
   const wayKey = (a, b) => (a < b ? a + '-' + b : b + '-' + a);
   // 남쪽 바닷길(리보르노 아래 — 둘째 장의 칸) · 남쪽 세 바닷길(깃발 없는 배)
-  const CARD_SOUTH = ['liv-mc', 'civ-liv', 'civ-mc', 'civ-nap', 'nap-pal', 'civ-pal'], SOUTH3 = ['civ-nap', 'nap-pal', 'civ-pal'];
+  // [넷째 11-26] LIGURIA = 리구리아 해안(제노바–마르세유 · 제노바–리보르노 — 깃발 없는 배가 뜨지 않는 바닷길)
+  const CARD_SOUTH = ['liv-mc', 'civ-liv', 'civ-mc', 'civ-nap', 'nap-pal', 'civ-pal'], LIGURIA = ['gen-mar', 'gen-liv'];
   // 카드가 뜨는 곳(정한 것 표의 「뜨는 곳」). from → to = 다음 보름에 닿는 곳, kind = 'sea' · 'land', k = wayKey
+  // [넷째 11-26] 원작 지리에 맞게 넓힘: 깃발 없는 배 = 리구리아 해안을 뺀 바닷길(전에는 남쪽 셋) · 「젊은 아멜리」호 = 리보르노에 닿거나 떠나는 바닷길 · 떠도는 궤짝 = 아무 바닷길
   const CARD_WHERE = {
-    corsair: (S, g, from, to, kind, k) => kind === 'sea' && SOUTH3.indexOf(k) >= 0 && P2.cargoUsed(g) > P2.cap(g) / 2,
+    corsair: (S, g, from, to, kind, k) => kind === 'sea' && LIGURIA.indexOf(k) < 0 && P2.cargoUsed(g) > P2.cap(g) / 2,
     genoa_tax: (S, g, from, to, kind) => kind === 'sea' && to === 'gen' && !!g.cargo.tobacco,
     fair_wind: (S, g, from, to, kind) => kind === 'sea',
-    amelie: (S, g, from, to, kind) => kind === 'sea' && from === 'liv' && ['gen', 'civ', 'mc'].indexOf(to) >= 0 && P2.turnInfo(S).month >= 7,
+    amelie: (S, g, from, to, kind) => kind === 'sea' && (from === 'liv' || to === 'liv') && P2.turnInfo(S).month >= 7,
     isle_boat: (S, g, from, to, kind) => kind === 'sea' && (from === 'mc' || to === 'mc'),
     crau: (S, g, from, to, kind) => kind === 'land',
-    // [셋째 주고받기 11-26] 떠도는 궤짝 = 긴 바닷길 셋(빈칸이 없어도 뜬다 — 그때는 「건져 싣는다」가 흐린 단추) · 길 잃은 아이 = 마르세유 → 보케르(때는 카드의 at)
-    flotsam: (S, g, from, to, kind, k) => kind === 'sea' && ['liv-mar', 'civ-liv', 'civ-pal'].indexOf(k) >= 0,
+    // [셋째 주고받기 11-26] 떠도는 궤짝(빈칸이 없어도 뜬다 — 그때는 「건져 싣는다」가 흐린 단추) · 길 잃은 아이 = 마르세유 → 보케르(때는 카드의 at)
+    flotsam: (S, g, from, to, kind) => kind === 'sea',
     lost_child: (S, g, from, to, kind) => kind === 'land' && from === 'mar' && to === 'bea'
   };
   // 이번 항해(g.at → to)에 뜰 카드: 지금 보름이 아직 안 쓴 칸에 들고, 그 길이 칸에 맞고(바닷길 · 남쪽 바닷길 · 뭍길), 뜨는 곳이 맞는 카드 가운데 무게(w)로 하나. 없으면 null(건너뛴다)
@@ -91429,6 +91438,8 @@ MC.addLang('ko', {
     if (P2.cardForce && P2.CARDS[P2.cardForce] && used.indexOf(P2.cardForce) < 0) return { id: P2.cardForce, slot: -1 };
     if (S.turn <= 0 || S.turn >= LAST()) return null;
     const k = wayKey(from, to);
+    // [넷째 11-26] 앞 판들에서 본 카드(S.seenCards — 새 판 때 옮겨 담은 것, 판 안에서는 바뀌지 않는다)는 무게 · 뜰 몫에 cardSeenW를 곱한다. 같은 씨앗 + 같은 S면 같은 카드
+    const seen = S.seenCards || [], sw = id => (seen.indexOf(id) >= 0 ? T().cardSeenW : 1), wOf = id => (P2.CARDS[id].w || 1) * sw(id);
     for (let si = 0; si < P2.CARD_SLOTS.length; si++) {
       const sl = P2.CARD_SLOTS[si]; if ((S.cardSlot || {})[si]) continue;
       if (!(kind === 'land' ? !!sl.land : !!sl.sea || (!!sl.south && CARD_SOUTH.indexOf(k) >= 0))) continue;
@@ -91437,11 +91448,14 @@ MC.addLang('ko', {
         if (D.at ? !(D.slot === si && D.at.indexOf(S.turn) >= 0) : !slotT) return false;
         if (used.indexOf(id) >= 0 || (D.ex && used.indexOf(D.ex) >= 0) || !CARD_WHERE[id] || !CARD_WHERE[id](S, g, from, to, kind, k)) return false;
         if (D.cost && S.cash < T().cardCashMin) return false;
-        return D.odds == null || hashU(S.seed, S.turn, strN(id), 13) < D.odds; });
+        if (D.odds == null) return true;
+        // [넷째 고침 11-26] 짝(D.ex)이 있으면 뜰 몫을 짝의 본 기록과 견준다: o·sw(나) / (o·sw(나) + (1−o)·sw(짝)). 둘 다 봤으면 처음 몫 그대로(추천 길에서 크로로 굳던 것 · 검토)
+        const o = D.odds * sw(id), p = D.ex && P2.CARDS[D.ex] ? o / (o + (1 - D.odds) * sw(D.ex)) : o;
+        return hashU(S.seed, S.turn, strN(id), 13) < p; });
       if (!ids.length) continue;
-      let tot = 0; for (const id of ids) tot += P2.CARDS[id].w || 1;
+      let tot = 0; for (const id of ids) tot += wOf(id);
       let u = hashU(S.seed, S.turn, si, 11) * tot;
-      for (const id of ids) { u -= P2.CARDS[id].w || 1; if (u < 0) return { id, slot: si }; }
+      for (const id of ids) { u -= wOf(id); if (u < 0) return { id, slot: si }; }
       return { id: ids[ids.length - 1], slot: si };
     }
     return null;
@@ -91526,6 +91540,7 @@ MC.addLang('ko', {
     c.res = { pick: i, good: look, roll: good, luck, t, d };
     const wh = P2.cardWho(S);
     (S.cardHist || (S.cardHist = [])).push({ id: c.id, turn: c.turn, pick: i, good: look, roll: good, luck, t, d, who: wh ? wh.p.id : null });
+    seenRec(S, [c.id]);
     return c.res;
   };
   // 바뀐 몫을 말로: 「돈 +300」 「짐 값 −180」 「포도주 6통」 「의심 +4」 「신용 +1」 「모두 충성 ▲」 「자코포 충성 ▲」 「소문 하나」. 돌려줌 글 배열(없으면 [])
@@ -91620,7 +91635,7 @@ MC.addLang('ko', {
     S.turnProfit = 0; S.drawn = 0; S.suspicion = clamp(S.suspicion - 1, 0, 100);
     for (const pt in S.stock) for (const gd in S.stock[pt]) S.stock[pt][gd] = clamp(S.stock[pt][gd] * 0.55 + (rnd(S) - 0.5) * 0.24, -1, 1);
     S.turn++; chainCool(S);
-    if (S.turn >= P2.TURNS.length) { S.phase = 'end'; const ok = S.goalPaid >= P2.GOAL; S.result = { ok, paid: S.goalPaid, cash: S.cash, credit: S.credit, suspicion: S.suspicion, people: Object.keys(S.people).length, profit: S.totalProfit, clean: P2.clean(S) }; return S; }
+    if (S.turn >= P2.TURNS.length) { S.phase = 'end'; seenRec(S, (S.cardHist || []).map(h => h.id)); const ok = S.goalPaid >= P2.GOAL; S.result = { ok, paid: S.goalPaid, cash: S.cash, credit: S.credit, suspicion: S.suspicion, people: Object.keys(S.people).length, profit: S.totalProfit, clean: P2.clean(S) }; return S; }
     // 큰 장이 섰다는 소식은 카드가 아니라 할 일 띠(kind 'fair')
     if (P2.isFair(S.turn)) S.log.push({ k: 'fair', t: '보케르에 큰 장이 섰다 — 비단과 산호 값이 뛴다.' });
     S.phase = 'play'; refreshTavern(S); learnHere(S); rumors(S, 3);
@@ -91636,6 +91651,15 @@ MC.addLang('ko', {
   P2.save = S => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (_) {} };
   P2.load = () => { try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (!s) return null; if (s.v !== 2) { P2.oldSave = true; return null; } if (!s.dock) s.dock = {}; if (s.via === undefined) s.via = null; return s; } catch (_) { return null; } };
   P2.clearSave = () => { try { localStorage.removeItem(KEY); } catch (_) {} };
+  // [넷째 11-26] 본 카드 기록(판 밖): 'mc34p2.seen'(시험용 sk는 같은 꼬리)에 카드 이름들. 카드를 고를 때 · 판이 끝날 때 더한다(S.seenLS가 있는 판만 — 화면의 판. 가짜 플레이어는 안 쓴다)
+  //   새 판 때 P2.seenLoad()로 읽어 P2.newGame(seed, seen)이 S.seenCards로 옮겨 담는다. 카드를 모두 봤으면 기록을 비운다
+  const SEEN_KEY = 'mc34p2.seen' + KEY.slice('mc34p2.practice1'.length);
+  const seenGet = () => { try { const a = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]'); return Array.isArray(a) ? a.filter(id => typeof id === 'string' && P2.CARDS[id]) : []; } catch (_) { return []; } };
+  function seenRec(S, ids) {
+    if (!S.seenLS || !ids.length) return;
+    try { const a = seenGet(); for (const id of ids) if (a.indexOf(id) < 0) a.push(id); localStorage.setItem(SEEN_KEY, JSON.stringify(a)); } catch (_) {}
+  }
+  P2.seenLoad = () => { const a = seenGet(); if (a.length && Object.keys(P2.CARDS).every(id => a.indexOf(id) >= 0)) { try { localStorage.removeItem(SEEN_KEY); } catch (_) {} return []; } return a; };
 })(window.MC);
 
 </script>
@@ -93127,7 +93151,7 @@ MC.addLang('ko', {
     // [11-26 바] 산 뒤 떠오르는 숫자(사고팔 때와 같은 손맛). 속 셈(P2.pay)은 그대로
     //   [11-26 고침] 큰 글은 금빛 「빚 문서 34,000/34,000」, 작은 글이 「돈 −34,000」(빚 문서 매입은 손해가 아니다 — 붉은 마이너스가 크게 떠 감정이 터지는 순간이 손해처럼 읽혔다 · 검토)
     //   빚 한 줄이 나오면 지도 위 종이 판에도 그 줄을 띄운다(debtPlate)
-    const paid = (c0, n0) => { const d = S.cash - c0; (V.fx || (V.fx = [])).push({ s: '빚 문서 ' + U.num(S.goalPaid) + '/' + U.num(P2.GOAL), col: C.GOLD, s2: '돈 ' + sg(d), c2: C.CREAM, t0: performance.now() }); if (V.fx.length > 2) V.fx.shift(); if (S.debtNote && S.debtNote.turn === S.turn && (S.debtHist || []).length > n0 && P2.DEBT_LINES[S.debtNote.i]) V.debtFx = { t: P2.DEBT_LINES[S.debtNote.i].t, t0: performance.now() }; };
+    const paid = (c0, n0) => { const d = S.cash - c0; (V.fx || (V.fx = [])).push({ s: '빚 문서 ' + U.num(S.goalPaid) + '/' + U.num(P2.GOAL), col: C.GOLD, s2: '돈 ' + sg(d), c2: C.CREAM, t0: performance.now() }); if (V.fx.length > 2) V.fx.shift(); const q = (S.debtHist || []).slice(n0).map(h => P2.DEBT_LINES[h.i] && P2.DEBT_LINES[h.i].t).filter(Boolean); if (q.length) V.debtFx = { q, n: 0, t0: performance.now() }; };
     U.btn(x + m, by, w - 2 * m, b1h, pickFit(big, w - 2 * m - 6 * K), () => { const a = payable(S), c0 = S.cash, n0 = (S.debtHist || []).length; if (P2.pay(S, a)) { P2.save(S); paid(c0, n0); say('빚 문서를 샀다 · ' + U.num(a)); } else say('살 수 없다'); }, { primary: true, disabled: !can || pay < 1 });
     // 돈이 없으면 못 누르는 단추는 흐리게
     U.btn(x + m, b2y, w - 2 * m, D.bh, '1만 프랑어치 산다', () => { const b = S.goalPaid, c0 = S.cash, n0 = (S.debtHist || []).length; if (P2.pay(S, 10000)) { P2.save(S); paid(c0, n0); say('빚 문서를 샀다 · ' + U.num(S.goalPaid - b)); } else say('살 수 없다'); }, { disabled: !can || blk || S.cash < 10000 || P2.cleanLeft(S) < 10000 || rest < 10000 });
@@ -93137,7 +93161,9 @@ MC.addLang('ko', {
     const sn = '의심 ' + S.suspicion, bb = '뒷돈 ' + P2.TUNE.susBribe;
     if (V.msg) { note = [V.msg]; nc = C.GOLD; } else if (rest <= 0) { note = ['다 모았다. 9월 5일을 기다린다.', '다 모았다.']; nc = C.OK; } else if (blk) { note = [sn + ' — 마르세유 세관이 지켜본다', sn + ' — 세관이 지켜본다', '세관이 지켜본다']; nc = C.UP; } else if (brb) { note = [sn + ' — 살 때 ' + bb + ' · 모자라면 신용 −2', bb + ' · 모자라면 신용 −2', sn + ' · ' + bb, bb]; nc = C.UP; } else if (P2.cleanLeft(S) <= 0) { note = ['깨끗한 돈 = 처음 돈 + 장사 이익']; nc = C.DIM; } else if (pay < 1) { note = ['장사로 돈을 더 모으면 산다']; nc = C.DIM; }
     // [빚 한 줄 11-26] 이번 보름에 산 몫이 넘긴 자리의 한 줄(크림색, 좁으면 접는다). 막혔으면 의심이 내리는 길, 아니면 「보물 돈은 셈하지 않는다」
-    const dl = S.debtNote && S.debtNote.turn === S.turn && P2.DEBT_LINES[S.debtNote.i] ? P2.DEBT_LINES[S.debtNote.i].t : '';
+    // [넷째 고침 11-26] 종이 판이 차례로 보이는 동안에는 창 줄도 판의 지금 줄(판이 ①②일 때 창에 ③이 먼저 보이던 것 · 검토)
+    const fq = V.debtFx && V.debtFx.q ? V.debtFx.q[V.debtFx.n] : '';
+    const dl = fq || (S.debtNote && S.debtNote.turn === S.turn && P2.DEBT_LINES[S.debtNote.i] ? P2.DEBT_LINES[S.debtNote.i].t : '');
     const tail = blk ? [[pickFit(['몬테크리스토에 닿으면 −' + P2.TUNE.susIsle + ' · 보름마다 −1', '섬에 닿으면 −' + P2.TUNE.susIsle + ' · 보름마다 −1', '섬에 가면 −' + P2.TUNE.susIsle], tw), C.DIM]] : dl ? wrapB(dl, tw).map(s => [s, C.CREAM]) : [['보물 돈은 셈하지 않는다', C.DIM]];
     // [11-26 고침] 창 끝에 들어가는 줄 수만큼만 그린다. 빚 한 줄이 두 줄로 접혀 다 안 들면 위 알림 줄을 빼고 그 자리부터 쓴다(크게 글씨에서 ③이 「…제 손에」에서 끊겼다 · 검토)
     const rows = Math.max(0, Math.floor((r.y + r.h - ny + 1) / lh)), keepNote = note && (!dl || 1 + tail.length <= rows);
@@ -93147,13 +93173,17 @@ MC.addLang('ko', {
 
   // [11-26 고침] 빚 한 줄 종이 판: 빚 문서를 사 한 줄(①②③)이 나오면 보이는 지도 가운데(세로는 창 위, 가로는 왼쪽 지도)에 크림색 판으로 그 줄만 2초쯤 띄운다
   //   (③이 모렐 창 맨 아래 흰 글 한 줄로만 나와 감정이 터지는 순간이 묻혔다 · 검토). 창 안의 줄은 그대로 남는다. V.debtFx.fix = 화면 갈무리용(0~1)
-  const DEBT_FX_MS = 2200;
+  //   [넷째 11-26] 한 번에 여러 문턱을 넘기면 V.debtFx.q의 줄을 ① → ② → ③ 차례로(뒤에 줄이 남은 판은 DEBT_STEP_MS, 마지막 판은 DEBT_FX_MS). 판을 누르면 다음 줄로(마지막이면 닫는다)
+  const DEBT_FX_MS = 2200, DEBT_STEP_MS = 1800;
   function debtPlate(L) {
-    const e = V.debtFx; if (!e) return; const k = e.fix != null ? e.fix : (performance.now() - e.t0) / DEBT_FX_MS; if (k >= 1) { V.debtFx = null; return; }
+    const e = V.debtFx; if (!e || !e.q || !e.q.length) { V.debtFx = null; return; }
+    const more = e.n < e.q.length - 1, next = () => { if (e.n < e.q.length - 1) { e.n++; e.t0 = performance.now(); } else V.debtFx = null; };
+    const k = e.fix != null ? e.fix : (performance.now() - e.t0) / (more ? DEBT_STEP_MS : DEBT_FX_MS); if (k >= 1) { if (more) { next(); return debtPlate(L); } V.debtFx = null; return; }
     const al = k < 0.1 ? k / 0.1 : k > 0.75 ? Math.max(0, 1 - (k - 0.75) / 0.25) : 1, bot = !L.land && V.win && V.anc.panelY != null ? V.anc.panelY : L.my + L.mh;
-    const w = Math.min(L.mw - 12 * K, K === 2 ? 520 : 260), ls = wrapB(e.t, w - 16 * K), h = ls.length * D.lh + 12 * K, x = L.mx + ((L.mw - w) >> 1), y = Math.max(L.my + 4 * K, Math.round((L.my + bot - h) / 2));
+    const w = Math.min(L.mw - 12 * K, K === 2 ? 520 : 260), ls = wrapB(e.q[e.n], w - 16 * K), h = ls.length * D.lh + 12 * K, x = L.mx + ((L.mw - w) >> 1), y = Math.max(L.my + 4 * K, Math.round((L.my + bot - h) / 2));
     U.box(x, y, w, h, 'rgba(241,230,196,' + (0.96 * al).toFixed(2) + ')', 'rgba(201,162,77,' + al.toFixed(2) + ')');
     ls.forEach((s, i) => U.text(s, x + (w >> 1), y + 6 * K + i * D.lh, { color: C.INK, align: 'center', alpha: al }));
+    U.hit(x, y, w, h, next);
   }
 
   /* ---------- 동료들 · 기록 창 ---------- */
@@ -93240,7 +93270,7 @@ MC.addLang('ko', {
     // [사건 카드 · 빚 한 줄 11-26] 지난 일: 고른 카드(「깃발 없는 배 · 맞선다」 / 「6월 말 · 돈 +300」)와 빚 문서 한 줄. 아래 설정 줄 위까지 들어가는 만큼(새것부터)
     const evs = [];
     for (const h of S.cardHist || []) { const Dc = P2.CARDS[h.id]; if (!Dc) continue; const fx = P2.cardFxParts(h.d); evs.push([h.turn, 1, Dc.name + ' · ' + Dc.opts[h.pick].b, P2.dateOf(h.turn) + ' · ' + (fx.length ? fx.join(' · ') : '아무 일 없었다'), h.good ? C.CREAM : C.UP]); }
-    for (const h of S.debtHist || []) { const dl = P2.DEBT_LINES[h.i]; if (dl) evs.push([h.turn, 0, dl.t, P2.dateOf(h.turn) + ' · 빚 문서 ' + U.num(h.paid) + '/' + U.num(P2.GOAL), C.CREAM]); }
+    for (const h of S.debtHist || []) { const dl = P2.DEBT_LINES[h.i]; if (dl) evs.push([h.turn, 0, dl.t, P2.dateOf(h.turn) + (h.paid != null ? ' · 빚 문서 ' + U.num(h.paid) + '/' + U.num(P2.GOAL) : ''), C.CREAM]); }
     evs.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
     const limY = bot - 2 * (D.bh + 3 * K) - 4 * K, evRoom = Math.max(1, Math.floor((limY - y2 - lh - 1 - lh - 3 * K) / it));
     sec(L.land ? x0 + cw : x0, y2, '지난 일 ' + evs.length, evs.map(e => [e[2], e[3], e[4]]), '아직 없다', evRoom);
@@ -93389,7 +93419,7 @@ MC.addLang('ko', {
     const S = V.S, W = L.W, H = L.H, r = S.result || {}, land = L.land;
     const rows = [['빚 문서', U.num(r.paid || 0) + ' / ' + U.num(P2.GOAL)], ['깨끗한 돈', U.num(r.clean != null ? r.clean : P2.clean(S))], ['남은 자금', U.num(r.cash || 0)], ['장사 이익', U.num(r.profit || 0)], ['신용', r.credit], ['의심', r.suspicion], ['함께한 동료', (r.people || 0) + '명']];
     // 「처음부터 다시」: 단계별 안내는 옛 판의 켜고 끔을 그대로 이어받는다(끄려면 기록의 「안내 끄기」)
-    const restart = () => { const off = !!S.tutOff; P2.clearSave(); V.S = P2.newGame(Date.now() >>> 0); V.S.tutOff = off; V.view = 'map'; closeWin(); V.ask = null; V.anim = null; V.msg = ''; V.box = 'arrive'; V.showLog = 'card'; P2.save(V.S); };
+    const restart = () => { const off = !!S.tutOff; P2.clearSave(); V.S = P2.newGame(Date.now() >>> 0, P2.seenLoad()); V.S.tutOff = off; V.view = 'map'; closeWin(); V.ask = null; V.anim = null; V.msg = ''; V.box = 'arrive'; V.showLog = 'card'; P2.save(V.S); };
     U.rect(0, L.top, W, H - L.top, C.DARK);
     // 결과 종이: 크게 200(가로 380) · 작게 320(가로 600), 줄 간격 크게 13·14 · 작게 16·18, 단추 크게 22 · 작게 44
     const dn = K === 2, lh = D.lh, rs = dn ? 18 : 14, bh = dn ? D.bhL : 22;
@@ -93555,7 +93585,9 @@ MC.addLang('ko', {
     try { MC.scene.clear(); } catch (e) { console.warn('[p2] clear', e); }
     // [교역 고침 11-25 라] 저장 판이 바뀌었으면(P2.oldSave) 옛 저장을 말없이 지우지 않고, 새 판 첫 소식 맨 앞에 한 번 알린다. 옛 저장은 새 판을 저장할 때 덮인다
     let S = P2.load();
-    if (!S) { S = P2.newGame(Date.now() >>> 0); if (P2.oldSave) S.log.unshift({ k: 'story', t: '교역 규칙이 바뀌어 처음부터 시작한다. 옛 판은 이어 할 수 없다.' }); }
+    // [넷째 11-26] 새 판은 본 카드 기록을 옮겨 담는다. 기록 전에 시작한 판(seenLS 없음)도 이제부터 본 카드를 기록한다(그 판의 카드 셈은 그대로)
+    if (S && S.seenLS == null) S.seenLS = 1;
+    if (!S) { S = P2.newGame(Date.now() >>> 0, P2.seenLoad()); if (P2.oldSave) S.log.unshift({ k: 'story', t: '교역 규칙이 바뀌어 처음부터 시작한다. 옛 판은 이어 할 수 없다.' }); }
     P2.view.S = S;
     P2.view.view = P2.view.S.phase === 'end' ? 'end' : 'map';
     MC.scene.push(P2.root);
